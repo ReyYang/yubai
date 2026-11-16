@@ -24,7 +24,9 @@ struct CaptureSnippetIntent: SnippetIntent {
     init() {}
     init(ids: [UUID]) { entryIDs = ids.map(\.uuidString) }
     @MainActor func perform() async throws -> some IntentResult & ShowsSnippetView {
-        let store = AppStore.shared; let ids = Set(entryIDs.compactMap(UUID.init(uuidString:)))
+        let store = AppStore.shared
+        await store.waitForLedger()
+        let ids = Set(entryIDs.compactMap(UUID.init(uuidString:)))
         let entries = store.current.activeEntries.filter { ids.contains($0.id) }
         let privateResult = store.preferences.lockEnabled || store.preferences.hideAmounts
         return .result(view: CaptureSnippetView(entries: entries, ledger: store.current, privateResult: privateResult))
@@ -85,6 +87,7 @@ struct UndoCapturedEntryIntent: AppIntent {
     init(id: UUID) { entryID = id.uuidString }
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let id = UUID(uuidString: entryID) else { throw YubaiError.invalid("记录已不存在。") }
+        await AppStore.shared.waitForLedger()
         try AppStore.shared.captureUpdate("撤销这笔") { QuickCapture.undo(entryID: id, in: &$0) }
         CaptureNotifications.remove(id: id)
         return .result(dialog: "已撤销")

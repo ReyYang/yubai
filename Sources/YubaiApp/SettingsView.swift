@@ -76,7 +76,7 @@ private struct SettingsStorageSizeTask: ViewModifier {
 
 struct IntelligencePrivacyView: View {
     @Environment(AppStore.self) private var store
-    @State private var hasKey = APIKeyStore.shared.hasKeychainKey
+    private var hasKey: Bool { IntelligenceRuntime.cloud.hasKeychainKey }
     private var configured: Bool { IntelligenceRuntime.isConfigured }
     @State private var sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
     var body: some View {
@@ -130,7 +130,7 @@ struct IntelligencePrivacyView: View {
                     .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openCloudSendLog")
             }
         }.navigationTitle("智能与隐私").yubaiNavigation().onAppear {
-            IntelligenceRuntime.cloud.refresh(); hasKey = APIKeyStore.shared.hasKeychainKey
+            IntelligenceRuntime.cloud.refresh()
             sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
         }
         .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count }
@@ -204,6 +204,9 @@ struct BackupView: View {
     @State private var exportedLedgerID: UUID?; @State private var exportedAt: Date?
     @State private var encryptedRestore = false
     @State private var exportExpanded = false
+    #if DEBUG && targetEnvironment(simulator)
+    @State private var backupFileCount = 0
+    #endif
     @State private var csvExport = false
     @State private var choosingBackupFolder = false
     @State private var backupFolderLedgerID: UUID?
@@ -252,11 +255,15 @@ struct BackupView: View {
                 case .failure(let error): message = error.localizedDescription
                 }
             }
-            .fileImporter(isPresented: $importing, allowedContentTypes: [.yubaiBackup, .json, .data]) { result in do { acceptBackup(try result.get()) } catch { message = error.localizedDescription } }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.yubaiBackup, .json, .data]) { result in do { let url = try result.get(); Task { await acceptBackup(url) } } catch { message = error.localizedDescription } }
             .task { await store.configureSync() }
-            .onAppear { if let url = store.importedURL, url.pathExtension.lowercased() == "yubaibackup" { store.importedURL = nil; acceptBackup(url) } }
+            .onAppear { if let url = store.importedURL, url.pathExtension.lowercased() == "yubaibackup" { store.importedURL = nil; Task { await acceptBackup(url) } } }
             #if DEBUG && targetEnvironment(simulator)
             .task { await prepareGalleryRestore() }
+            .task(id: store.preferences.lastBackupAt) {
+                let count = await Task.detached(priority: .utility) { UITestSupport.secondBatchBackupFileCount }.value
+                if !Task.isCancelled { backupFileCount = count }
+            }
             #endif
     }
     #if DEBUG && targetEnvironment(simulator)
@@ -265,27 +272,32 @@ struct BackupView: View {
         galleryRestoreStarted = true
         let ledger = store.current
         do {
-            let data = try await Task.detached { try Backup.export(ledger, password: "GalleryOnly123") }.value
-            guard !Task.isCancelled else { return }
             let url = store.localRepository.directory.appendingPathComponent("gallery-restore.yubaibackup")
-            try data.write(to: url, options: .atomic)
-            defer { try? FileManager.default.removeItem(at: url) }
-            acceptBackup(url)
+            try await Task.detached {
+                try Backup.export(ledger, password: "GalleryOnly123").write(to: url, options: .atomic)
+            }.value
+            guard !Task.isCancelled else { return }
+            await acceptBackup(url)
+            _ = await Task.detached { try? FileManager.default.removeItem(at: url) }.value
         } catch { message = error.localizedDescription }
     }
     #endif
-    func acceptBackup(_ url: URL) {
-        pendingRestore = nil; restoreData = nil; restorePassword = ""; encryptedRestore = false; message = nil
+    func acceptBackup(_ url: URL) async {
+        pendingRestore = nil; restoreData = nil; restorePassword = ""; encryptedRestore = false; message = nil; busy = true
         do {
-            let access = url.startAccessingSecurityScopedResource(); defer { if access { url.stopAccessingSecurityScopedResource() } }
-            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-            guard size <= LedgerCodec.backupCapacity else { throw YubaiError.invalid("备份文件过大。") }
-            let data = try Data(contentsOf: url)
-            restoreData = data
-            if let header = try? JSONDecoder().decode(BackupHeader.self, from: data), header.format == "yubai-backup", header.version == 1, header.encrypted {
-                encryptedRestore = true; passwordFocus = true
-            } else { readBackup() }
-        } catch { message = error.localizedDescription }
+            let result = try await Task.detached(priority: .userInitiated) {
+                let access = url.startAccessingSecurityScopedResource()
+                defer { if access { url.stopAccessingSecurityScopedResource() } }
+                let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                guard size <= LedgerCodec.backupCapacity else { throw YubaiError.invalid("备份文件过大。") }
+                let data = try Data(contentsOf: url)
+                let header = try? JSONDecoder().decode(BackupHeader.self, from: data)
+                return (data, header?.format == "yubai-backup" && header?.version == 1 && header?.encrypted == true)
+            }.value
+            restoreData = result.0; busy = false
+            if result.1 { encryptedRestore = true; passwordFocus = true }
+            else { readBackup() }
+        } catch { message = error.localizedDescription; busy = false }
     }
     func exportBackup() {
         passwordFocus = false
@@ -321,13 +333,16 @@ struct BackupView: View {
                 }
             }
             .fileImporter(isPresented: $choosingBackupFolder, allowedContentTypes: [.folder]) { result in
-                do {
-                    let folder = try result.get()
-                    guard backupFolderLedgerID == store.current.id else { return }
-                    try WeeklyBackupAccess.shared.remember(folder, for: store.current.id)
-                    if store.update("保存备份偏好", entryMotion: false, showToast: false, { $0.preferences.weeklyAutoBackup = true }) { store.runAutomaticBackupIfDue() }
-                } catch {
-                    if (error as NSError).code != NSUserCancelledError { message = error.localizedDescription }
+                Task {
+                    do {
+                        let folder = try result.get(), ledgerID = store.current.id
+                        guard backupFolderLedgerID == ledgerID else { return }
+                        try await WeeklyBackupAccess.shared.remember(folder, for: ledgerID)
+                        guard store.current.id == ledgerID else { return }
+                        if store.update("保存备份偏好", entryMotion: false, showToast: false, { $0.preferences.weeklyAutoBackup = true }) { store.runAutomaticBackupIfDue() }
+                    } catch {
+                        if (error as NSError).code != NSUserCancelledError { message = error.localizedDescription }
+                    }
                 }
             }
     }
@@ -382,7 +397,7 @@ struct BackupView: View {
             } else { EmptyState("square.and.arrow.up", "还没备份过", action: "备份到文件", actionIdentifier: "backupToFile", onAction: { exportExpanded.toggle() }) }
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityIdentifier("lastBackup")
             #if DEBUG && targetEnvironment(simulator)
-            .uiTestAccessibilityValue("files=\(UITestSupport.secondBatchBackupFileCount);csv=\(csvExport && exportDocument.data.starts(with: [0xEF, 0xBB, 0xBF]) ? 1 : 0)")
+            .uiTestAccessibilityValue("files=\(backupFileCount);csv=\(csvExport && exportDocument.data.starts(with: [0xEF, 0xBB, 0xBF]) ? 1 : 0)")
             #endif
     }
     private func backupRow(_ title: String, detail: String?) -> some View {
@@ -419,7 +434,15 @@ struct ImportHistoryView: View {
                             .disabled(store.organizingBatchID != nil).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("undoImportBatch")
                     }
                     if let attachment = store.current.attachments.first(where: { $0.id == batch.attachmentID }) {
-                        Button("导出原文件") { do { document = ExportDocument(data: try store.localRepository.attachmentData(attachment.id)); filename = attachment.name; exporting = true } catch { store.error = error.localizedDescription } }
+                        Button("导出原文件") {
+                            let repository = store.localRepository, id = attachment.id
+                            Task {
+                                do {
+                                    let data = try await Task.detached(priority: .userInitiated) { try repository.attachmentData(id) }.value
+                                    document = ExportDocument(data: data); filename = attachment.name; exporting = true
+                                } catch { store.error = error.localizedDescription }
+                            }
+                        }
                             .frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("exportImportOriginal_" + batch.id.uuidString)
                     }
                 }.buttonStyle(.borderless).padding(.vertical, YubaiSpace.space8)
@@ -456,7 +479,14 @@ struct RecoveryVersionsView: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("recoveryVersion_" + recovery.name)
             }
         }.navigationTitle("恢复版本").yubaiNavigation().manualSheetHeader("恢复版本", cancelTitle: "关闭", showsAction: false)
-            .onAppear { do { recoveries = try store.repository.recoveries() } catch { store.error = error.localizedDescription } }
+            .task {
+                let repository = store.repository
+                do {
+                    let result = try await Task.detached(priority: .utility) { try repository.recoveries() }.value
+                    guard !Task.isCancelled else { return }
+                    recoveries = result
+                } catch { if !Task.isCancelled { store.error = error.localizedDescription } }
+            }
             .sheet(item: $target) { recovery in
                 ConfirmationSheet(title: "恢复到这个版本？", consequence: "当前账本会先保留。") {
                     Button("恢复所选版本") { if store.recover(recovery) { target = nil; dismiss() } }.buttonStyle(PrimaryButtonStyle())

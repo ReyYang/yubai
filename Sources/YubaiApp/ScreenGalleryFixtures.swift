@@ -394,14 +394,15 @@ extension UITestSupport {
 
 #if DEBUG && targetEnvironment(simulator)
 extension UITestSupport {
-    @MainActor static func stageGalleryVersions(_ store: AppStore) {
+    @MainActor static func stageGalleryVersions(_ store: AppStore) async {
         guard script == "gallery", ProcessInfo.processInfo.environment["YUBAI_GALLERY_VERSIONS"] == "1" else { return }
         let first = store.current
         var second = first
         second.updatedAt = first.updatedAt.addingTimeInterval(60)
         if !second.entries.isEmpty { second.entries[0].title = galleryLongTitle; second.entries[0].amount = 123456789 }
         let source = FileLedgerVersionSource(repository: store.localRepository)
-        _ = try? source.versions() // Capture the real local file fingerprint; no cloud access.
+        _ = try? await Task.detached(priority: .utility) { try source.versions() }.value
+        guard !Task.isCancelled, store.current == first else { return }
         store.syncChoice = SyncChoice(versions: [LedgerVersion(id: "current", ledger: first, deviceName: "这台手机"),
                                                  LedgerVersion(id: "gallery-other", ledger: second, deviceName: galleryLatinTitle)],
                                       source: source, target: .local, switching: false)

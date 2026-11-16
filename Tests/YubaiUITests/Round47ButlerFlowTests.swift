@@ -139,16 +139,22 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         tap("emptyLedgerAdd"); XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5)); tap("cancelManualSheet")
         tap("emptyLedgerImport"); XCTAssertTrue(element("chooseBillFile").waitForExistence(timeout: 5))
     }
-    func testEmptyAssistantExamplesSendImmediatelyAndValuesAndMemoriesHaveSharedState() {
-        launch("v47-c-empty", configured: true); tap("tab_yubai"); XCTAssertTrue(element("emptyState_assistant").exists)
-        for index in 0..<3 {
+    func testAssistantSuggestionsAndValuesAndMemoriesUseRevisionRoutes() {
+        launch("v47-c-empty", configured: true); tap("tab_yubai")
+        XCTAssertTrue(element("askYubai").exists)
+        XCTAssertFalse(element("emptyState_assistant").exists)
+        for index in 0..<2 {
             XCTAssertGreaterThanOrEqual(element("askSuggestion_\(index)").frame.height, 44)
-            XCTAssertEqual(element("askSuggestion_\(index)").frame.minX, element("askSuggestion_0").frame.minX, accuracy: 1)
         }
-        tap("askSuggestion_0"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); backToRoot()
-        tap("tab_yubai"); tap("openProfile"); XCTAssertTrue(element("emptyState_profile").exists)
+        XCTAssertFalse(element("askSuggestion_2").exists)
+        tap("askSuggestion_0")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue((element("askYubai").value as? String ?? "").contains("这个能买吗"))
+        tap("sendAskHome"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); backToRoot()
+        tap("askSuggestion_1"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); backToRoot()
+        tap("openProfile"); XCTAssertTrue(element("emptyState_profile").exists)
         tap("addPrinciple"); XCTAssertTrue(element("principleText").waitForExistence(timeout: 5)); tap("cancelManualSheet")
-        backToRoot(); tap("tab_yubai"); tap("openMemories"); XCTAssertTrue(element("emptyState_memories").exists)
+        backToRoot(); tap("openMemories"); XCTAssertTrue(element("emptyState_memories").exists)
         XCTAssertTrue(element("emptyMemories").exists)
     }
     func testEmptySavingWishBillsBudgetAndFrequentActionsAreConnected() {
@@ -225,7 +231,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 10))
         settings()
         wait { (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=1") }
-        backToRoot()
+        backToRoot(); tap("tab_ledger")
         tap("savingsTopupAll")
         tap("butlerAIAccept")
         wait { !self.element("butlerSuggestionCard").exists && !self.element("savingsTopupCard").exists }
@@ -235,7 +241,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertFalse(element("butlerSuggestionCard").exists)
         settings()
         XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0;suggestions=1;reviews=1;memories=2"))
-        backToRoot(); tap("openSaving")
+        backToRoot(); tap("tab_ledger"); tap("openSaving")
         XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5))
         XCTAssertTrue(element("reserveTotal").label.contains("5,000.00"))
     }
@@ -244,7 +250,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 10))
         settings()
         wait { (self.element("butlerLastRun").value as? String ?? "").contains("suggestions=1") }
-        backToRoot()
+        backToRoot(); tap("tab_ledger")
         XCTAssertFalse(element("butlerSuggestionCard").exists)
         tap("savingsTopupDecline"); tap("butlerAIEvidence")
         XCTAssertTrue(element("butlerEvidenceTitle").waitForExistence(timeout: 5))

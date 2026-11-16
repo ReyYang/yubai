@@ -1,5 +1,6 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#include <dlfcn.h>
 #endif
 #if DEBUG && ((defined(__APPLE__) && TARGET_OS_IOS && TARGET_OS_SIMULATOR) || defined(YUBAI_WATCHDOG_TEST))
 #include "CUITestWatchdog.h"
@@ -15,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 // The signal handler touches only lock-free atomics and this fixed buffer.
@@ -60,29 +62,42 @@ static void write_all(int fd, const char *value, size_t length) {
 }
 static void append_record(double elapsed, const char *status, int with_stack) {
     // One stack is bounded independently of the cumulative, lossless history.
-    char record[32768];
+    const size_t capacity = 1024 * 1024;
+    char *record = malloc(capacity);
+    if (!record) { return; }
     struct timespec now;
     struct tm utc;
     char stamp[32];
     clock_gettime(CLOCK_REALTIME, &now);
     gmtime_r(&now.tv_sec, &utc);
     strftime(stamp, sizeof(stamp), "%Y-%m-%dT%H:%M:%S", &utc);
-    size_t used = (size_t)snprintf(record, sizeof(record),
+    size_t used = (size_t)snprintf(record, capacity,
         "YUBAI-STALL %s.%03ldZ pid=%d stall=%.3fs %s\n", stamp, now.tv_nsec / 1000000, getpid(), elapsed, status);
     if (with_stack && atomic_load_explicit(&capture_state, memory_order_acquire) == 2) {
         char **symbols = backtrace_symbols(main_frames, main_frame_count);
-        for (int i = 0; i < main_frame_count && used < sizeof(record) - 512; i++) {
-            int count = snprintf(record + used, sizeof(record) - used, "  %02d %s [%p]\n", i,
+        for (int i = 0; i < main_frame_count && used < capacity - 512; i++) {
+            int count = snprintf(record + used, capacity - used, "  %02d %s [%p]\n", i,
                 symbols ? symbols[i] : "<symbol unavailable>", main_frames[i]);
             if (count > 0) { used += (size_t)count; }
+            #if defined(__APPLE__)
+            // atos can recover Swift symbols (including local app frames) from
+            // the matching debug dylib/dSYM using this image load address.
+            Dl_info info;
+            if (dladdr(main_frames[i], &info) && info.dli_fname && used < capacity - 512) {
+                const char *name = strrchr(info.dli_fname, '/');
+                count = snprintf(record + used, capacity - used,
+                    "     image=%s load=%p pc=%p\n", name ? name + 1 : info.dli_fname, info.dli_fbase, main_frames[i]);
+                if (count > 0) { used += (size_t)count; }
+            }
+            #endif
         }
         free(symbols);
         atomic_store_explicit(&capture_state, 0, memory_order_release);
     } else if (with_stack) {
-        used += (size_t)snprintf(record + used, sizeof(record) - used,
+        used += (size_t)snprintf(record + used, capacity - used,
             "  MAIN thread SIGUSR2 capture pending (signal may be masked)\n");
     }
-    used = used < sizeof(record) ? used : sizeof(record) - 1;
+    used = used < capacity ? used : capacity - 1;
     record[used] = '\0';
     pthread_mutex_lock(&records_lock);
     char *grown = realloc(history, history_length + used + 1);
@@ -93,6 +108,7 @@ static void append_record(double elapsed, const char *status, int with_stack) {
     pthread_mutex_unlock(&records_lock);
     write_all(log_file, record, used);
     write_all(STDERR_FILENO, record, used);
+    free(record);
 }
 static void request_stack(void) {
     int expected = 0;
@@ -106,7 +122,12 @@ static void request_stack(void) {
     }
 }
 static void *watch_main(void *unused) {
-    (void)unused;
+    char *path = unused;
+    char *slash = strrchr(path, '/');
+    if (slash) { *slash = '\0'; mkdir(path, 0700); *slash = '/'; }
+    log_file = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+    if (log_file < 0) { fprintf(stderr, "YUBAI-STALL cannot open %s: %s\n", path, strerror(errno)); }
+    free(path);
     uint64_t stall_start = 0, last_report = 0;
     double recovered_length = 0;
     for (;;) {
@@ -149,18 +170,14 @@ int yubai_stall_watchdog_start(const char *path) {
     action.sa_handler = capture_main; action.sa_flags = SA_RESTART;
     sigemptyset(&action.sa_mask);
     if (sigaction(SIGUSR2, &action, NULL) != 0) { return errno; }
-    log_file = open(path, O_WRONLY | O_CREAT | O_APPEND, 0600);
-    if (log_file < 0) {
-        int result = errno;
-        sigaction(SIGUSR2, &previous, NULL);
-        return result;
-    }
+    char *owned_path = strdup(path);
+    if (!owned_path) { sigaction(SIGUSR2, &previous, NULL); return ENOMEM; }
     atomic_store(&answered_at, monotonic_ns());
     pthread_t thread;
-    int result = pthread_create(&thread, NULL, watch_main, NULL);
+    int result = pthread_create(&thread, NULL, watch_main, owned_path);
     if (result != 0) {
         sigaction(SIGUSR2, &previous, NULL);
-        if (log_file >= 0) { close(log_file); log_file = -1; }
+        free(owned_path);
         return result;
     }
     pthread_detach(thread); started = 1;

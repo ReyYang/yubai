@@ -83,6 +83,8 @@ jobs:
         if: always()
         run: |
           mkdir -p build/screenshots
+          stall_status=0
+          python3 scripts/export-stall-records.py --simulator "$SIM_UDID" --output build/stalls --derived-data build/DerivedData || stall_status=$?
           if [ -d build/Yubai.xcresult ]; then
             xcrun xcresulttool export attachments --path build/Yubai.xcresult --output-path build/screenshots || true
             xcrun xcresulttool get test-results summary --path build/Yubai.xcresult > build/test-summary.json || true
@@ -109,6 +111,7 @@ jobs:
           ls build/screenshots
           set -o pipefail
           python3 scripts/test-result-summary.py | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ "$stall_status" != 0 ]; then echo "::warning::卡顿记录导出失败（不影响测试结论）"; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -122,6 +125,7 @@ jobs:
             build/xcodebuild-test.log
             build/test-summary.json
             build/test-exit-status
+            build/stalls
       - name: Release 构建（iOS 与 macOS，不签名）
         if: inputs.release_builds && matrix.part == 'unit'
         run: |

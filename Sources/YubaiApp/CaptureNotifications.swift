@@ -8,13 +8,14 @@ final class CaptureNotificationDelegate: NSObject, UNUserNotificationCenterDeleg
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) { completionHandler([.banner, .sound]) }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
         if let taskID = response.notification.request.content.userInfo["butlerTaskID"] as? String {
-            Task { @MainActor in AppStore.shared.openButlerNotice(taskID); completionHandler() }
+            Task { @MainActor in await AppStore.shared.waitForLedger(); AppStore.shared.openButlerNotice(taskID); completionHandler() }
             return
         }
         guard let raw = response.notification.request.content.userInfo["entryID"] as? String, let id = UUID(uuidString: raw) else { completionHandler(); return }
         Task { @MainActor in
             defer { completionHandler() }
             let store = AppStore.shared
+            await store.waitForLedger()
             if response.actionIdentifier == "capture.undo" {
                 do { try store.captureUpdate("撤销这笔") { QuickCapture.undo(entryID: id, in: &$0) }; CaptureNotifications.remove(id: id) }
                 catch { store.error = error.localizedDescription }

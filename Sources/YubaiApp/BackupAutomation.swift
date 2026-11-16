@@ -5,11 +5,14 @@ import YubaiCore
 @MainActor final class WeeklyBackupAccess {
     static let shared = WeeklyBackupAccess()
     private var task: Task<Void, Never>?
-    private func key(_ ledgerID: UUID) -> String { "Yubai.weeklyBackupFolder." + ledgerID.uuidString }
+    nonisolated private static func key(_ ledgerID: UUID) -> String { "Yubai.weeklyBackupFolder." + ledgerID.uuidString }
 
-    func hasFolder(for ledgerID: UUID) -> Bool { UserDefaults.standard.data(forKey: key(ledgerID)) != nil }
+    func hasFolder(for ledgerID: UUID) -> Bool { UserDefaults.standard.data(forKey: Self.key(ledgerID)) != nil }
 
-    func remember(_ folder: URL, for ledgerID: UUID) throws {
+    func remember(_ folder: URL, for ledgerID: UUID) async throws {
+        try await Task.detached(priority: .utility) { try Self.rememberFolder(folder, for: ledgerID) }.value
+    }
+    nonisolated static func rememberFolder(_ folder: URL, for ledgerID: UUID) throws {
         let access = folder.startAccessingSecurityScopedResource()
         defer { if access { folder.stopAccessingSecurityScopedResource() } }
         #if os(macOS)
@@ -18,7 +21,7 @@ import YubaiCore
         let options: URL.BookmarkCreationOptions = .minimalBookmark
         #endif
         let bookmark = try folder.bookmarkData(options: options, includingResourceValuesForKeys: nil, relativeTo: nil)
-        UserDefaults.standard.set(bookmark, forKey: key(ledgerID))
+        UserDefaults.standard.set(bookmark, forKey: Self.key(ledgerID))
     }
 
     func start(in store: AppStore) {
@@ -26,7 +29,7 @@ import YubaiCore
         guard task == nil, !store.locked, store.loadFailure == nil,
               !store.syncBusy, store.syncChoice == nil, !store.switchingLedgerLocation, !store.choosingSyncVersion,
               LedgerBackup.isAutoBackupDue(store.preferences, now: now),
-              let bookmark = UserDefaults.standard.data(forKey: key(store.current.id)) else { return }
+              let bookmark = UserDefaults.standard.data(forKey: Self.key(store.current.id)) else { return }
         task = Task { @MainActor [weak self, weak store] in
             defer { self?.task = nil }
             guard let self, let store else { return }
@@ -39,7 +42,7 @@ import YubaiCore
                 let refreshedBookmark = try await Task.detached(priority: .utility) {
                     try Self.write(ledger, bookmark: bookmark, at: now)
                 }.value
-                if let refreshedBookmark { UserDefaults.standard.set(refreshedBookmark, forKey: self.key(ledgerID)) }
+                if let refreshedBookmark { UserDefaults.standard.set(refreshedBookmark, forKey: Self.key(ledgerID)) }
                 store.recordSuccessfulBackup(of: ledgerID, at: now)
             } catch { if store.current.id == ledgerID { store.error = error.localizedDescription } }
         }

@@ -290,7 +290,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
         guard waitForNativeTransition(in: app, deadline: stopDeadline) else { throw Miss(description: "Back transition did not finish") }
     }
     private func root(_ tab: String) throws {
-        if app.keyboards.firstMatch.exists && element("entriesSearchCancel").exists { try tap("entriesSearchCancel") }
+        if app.keyboards.firstMatch.exists && element("entriesSearch").exists {
+            element("entriesSearch").typeText("\n")
+            try wait({ !self.app.keyboards.firstMatch.exists }, "Search keyboard did not dismiss")
+        }
         for _ in 0..<10 {
             guard waitForNativeTransition(in: app, deadline: stopDeadline) else { throw Miss(description: "Root transition did not finish") }
             if element("mainNavigation").exists && element("mainNavigation").isHittable { break }
@@ -467,7 +470,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Empty-Saving") { try load(); try savingPage(); try require("emptyState_saving") }
         stop("Empty-Wish") { try load("v47-saving-monthly"); try savingPage(); try tap("openWishlist"); try require("emptyState_wish") }
         stop("Empty-Bills") { try load(); try settings("openFixedFlows"); try require("emptyState_bills") }
-        stop("Empty-Assistant") { try load(); try root("yubai"); try require("emptyState_assistant"); try reveal(element("askSuggestion_2")) }
+        stop("Empty-Assistant") { try load(); try root("yubai"); try require("askYubai"); try require("askSuggestion_0"); try require("askSuggestion_1") }
         stop("Empty-Profile") { try load(); try root("yubai"); try tap("openProfile"); try require("emptyState_profile") }
         stop("Empty-Memories") { try load(); try root("yubai"); try tap("openMemories"); try require("emptyState_memories") }
         stop("Empty-Frequent") { try load(); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("emptyState_frequent") }

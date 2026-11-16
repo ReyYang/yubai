@@ -170,7 +170,7 @@ struct AccountsView: View {
         }
         else if a.kind != .cash && a.kind != .bank { detail = a.note.isEmpty ? "看得见，花不了" : a.note }
         else {
-            let checked = a.reconciled ? "上次对 " + FixedFlowPresentation.monthDay(a.anchorDate) : "还没对过账"
+            let checked = a.reconciled ? "上次对 " + HomeTaskCopy.monthDay(a.anchorDate) : "还没对过账"
             detail = a.note.isEmpty ? checked : a.note + " · " + checked
         }
         return VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -186,7 +186,7 @@ struct AccountsView: View {
                 VStack(spacing: YubaiSpace.none) {
                     EntryFormRow(title: "类型") { Text(a.kind.label) }
                     EntryFormDivider()
-                    EntryFormRow(title: "上次对账") { Text(Dates.text(a.anchorDate, time: true)).fixedSize() }
+                    EntryFormRow(title: "上次对账") { Text(HomeTaskCopy.monthDay(a.anchorDate) + " " + a.anchorDate.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN")))).fixedSize() }
                     if a.creditLimit > 0 {
                         EntryFormDivider()
                         EntryFormRow(title: "信用额度") { AmountLabel(cents: a.creditLimit, hide: store.preferences.hideAmounts) }

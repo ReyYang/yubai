@@ -20,10 +20,6 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
     private func element(_ id: String) -> XCUIElement { control(id, in: app) }
     private func tap(_ id: String) {
-        if id.hasPrefix("tab_"), app.keyboards.firstMatch.exists {
-            app.swipeUp()
-            XCTAssertTrue(waitForDisappearance(app.keyboards.firstMatch))
-        }
         tapControl(element(id), in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
     }
     private func reveal(_ id: String) {
@@ -53,10 +49,30 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     func testSavedPillPushesAndBackReturnsToLedger() {
         launch(); tap("openSaving")
         XCTAssertTrue(app.navigationBars["存钱"].waitForExistence(timeout: 5)); XCTAssertFalse(element("mainNavigation").exists)
-        tap("BackButton"); XCTAssertTrue(element("tab_ledger").isSelected)
+        tap("BackButton"); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 5)); XCTAssertTrue(element("tab_ledger").isSelected)
         XCTAssertEqual(app.buttons.matching(identifier: "openSaving").count, 1)
         XCTAssertTrue(element("openSaving").label.contains("已存"))
         XCTAssertTrue(element("openSaving").label.contains("¥"))
+    }
+    func testHeaderControlsNavigateIndependentlyInBothOrders() {
+        for large in [false, true] {
+            for order in [["fundsFormula", "openSaving"], ["openSaving", "fundsFormula"]] {
+                launch(large: large)
+                for id in order {
+                    tap(id)
+                    let destination = id == "fundsFormula" ? "formulaPage" : "savingTabScroll"
+                    let other = id == "fundsFormula" ? "savingTabScroll" : "formulaPage"
+                    XCTAssertTrue(element(destination).waitForExistence(timeout: 5))
+                    XCTAssertFalse(element(other).exists)
+                    XCTAssertFalse(element("mainNavigation").exists)
+                    tap("BackButton")
+                    XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 5))
+                    XCTAssertTrue(element("tab_ledger").isSelected)
+                    XCTAssertFalse(element(destination).exists)
+                }
+                app.terminate()
+            }
+        }
     }
     func testSearchExpandsInPlaceAndFindsPreviousMonths() {
         launch(); XCTAssertFalse(element("entriesSearch").exists)
@@ -77,7 +93,10 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     func testTappingSelectedLedgerClearsSearchAndReturnsToHero() {
         launch(); tap("openLedgerSearch"); tap("entriesSearch"); app.typeText("咖啡")
-        tap("entriesFilter_支出"); tap("tab_ledger")
+        tap("entriesFilter_支出")
+        element("entriesSearch").typeText("\n")
+        XCTAssertTrue(waitForDisappearance(app.keyboards.firstMatch))
+        tap("tab_ledger")
         XCTAssertTrue(element("availableFunds").waitForExistence(timeout: 5))
         XCTAssertTrue(element("availableFunds").isHittable)
         XCTAssertFalse(element("entriesSearch").exists); XCTAssertFalse(element("entriesFilter_支出").exists)
@@ -116,9 +135,19 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     func testOldestEntryKeepsSwipeActionsAbovePill() {
         launch("v47r-ledger-end"); let key = "ledgerEntry_" + id(479999); reveal(key)
-        element(key).swipeLeft()
-        XCTAssertTrue(element("deleteLedgerEntry_" + id(479999)).isHittable)
-        XCTAssertTrue(element("sortLedgerEntry_" + id(479999)).isHittable)
+        let row = element(key), pill = element("addEntry")
+        XCTAssertTrue(waitForStableFrame(row))
+        XCTAssertLessThan(row.frame.maxY, pill.frame.minY)
+        // A bounded short native pan reveals both actions without completing
+        // the full-swipe delete or letting a row tap open the editor.
+        row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)),
+                   withVelocity: .slow, thenHoldForDuration: 0.1)
+        let delete = element("deleteLedgerEntry_" + id(479999)), sort = element("sortLedgerEntry_" + id(479999))
+        XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
+        XCTAssertTrue(sort.isHittable)
+        XCTAssertLessThan(delete.frame.maxY, pill.frame.minY); XCTAssertLessThan(sort.frame.maxY, pill.frame.minY)
+        XCTAssertFalse(element("editEntryAmount").exists)
     }
     func testDayPlusPrefillsThatDayAndRowTapEditsOriginal() {
         launch(); let key = "ledgerEntry_" + id(479103); reveal(key); tap(key)
@@ -163,6 +192,18 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("ledgerEntry_" + id(479999)).isHittable)
         XCTAssertFalse(element("entriesScroll").label.contains("1,234,567.89"))
         tap("tab_insights"); XCTAssertEqual(element("insightsAmount_收入").label, "金额已隐藏")
+    }
+    func testImmediatePillTapOpensOneEntrySheetAtBothTextSizes() {
+        for large in [false, true] {
+            launch("v47r-soft-lines", large: large)
+            tap("addEntry")
+            XCTAssertTrue(element("entryPurpose").waitForExistence(timeout: 5))
+            XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entryPurpose").count, 1)
+            XCTAssertFalse(element("quickRepeatMenu").exists)
+            tap("cancelManualSheet")
+            XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 5))
+            app.terminate()
+        }
     }
     func testLongPressStillOpensCommonEntriesWithoutAdding() {
         launch(); let amount = element("availableFunds").label

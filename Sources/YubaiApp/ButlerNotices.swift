@@ -86,7 +86,8 @@ struct ButlerNoticeSyncTask: ViewModifier {
     @Environment(AppStore.self) private var store
     func body(content: Content) -> some View {
         content.task(id: "\(store.ledgerRevision)-\(Dates.text(store.financialNow))-\(store.locked)") {
-            guard !store.locked else { return }
+            await store.waitForLedger()
+            guard !Task.isCancelled, !store.locked else { return }
             await ButlerNoticeDelivery.sync(store.current, now: store.financialNow)
         }
     }

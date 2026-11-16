@@ -25,7 +25,7 @@ extension UITestSupport {
         let manual = ledger.entries.first { $0.id == secondBatchManualID }
         return "requests=\(UITestRequestLog.shared.count);entries=\(ledger.activeEntries.count);plans=\(ledger.plans.count);batches=\(ledger.imports.count);manualSource=\(manual?.source ?? "");manualTitle=\(manual?.displayTitle ?? "");manualCategory=\(manual?.category ?? "")"
     }
-    @MainActor static func prepareSecondBatch(_ repository: LedgerRepository, script: String, now: Date) throws {
+    static func prepareSecondBatch(_ repository: LedgerRepository, script: String, now: Date) throws {
         var ledger = Ledger()
         if let appearance = galleryAppearance { ledger.preferences.appearance = appearance }
         ledger.preferences.onboardingComplete = true
@@ -66,7 +66,7 @@ extension UITestSupport {
             ledger.preferences.lastBackupAt = Dates.addDays(-8, to: now)
             if let folder = secondBatchBackupFolder {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                try WeeklyBackupAccess.shared.remember(folder, for: ledger.id)
+                try WeeklyBackupAccess.rememberFolder(folder, for: ledger.id)
             }
         default: break
         }

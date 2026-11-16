@@ -65,12 +65,18 @@ struct ReceiptCapturePage: View {
             #endif
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
-                do {
-                    let url = try result.get(), access = url.startAccessingSecurityScopedResource()
-                    defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 50 * 1024 * 1024 else { throw YubaiError.invalid("图片请小于 50 MB。") }
-                    start(try Data(contentsOf: url))
-                } catch { if (error as NSError).code != NSUserCancelledError { failure = error.localizedDescription } }
+                Task { @MainActor in
+                    do {
+                        let url = try result.get()
+                        let bytes = try await Task.detached(priority: .userInitiated) {
+                            let access = url.startAccessingSecurityScopedResource()
+                            defer { if access { url.stopAccessingSecurityScopedResource() } }
+                            guard (try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) <= 50 * 1024 * 1024 else { throw YubaiError.invalid("图片请小于 50 MB。") }
+                            return try Data(contentsOf: url)
+                        }.value
+                        start(bytes)
+                    } catch { if (error as NSError).code != NSUserCancelledError { failure = error.localizedDescription } }
+                }
             }
             .onChange(of: photo) { _, value in
                 guard let value, allowed else { return }

@@ -43,7 +43,9 @@ enum TabRoute: Hashable {
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
+    @Environment(AppStore.self) private var store
     @Environment(\.yubaiSheetSurface) private var inSheet
+    @State private var sheetDestinationShown = false
     let route: TabRoute
     let destination: () -> Content
     let label: () -> Label
@@ -51,10 +53,14 @@ struct TabNavigationLink<Content: View, Label: View>: View {
         self.route = route; self.destination = destination; self.label = label
     }
     var body: some View {
-        Group {
-            if inSheet { NavigationLink(destination: destination, label: label) }
-            else { NavigationLink(value: route, label: label) }
-        }.hidesListDisclosure()
+        // A NavigationLink inside a List row makes the entire row navigable,
+        // including sibling links and card buttons. A Button owns only its tap.
+        Button {
+            if inSheet { sheetDestinationShown = true }
+            else { store.tabRouteRequest = route }
+        } label: { label() }
+            .navigationDestination(isPresented: $sheetDestinationShown, destination: destination)
+            .hidesListDisclosure()
     }
 }
 
@@ -191,10 +197,8 @@ enum AppSheet: Identifiable {
     @ObservationIgnored var persistenceTasks: [UUID: Task<Void, Never>] = [:]
     @ObservationIgnored var persistenceEpoch: UInt64 = 0
     @ObservationIgnored var lastUploadedPersistenceRevision: UInt64 = 0
-    #if os(macOS)
-    @ObservationIgnored private var terminationObserver: NSObjectProtocol?
-    #endif
     var recoveringWriteFailure = false
+    private(set) var storageBusy = false
     @ObservationIgnored private var cachedEntryTimeline: (month: Date, search: String, filter: EntryTimeline.Filter, allMonths: Bool, calendar: Calendar, value: EntryTimeline.Snapshot)?
     @ObservationIgnored private var cachedPendingOrganization: PendingImportOrganization?
     @ObservationIgnored private var cachedSalary: (day: Date, value: SalaryCandidate?)?
@@ -556,6 +560,9 @@ enum AppSheet: Identifiable {
     @ObservationIgnored private var entrySaveAcknowledged = false
     @ObservationIgnored private var pendingSaveToast: String?
     @ObservationIgnored private var saveToastTask: Task<Void, Never>?
+    private(set) var loadingLedger = true
+    @ObservationIgnored private var loadTask: Task<Void, Never>?
+    var pendingOpenURL: URL?
     var loadFailure: String?; var locked = false; var importedURL: URL?
     var pendingQuickSheet: AppSheet?
     var errorHosts: [UUID] = []
@@ -583,7 +590,6 @@ enum AppSheet: Identifiable {
         #if DEBUG && os(iOS) && targetEnvironment(simulator)
         UITestStallWatchdog.startIfRequested()
         #endif
-        CloudNetworking.clearLegacyCache()
         let args = ProcessInfo.processInfo.arguments
         let directory: URL
         if let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1), UUID(uuidString: args[i+1]) != nil { directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("YubaiUITests/" + args[i+1], isDirectory: true) }
@@ -593,28 +599,38 @@ enum AppSheet: Identifiable {
         localRepository = LedgerRepository(directory: directory)
         locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
         syncAllowed = !args.contains("--test-ledger") && !args.contains("--data-directory") && ProcessInfo.processInfo.environment["YUBAI_DATA_DIR"] == nil
-        defer { invalidateDerived() }
-        #if DEBUG && targetEnvironment(simulator)
-        do { try UITestSupport.prepare(localRepository) } catch { loadFailure = error.localizedDescription; return }
-        #endif
-        do {
-            ledger = try localRepository.load()
-            locked = ledger.preferences.lockEnabled
+        // Keep startup file discovery, fixture encoding, migrations and recovery
+        // pruning on the same worker as subsequent disk writes.
+        let repository = localRepository
+        let read = ledgerWriter.submit(invalidatingOnFailure: false) {
+            CloudNetworking.clearLegacyCache()
             #if DEBUG && targetEnvironment(simulator)
-            if UITestSupport.script == "v46-busy" {
-                organizingPendingImports = true
-                organizationProgress = ImportOrganizationProgress(completed: 120, total: 214)
-            }
+            try UITestSupport.prepare(repository)
             #endif
-        } catch { loadFailure = error.localizedDescription }
-        CaptureSnapshotBridge.publish(ledger)
-        #if os(macOS)
-        terminationObserver = NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [writer = ledgerWriter] _ in writer.flushBlocking() }
-        #endif
+            let ledger = try repository.load()
+            _ = BrandIcons.catalog
+            return ledger
+        }
+        loadTask = Task { @MainActor in
+            defer { loadingLedger = false; loadTask = nil }
+            do {
+                ledger = try await read.value
+                locked = ledger.preferences.lockEnabled
+                #if DEBUG && targetEnvironment(simulator)
+                if UITestSupport.script == "v46-busy" {
+                    organizingPendingImports = true
+                    organizationProgress = ImportOrganizationProgress(completed: 120, total: 214)
+                }
+                #endif
+            } catch { loadFailure = error.localizedDescription }
+            invalidateDerived()
+        }
         #if os(iOS)
         CaptureNotifications.register()
         #endif
     }
+
+    func waitForLedger() async { await loadTask?.value }
 
     /// 升级后第一次：发薪日改成「确认到账才开新周期」，只对下一个发薪日起生效，当前周期不变。
     func enablePaydayConfirmationIfNeeded() {
@@ -819,7 +835,7 @@ enum AppSheet: Identifiable {
         }
     }
     func openSavingPage() {
-        if locked { pendingSavingPage = true; return }
+        if loadingLedger || locked { pendingSavingPage = true; return }
         sheet = nil; tabRouteRequest = .saving
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
@@ -856,44 +872,78 @@ enum AppSheet: Identifiable {
             }
         }
     }
-    @discardableResult func deleteOldScreenshots(months: Int, now: Date) -> Bool {
+    @discardableResult func deleteOldScreenshots(months: Int, now: Date) async -> Bool {
         guard canEditLedger(), loadFailure == nil else { return false }
+        guard !syncBusy, !checkingCloudAvailability else { return false }
+        guard organizationExecution == nil, !preparingImportOrganization else { return false }
         let count = StorageAttachments.oldScreenshots(in: current, months: months, now: now).count
         guard count > 0 else { return false }
-        ledgerWriter.flushBlocking()
-        let wasPending = localRepository.hasPendingSync
+        storageBusy = true
+        defer { finishStorageOperation() }
+        await flushPersistence()
+        guard loadFailure == nil else { return false }
+        let repository = localRepository, snapshot = current, location = ledgerLocation
         do {
-            if ledgerLocation == .iCloud { try localRepository.markPendingSync(true) }
-            let saved = try localRepository.deleteOldScreenshots(from: current, months: months, now: now)
-            cancelEntrySaveMotion(); ledger = saved; undoLedger = nil; undoLabel = nil
-            if ledgerLocation == .iCloud { pendingUpload = saved; pendingUploadPreservingRecovery = true; pendingUploadRecoveryReason = "删除旧截图"; Task { await synchronizeLedger() } }
+            let saved = try await ledgerWriter.submit(invalidatingOnFailure: false) {
+                let wasPending = repository.hasPendingSync
+                do {
+                    if location == .iCloud { try repository.markPendingSync(true) }
+                    return try repository.deleteOldScreenshots(from: snapshot, months: months, now: now)
+                } catch {
+                    if !wasPending { try? repository.markPendingSync(false) }
+                    throw error
+                }
+            }.value
+            cancelEntrySaveMotion(); ledger = saved; clearUndo()
+            if location == .iCloud { pendingUpload = saved; pendingUploadPreservingRecovery = true; pendingUploadRecoveryReason = "删除旧截图"; Task { await synchronizeLedger() } }
             toast = "已删掉 \(count) 张截图"
             return true
-        } catch {
-            if !wasPending { try? localRepository.markPendingSync(false) }
-            self.error = error.localizedDescription; return false
-        }
-    }
-    @discardableResult func clearStorageHistory() -> Bool {
-        guard canEditLedger() else { return false }
-        guard !syncBusy else { error = "请等同步完成后再清除恢复历史。"; return false }
-        ledgerWriter.flushBlocking()
-        do {
-            try localRepository.clearRecoveryHistory()
-            // A pre-clear undo snapshot may refer to payloads that no longer exist.
-            undoLedger = nil; undoLabel = nil; toast = "已清除恢复历史"; return true
         } catch { self.error = error.localizedDescription; return false }
     }
-    @discardableResult func eraseAllDeviceData() -> Bool {
+    @discardableResult func clearStorageHistory() async -> Bool {
+        guard canEditLedger() else { return false }
+        guard !syncBusy else { error = "请等同步完成后再清除恢复历史。"; return false }
+        guard organizationExecution == nil, !preparingImportOrganization else { return false }
+        storageBusy = true
+        defer { finishStorageOperation() }
+        await flushPersistence()
+        let repository = localRepository
+        do {
+            try await ledgerWriter.submit(invalidatingOnFailure: false) { try repository.clearRecoveryHistory() }.value
+            clearUndo(); toast = "已清除恢复历史"; return true
+        } catch { self.error = error.localizedDescription; return false }
+    }
+    @discardableResult func eraseAllDeviceData() async -> Bool {
         guard canEditLedger() else { return false }
         guard !syncBusy, !checkingCloudAvailability else { error = "请等同步完成后再抹掉本机数据。"; return false }
+        storageBusy = true
+        defer { finishStorageOperation() }
         do {
-            try eraseLocalStorageAndResetLocation()
-            cancelEntrySaveMotion(); ledger = Ledger(); undoLedger = nil; undoLabel = nil
+            stopOrganizingImports()
+            await pendingOrganizationTask?.value
+            await importOrganizationTask?.value
+            try await eraseLocalStorageAndResetLocation()
+            cancelEntrySaveMotion(); ledger = Ledger(); clearUndo()
             loadFailure = nil; locked = false; importedURL = nil; sheet = nil; sheetSource = nil; pendingQuickSheet = nil
             destination = .ledger; toast = nil; organizationErrors.removeAll(); pickingInsightDates = false; ledgerPreset = nil
             return true
         } catch { self.error = error.localizedDescription; return false }
+    }
+    func flushBeforeSuspension() {
+        #if os(iOS)
+        let assertion = UIApplication.shared.beginBackgroundTask(withName: "保存账本", expirationHandler: nil)
+        Task { @MainActor in
+            await flushPersistence()
+            await ledgerWriter.flush()
+            if assertion != .invalid { UIApplication.shared.endBackgroundTask(assertion) }
+        }
+        #else
+        Task { await flushPersistence(); await ledgerWriter.flush() }
+        #endif
+    }
+    private func finishStorageOperation() {
+        storageBusy = false
+        if syncAvailabilityNeedsRefresh { Task { await configureSync() } }
     }
     func unlock(useBiometrics: Bool = true) async {
         let context = LAContext()
@@ -914,6 +964,9 @@ enum AppSheet: Identifiable {
 @main struct YubaiApp: App {
     #if os(iOS)
     @UIApplicationDelegateAdaptor(HomeActionDelegate.self) private var homeActionDelegate
+    #endif
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(LedgerTerminationDelegate.self) private var terminationDelegate
     #endif
     @State private var store = AppStore.shared
     private var colorScheme: ColorScheme? {
@@ -969,7 +1022,8 @@ struct RootView: View {
         // Keep the one AppSheet presenter on a concrete, stable host outside
         // the tab stacks, including while their root pages are off screen.
         ZStack {
-            if store.locked { lockedView }
+            if store.loadingLedger { ProgressView() }
+            else if store.locked { lockedView }
             else if let failure = store.loadFailure { recoveryView(failure) }
             else { mainContent }
         }
@@ -1033,17 +1087,32 @@ struct RootView: View {
         .sensoryFeedback(.impact(weight: .light), trigger: store.fixedFlowSettleTrigger)
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
-        .onChange(of: phase) { _, newValue in if newValue == .background { store.ledgerWriter.flushBlocking() }; if newValue == .active { store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); Task { await store.configureSync(); store.runCycleMaintenance() } }; if newValue == .background && store.preferences.lockEnabled { store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true } }
+        .onChange(of: phase) { _, newValue in
+            guard !store.loadingLedger else { return }
+            if newValue == .background { store.flushBeforeSuspension() }
+            if newValue == .active {
+                store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
+                Task { await store.configureSync(); store.runCycleMaintenance() }
+            }
+            if newValue == .background && store.preferences.lockEnabled {
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true
+            }
+        }
         .task(id: phase == .active && !store.locked) {
-            guard phase == .active, !store.locked else { return }
+            await store.waitForLedger()
+            guard !Task.isCancelled, phase == .active, !store.locked else { return }
             await store.refreshAtPostingDates()
         }
         .task {
+            await store.waitForLedger()
+            guard !Task.isCancelled else { return }
+            if let url = store.pendingOpenURL { store.pendingOpenURL = nil; openURL(url) }
             store.purgeExpiredEntries()
-            if !store.locked, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+            if !store.locked, store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }
+            if !store.locked, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             await store.configureSync(); store.runCycleMaintenance()
             #if DEBUG && targetEnvironment(simulator)
-            UITestSupport.stageGalleryVersions(store)
+            await UITestSupport.stageGalleryVersions(store)
             #endif
         }
         .modifier(ButlerRefreshTask())
@@ -1059,12 +1128,17 @@ struct RootView: View {
         }
         .overlay { LedgerPrivacyCover() }
         .onOpenURL { url in
-            if url.scheme?.lowercased() == "yubai" { store.handleCaptureURL(url); return }
-            guard url.isFileURL else { return }; store.importedURL = url
-            if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
+            if store.loadingLedger { store.pendingOpenURL = url }
+            else { openURL(url) }
         }
         .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
+    }
+    private func openURL(_ url: URL) {
+        if url.scheme?.lowercased() == "yubai" { store.handleCaptureURL(url); return }
+        guard url.isFileURL else { return }
+        store.importedURL = url
+        if !store.locked { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports }
     }
     @ViewBuilder var mainContent: some View {
         @Bindable var store = store
@@ -1316,14 +1390,19 @@ private struct ButlerRefreshTask: ViewModifier {
     @Environment(\.scenePhase) private var phase
     func body(content: Content) -> some View {
         content.task(id: "\(store.current.id)-\(store.current.updatedAt)-\(store.locked)-\(store.organizingBatchID != nil)-\(phase)-\(IntelligenceRuntime.isConfigured)-\(IntelligenceRuntime.cloud.model)-\(IntelligenceRuntime.cloud.unavailableModel ?? "")") {
-            if phase == .active { await store.refreshButler() }
+            await store.waitForLedger()
+            if !Task.isCancelled, phase == .active { await store.refreshButler() }
         }
     }
 }
 private struct WeeklyPushTask: ViewModifier {
     @Environment(AppStore.self) private var store
     func body(content: Content) -> some View {
-        content.task(id: store.preferences.weeklyLetterPush) { await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush) }
+        content.task(id: store.preferences.weeklyLetterPush) {
+            await store.waitForLedger()
+            guard !Task.isCancelled else { return }
+            await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush)
+        }
     }
 }
 private struct LedgerPrivacyCover: View {
@@ -1439,3 +1518,19 @@ private final class TimedSlot<Value> {
     func prime(at: Date, _ value: Value) { stored = (at, value) }
     func clear() { stored = nil }
 }
+
+#if os(macOS)
+/// AppKit keeps the process alive while the disk queue drains, without blocking
+/// the UI thread on a serial queue that may be pruning or encoding a ledger.
+@MainActor final class LedgerTerminationDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        Task { @MainActor in
+            await AppStore.shared.waitForLedger()
+            await AppStore.shared.flushPersistence()
+            await AppStore.shared.ledgerWriter.flush()
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
+    }
+}
+#endif

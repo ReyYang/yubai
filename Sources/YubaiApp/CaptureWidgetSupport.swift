@@ -17,8 +17,9 @@ enum CaptureSnapshotBridge {
     private static let publishQueue = DispatchQueue(label: "app.yubai.capture-snapshot", qos: .utility)
     static func publish(_ ledger: Ledger) {
         #if os(iOS)
-        guard let file else { return }
         publishQueue.async {
+            // App Group lookup can itself synchronously wait on system I/O.
+            guard let file else { return }
             // 设备锁或隐藏金额时连用途快照也移除，扩展只能显示入口。
             if ledger.preferences.lockEnabled || ledger.preferences.hideAmounts {
                 try? FileManager.default.removeItem(at: file)

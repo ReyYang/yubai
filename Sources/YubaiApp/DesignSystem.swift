@@ -1929,6 +1929,7 @@ struct Toast: View {
         Text(text).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label)
             .lineLimit(expanded ? nil : 1).truncationMode(.tail).fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
+            .accessibilityElement(children: .ignore).accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
             .background {
                 GeometryReader { proxy in
                     Color.clear.preference(key: ToastAvailableWidth.self, value: proxy.size.width)
@@ -1939,7 +1940,6 @@ struct Toast: View {
                 Text(text).yubaiFont(YubaiFont.body).lineLimit(1).fixedSize().hidden().accessibilityHidden(true)
                     .background { GeometryReader { proxy in Color.clear.preference(key: ToastIntrinsicWidth.self, value: proxy.size.width) } }
             }.onTapGesture(perform: toggle).accessibilityAction { toggle() }
-            .accessibilityLabel(text).accessibilityIdentifier(messageIdentifier)
     }
     private func toggle() {
         if expanded || !truncated { dismiss() }
@@ -2174,6 +2174,9 @@ private struct HomeEntryPillControl: UIViewRepresentable {
             addTarget(self, action: #selector(tap), for: .touchUpInside)
             let hold = UILongPressGestureRecognizer(target: self, action: #selector(held(_:)))
             hold.minimumPressDuration = 0.4; hold.cancelsTouchesInView = true
+            // Let short taps reach UIButton on release. Deferring touch-up to
+            // the recognizer lets a SwiftUI layout update cancel that tap.
+            hold.delaysTouchesBegan = false; hold.delaysTouchesEnded = false
             addGestureRecognizer(hold)
             accessibilityCustomActions = [UIAccessibilityCustomAction(name: "常用", target: self, selector: #selector(accessibleQuick))]
         }
@@ -2182,6 +2185,7 @@ private struct HomeEntryPillControl: UIViewRepresentable {
         @objc private func held(_ gesture: UILongPressGestureRecognizer) {
             if gesture.state == .began { isHighlighted = false; quick?() }
         }
+        override func accessibilityActivate() -> Bool { tap(); return true }
         @objc private func accessibleQuick() -> Bool { quick?(); return true }
     }
 }
@@ -2443,12 +2447,13 @@ private struct ButlerHeadline: View {
         VStack(alignment: .leading, spacing: YubaiSpace.none) {
             Text(text).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
                 .lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .ignore).accessibilityLabel(text).accessibilityIdentifier(identifier)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
                 .background(alignment: .topLeading) {
                     Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
                         .hidden().accessibilityHidden(true)
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
-                }.accessibilityLabel(text).accessibilityIdentifier(identifier)
+                }
             if expanded || fullHeight > visibleHeight + 0.5 {
                 Button { expanded.toggle() } label: {
                     Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)

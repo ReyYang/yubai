@@ -81,12 +81,18 @@ class YubaiUITestCase: XCTestCase {
             // Read both lazy values from one snapshot, including a modal's
             // probe when its accessibility container hides the root probe.
             var latest: String?, history: String?
+            var chunks: [Int: String] = [:]
             func collect(_ node: XCUIElementSnapshot) {
                 if node.identifier == "uiTestMainThreadStall" { latest = node.value as? String }
                 if node.identifier == "uiTestMainThreadStallRecords" { history = node.value as? String }
+                if node.identifier.hasPrefix("uiTestStallChunk_"),
+                   let index = Int(node.identifier.dropFirst("uiTestStallChunk_".count)), let text = node.value as? String {
+                    chunks[index] = text
+                }
                 for child in node.children { collect(child) }
             }
             collect(tree)
+            if !chunks.isEmpty { history = chunks.keys.sorted().compactMap { chunks[$0] }.joined() }
             if let latest {
                 record = latest.isEmpty ? "<no main-thread stalls>" : latest
             }

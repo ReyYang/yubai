@@ -18,6 +18,7 @@ def main() -> int:
     command = ["xcodebuild", "-project", "Yubai.xcodeproj", "-scheme", "Yubai", "-configuration", "Debug",
                "-destination", "id=" + os.environ["SIM_UDID"], "-parallel-testing-enabled", "NO",
                "-resultBundlePath", "build/Yubai.xcresult", "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO",
+               "-derivedDataPath", "build/DerivedData",
                "test", *("-only-testing:" + item for item in selectors)]
     with (build / "xcodebuild-test.log").open("w") as log:
         process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)

@@ -204,6 +204,8 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     }
     func testShortToastHasNoChevronAndLongToastReadsFullTextWhileCollapsed() {
         launch("v47-toast-short"); XCTAssertTrue(element("toastMessage").waitForExistence(timeout: 5)); XCTAssertFalse(element("expandToast").exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "toastMessage").count, 1)
+        XCTAssertGreaterThan(element("toastMessage").frame.height, 0)
         launch("v47-toast-long"); XCTAssertTrue(element("expandToast").waitForExistence(timeout: 5))
         XCTAssertTrue(element("toastMessage").label.hasSuffix("生活用品 2 笔"))
     }
@@ -211,8 +213,11 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         launch("v47-toast-long", keepUndo: false)
         saved(); back()
         XCTAssertTrue(element("expandToast").exists || element("expandToast").waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForStableFrame(element("toastMessage")))
         let collapsedHeight = element("toastMessage").frame.height
+        XCTAssertGreaterThan(collapsedHeight, 0)
         element("expandToast").tap(); XCTAssertEqual(element("expandToast").value as? String, "已展开")
+        XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { self.element("toastMessage").frame.height > collapsedHeight }))
         XCTAssertGreaterThan(element("toastMessage").frame.height, collapsedHeight)
         let remains = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !self.element("toastMessage").exists }, object: nil)
         remains.isInverted = true
@@ -227,9 +232,11 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     func testToastUndoWinsOverReceiptLedgerAndScrollingRevealsTheLedgerAction() {
         launch("v47-toast-short")
         let undo = element("undoLastChange"), scroll = element("entriesScroll")
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'")).firstMatch
+        let row = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
         XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        XCTAssertTrue(revealControl(row, in: app, deadline: Date().addingTimeInterval(60), searching: scroll))
         XCTAssertTrue(placeControl(row, across: undo, in: scroll, atTop: false))
+        XCTAssertTrue(UIViewportGeometry.overlaps(row.frame, undo.frame))
         XCTAssertTrue(undo.isHittable)
         tap("undoLastChange")
         XCTAssertEqual(element("toastMessage").label, "已撤销")

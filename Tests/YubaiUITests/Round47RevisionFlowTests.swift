@@ -35,6 +35,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     }
     private func enter(_ purpose: String, amount: String) {
         tap("addEntry")
+        XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
         typeIntoField(purpose + "\n", identifier: "entryPurpose", in: app)
         keys(amount)
     }
@@ -173,10 +174,16 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     func testLongCardExpandsInPlaceWithLargestText() {
         launch("v47r-weekly-ai", large: true)
         XCTAssertTrue(element("expandButlerHeadline").waitForExistence(timeout: 5))
-        let before = element("butlerAIText").frame.height
+        let headline = element("butlerAIText")
+        XCTAssertTrue(headline.waitForExistence(timeout: 5))
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "butlerAIText").count, 1)
+        XCTAssertTrue(waitForStableFrame(headline))
+        let before = headline.frame.height
+        XCTAssertGreaterThan(before, 0)
         tap("expandButlerHeadline")
         XCTAssertEqual(element("expandButlerHeadline").value as? String, "已展开")
-        XCTAssertGreaterThan(element("butlerAIText").frame.height, before)
+        XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { headline.frame.height > before }))
+        XCTAssertGreaterThan(headline.frame.height, before)
         XCTAssertTrue(element("butlerAIAccept").exists)
     }
     func testSoftLineSuggestionWritesExistingProfileAndCorrectionWritesMemory() {

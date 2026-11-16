@@ -7,13 +7,11 @@ import UIKit
 enum UITestStallWatchdog {
     @MainActor static func startIfRequested() {
         guard ProcessInfo.processInfo.arguments.contains("--ui-test-stall-watchdog"), UITestSupport.script != nil else { return }
-        let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("tmp", isDirectory: true)
-        do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let file = folder.appendingPathComponent("yubai-stalls-\(ProcessInfo.processInfo.processIdentifier).log")
-            let result = file.path.withCString { yubai_stall_watchdog_start($0) }
-            if result != 0 { fputs("YUBAI-STALL watchdog start failed: \(result)\n", stderr) }
-        } catch { fputs("YUBAI-STALL watchdog file failed: \(error)\n", stderr) }
+        // Avoid Foundation directory discovery while measuring startup. The C
+        // worker creates/opens the file; start still registers the main thread.
+        let path = NSHomeDirectory() + "/Documents/tmp/yubai-stalls-\(ProcessInfo.processInfo.processIdentifier).log"
+        let result = path.withCString { yubai_stall_watchdog_start($0) }
+        if result != 0 { fputs("YUBAI-STALL watchdog start failed: \(result)\n", stderr) }
     }
     static func records(latest: Bool) -> String {
         guard let value = yubai_stall_watchdog_copy_records(latest ? 1 : 0) else { return "" }
@@ -29,16 +27,42 @@ private struct UITestStallProbe: UIViewRepresentable {
     func makeUIView(context: Context) -> Probe { Probe() }
     func updateUIView(_ view: Probe, context: Context) {}
     final class Probe: UIView {
+        private var records: [UIAccessibilityElement] = []
+        private var chunks: [UIAccessibilityElement] = []
+        private var chunkedHistory = ""
         init() {
             super.init(frame: .zero)
             isUserInteractionEnabled = false; backgroundColor = .clear
-            accessibilityElements = [Record(container: self, latest: true), Record(container: self, latest: false)]
+            records = [Record(container: self, latest: true), Record(container: self, latest: false)]
             updateAccessibility()
             NotificationCenter.default.addObserver(self, selector: #selector(updateAccessibility),
                 name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
         }
         required init?(coder: NSCoder) { fatalError() }
         @objc private func updateAccessibility() { accessibilityElementsHidden = UIAccessibility.isVoiceOverRunning }
+        override var accessibilityElements: [Any]? {
+            get {
+                // XCTest snapshots cap a single AX value at roughly 500 chars.
+                // Export short immutable chunks, preserving every byte in the
+                // test attachment even after multiple stalls in one process.
+                let history = UITestStallWatchdog.records(latest: false)
+                if history != chunkedHistory {
+                    chunkedHistory = history; chunks = []
+                    let characters = Array(history)
+                    for start in stride(from: 0, to: characters.count, by: 300) {
+                        let chunk = UIAccessibilityElement(accessibilityContainer: self)
+                        chunk.isAccessibilityElement = true
+                        chunk.accessibilityIdentifier = "uiTestStallChunk_\(start / 300)"
+                        chunk.accessibilityValue = String(characters[start..<min(start + 300, characters.count)])
+                        chunk.accessibilityFrameInContainerSpace = CGRect(x: YubaiSpace.none, y: YubaiSpace.none, width: YubaiSize.separator, height: YubaiSize.separator)
+                        chunks.append(chunk)
+                    }
+                }
+                // Stable element identities across the many normal snapshots.
+                return records + chunks
+            }
+            set {}
+        }
     }
     final class Record: UIAccessibilityElement {
         let latest: Bool

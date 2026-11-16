@@ -110,13 +110,19 @@ struct AskYubaiView: View {
             .task { try? await Task.sleep(nanoseconds: 400_000_000); sendPendingQuestion() }
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
-                do {
-                    let url = try result.get(); let access = url.startAccessingSecurityScopedResource()
-                    defer { if access { url.stopAccessingSecurityScopedResource() } }
-                    let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                    guard size <= 50 * 1024 * 1024 else { throw YubaiError.invalid("图片请小于 50 MB。") }
-                    recognize(try Data(contentsOf: url))
-                } catch { errorText = error.localizedDescription }
+                Task { @MainActor in
+                    do {
+                        let url = try result.get()
+                        let bytes = try await Task.detached(priority: .userInitiated) {
+                            let access = url.startAccessingSecurityScopedResource()
+                            defer { if access { url.stopAccessingSecurityScopedResource() } }
+                            let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+                            guard size <= 50 * 1024 * 1024 else { throw YubaiError.invalid("图片请小于 50 MB。") }
+                            return try Data(contentsOf: url)
+                        }.value
+                        recognize(bytes)
+                    } catch { errorText = error.localizedDescription }
+                }
             }
             .onChange(of: photo) { _, value in
                 guard let value else { return }

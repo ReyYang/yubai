@@ -8,8 +8,9 @@ import AppKit
 
 struct CloudAISettingsSection: View {
     @State private var key = ""
-    @State private var configured = APIKeyStore.shared.isConfigured
-    @State private var hasKey = APIKeyStore.shared.hasKeychainKey
+    private var configured: Bool { IntelligenceRuntime.isConfigured }
+    private var hasKey: Bool { IntelligenceRuntime.cloud.hasKeychainKey }
+    @State private var savingKey = false
     @State private var status = ""
     @State private var testing = false
     var body: some View {
@@ -47,7 +48,7 @@ struct CloudAISettingsSection: View {
                     saveButton
                 }.padding(.top, YubaiSpace.space8)
                 if hasKey {
-                    Button("删掉密钥") { deleteKey() }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
+                    Button("删掉密钥") { deleteKey() }.disabled(savingKey).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
                         .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space24)
                         .accessibilityIdentifier("deleteCloudKey")
                 }
@@ -58,7 +59,7 @@ struct CloudAISettingsSection: View {
             }
         }
             .navigationTitle("密钥").yubaiNavigation().accessibilityIdentifier("cloudKeyPage")
-            .onAppear { configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey }
+            .onAppear { IntelligenceRuntime.cloud.refresh() }
             .onDisappear { key = "" }
     }
     private var keyInput: some View {
@@ -67,7 +68,7 @@ struct CloudAISettingsSection: View {
         }
     }
     private var saveButton: some View {
-        Button("保存密钥") { saveKey() }.buttonStyle(PrimaryButtonStyle()).disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        Button("保存密钥") { saveKey() }.buttonStyle(PrimaryButtonStyle()).disabled(savingKey || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("saveCloudKey")
     }
     private var statusText: some View {
@@ -75,15 +76,31 @@ struct CloudAISettingsSection: View {
             .frame(maxWidth: .infinity, alignment: .center).accessibilityIdentifier("cloudKeyConnectionStatus")
     }
     @MainActor private func saveKey() {
-        do { try APIKeyStore.shared.save(key); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已保存" }
-        catch { status = error.localizedDescription }
+        guard !savingKey else { return }
+        savingKey = true
+        let value = key
+        Task {
+            defer { savingKey = false }
+            do {
+                try await Task.detached(priority: .userInitiated) { try APIKeyStore.shared.save(value) }.value
+                key = ""; IntelligenceRuntime.cloud.refresh(); await IntelligenceRuntime.cloud.waitForRefresh(); status = "密钥已保存"
+            } catch { status = error.localizedDescription }
+        }
     }
     @MainActor private func deleteKey() {
-        do { try APIKeyStore.shared.delete(); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已删掉" }
-        catch { status = error.localizedDescription }
+        guard !savingKey else { return }
+        savingKey = true
+        Task {
+            defer { savingKey = false }
+            do {
+                try await Task.detached(priority: .userInitiated) { try APIKeyStore.shared.delete() }.value
+                key = ""; IntelligenceRuntime.cloud.refresh(); await IntelligenceRuntime.cloud.waitForRefresh(); status = "密钥已删掉"
+            } catch { status = error.localizedDescription }
+        }
     }
     @MainActor private func testConnection() {
-        guard let client = DeepSeekClient.configured() else { configured = false; return }
+        guard let configuration = IntelligenceRuntime.cloud.configuration else { return }
+        let client = DeepSeekClient(configuration: configuration)
         testing = true; status = ""
         Task {
             defer { testing = false }
@@ -135,7 +152,10 @@ struct CloudModelMenu: View {
         // Opening settings during setup or before organizing an import is local.
         guard store.preferences.cloudAIEnabled,
               store.pendingOrganization.batchIDs.isEmpty else { return }
-        guard let client = DeepSeekClient.configured() else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
+        await IntelligenceRuntime.cloud.waitForRefresh()
+        guard !Task.isCancelled else { return }
+        guard let configuration = IntelligenceRuntime.cloud.configuration else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
+        let client = DeepSeekClient(configuration: configuration)
         do {
             let result = try await client.listModels()
             guard !Task.isCancelled else { return }

@@ -48,7 +48,7 @@ struct StorageView: View {
                         .accessibilityIdentifier("openStorageHistory")
                     EntryFormDivider()
                     Button { clearing = true } label: { actionRow("清除恢复历史") }
-                        .disabled(usage == nil || usage?.recoveryCount == 0 || store.syncBusy)
+                        .disabled(store.storageBusy || store.organizingPendingImports || store.organizingBatchID != nil || usage == nil || usage?.recoveryCount == 0 || store.syncBusy)
                         .accessibilityIdentifier("clearStorageHistory")
                 }
             }
@@ -68,7 +68,7 @@ struct StorageView: View {
             .sheet(isPresented: $clearing) {
                 ConfirmationSheet(title: "清除恢复历史？") {
                     Button("清除 \(usage?.recoveryCount ?? 0) 份恢复历史") {
-                        if store.clearStorageHistory() { clearing = false; Task { await refreshUsage() } }
+                        Task { if await store.clearStorageHistory() { clearing = false; await refreshUsage() } }
                     }.buttonStyle(DestructiveButtonStyle())
                 }.environment(store)
             }
@@ -180,8 +180,8 @@ private struct StoragePhotosSheet: View {
                 .disabled(true).accessibilityLabel("账单原件不删，导入记录里仍可撤销")
                 .padding(.top, YubaiSpace.gapGroup)
             Button("删掉") {
-                if store.deleteOldScreenshots(months: months, now: now) { dismiss() }
-            }.buttonStyle(DestructiveButtonStyle()).disabled(selected.isEmpty).padding(.top, YubaiSpace.gapSection)
+                Task { if await store.deleteOldScreenshots(months: months, now: now) { dismiss() } }
+            }.buttonStyle(DestructiveButtonStyle()).disabled(selected.isEmpty || store.storageBusy || store.syncBusy || store.checkingCloudAvailability || store.organizingPendingImports || store.organizingBatchID != nil).padding(.top, YubaiSpace.gapSection)
                 .accessibilityIdentifier("deleteStoragePhotos")
             Button { dismiss() } label: {
                 Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
@@ -226,11 +226,11 @@ private struct StorageEraseSheet: View {
             Card(style: .list) {
                 CardTextFieldRow(title: "输入「抹掉」确认", text: $confirmation, identifier: "storageEraseConfirmation", autofocus: true)
             }.padding(.top, YubaiSpace.gapSection)
-            Button { if store.eraseAllDeviceData() { dismiss() } } label: {
+            Button { Task { if await store.eraseAllDeviceData() { dismiss() } } } label: {
                 Text("抹掉这台手机上的全部数据").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.amberInk)
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight)
                     .background(YubaiColor.card, in: Capsule()).contentShape(Capsule()).opacity(confirmation == "抹掉" ? 1 : 0.55)
-            }.buttonStyle(PressButtonStyle()).disabled(confirmation != "抹掉" || currentRecoveryCount == nil || store.syncBusy || store.checkingCloudAvailability)
+            }.buttonStyle(PressButtonStyle()).disabled(confirmation != "抹掉" || currentRecoveryCount == nil || store.syncBusy || store.checkingCloudAvailability || store.storageBusy)
                 .padding(.top, YubaiSpace.gapGroup).accessibilityIdentifier("eraseDeviceData")
             Button { dismiss() } label: {
                 Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)

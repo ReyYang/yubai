@@ -204,7 +204,7 @@ enum UITestSupport {
             .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1])
             .appendingPathComponent("合成账单.csv")
     }
-    @MainActor static func prepare(_ repository: LedgerRepository) throws {
+    static func prepare(_ repository: LedgerRepository) throws {
         guard let script else { return }
         func save(_ fixture: Ledger, reason: String) throws {
             var fixture = fixture

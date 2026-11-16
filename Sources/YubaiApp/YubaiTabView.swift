@@ -96,7 +96,7 @@ struct YubaiTabView: View {
     }
     private var accountStatus: String {
         let date = store.current.lastReconciledAt
-        return "对一下余额" + (date.map { " · 上次 " + FixedFlowPresentation.monthDay($0) } ?? "")
+        return "对一下余额" + (date.map { " · 上次 " + HomeTaskCopy.monthDay($0) } ?? "")
     }
     private var billStatus: String {
         let count = store.formula.billCount

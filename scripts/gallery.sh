@@ -33,6 +33,11 @@ env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild test \
 build_status=${PIPESTATUS[0]}
 set -e
 
+stall_status=0
+python3 "$repo_root/scripts/export-stall-records.py" --simulator "$simulator" \
+    --output "$shots/stalls" --derived-data "$run_dir/DerivedData" || stall_status=$?
+if (( stall_status != 0 )); then echo "warning: stall record export failed (does not change the gallery result)" >&2; fi
+
 if ! find "$shots" -type f -name '*.png' -print -quit | grep -q . && [[ -d "$result" ]]; then
     # A runner on some Xcode versions cannot write outside its sandbox. Attachments
     # still survive and include the exact shot names and the missing-stop reports.

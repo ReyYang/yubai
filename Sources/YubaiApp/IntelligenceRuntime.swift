@@ -31,7 +31,7 @@ import UIKit
     init(id: UUID, before: Ledger, progress: ImportOrganizationProgress, cancel: @escaping @MainActor () -> Void) {
         self.id = id; self.before = before; self.progress = progress; self.cancel = cancel
         heartbeat = ImportOrganizationHeartbeat(progress: progress)
-        authorizedConfiguration = APIKeyStore.shared.configuration()
+        authorizedConfiguration = IntelligenceRuntime.cloud.configuration
         #if os(iOS)
         identifier = "app.yubai.personal.organizeImports." + id.uuidString
         #endif
@@ -99,7 +99,7 @@ import UIKit
             return authorizedConfiguration
         }
         #endif
-        return APIKeyStore.shared.configuration()
+        return IntelligenceRuntime.cloud.configuration
     }
     func update(_ progress: ImportOrganizationProgress) {
         self.progress = progress; heartbeat.update(progress); reportProgress()
@@ -181,8 +181,11 @@ import UIKit
     private static let unavailableKey = "DeepSeek.unavailableModel"
     var model = DeepSeekConfiguration.modelName()
     private(set) var configured = false
+    private(set) var hasKeychainKey = false
+    private(set) var configuration: DeepSeekConfiguration?
     private(set) var unavailableModel: String? = UserDefaults.standard.string(forKey: CloudAIStatus.unavailableKey)
     @ObservationIgnored private var configurationRevision = 0
+    @ObservationIgnored private var statusTask: Task<Void, Never>?
     init() { refresh() }
     func refresh() {
         model = DeepSeekConfiguration.modelName()
@@ -196,21 +199,24 @@ import UIKit
         #endif
         // Security's synchronous IPC must not run while Home builds its task
         // identity (including on the first access to IntelligenceRuntime.cloud).
-        Task { [weak self] in
-            let value = await Task.detached(priority: .utility) { APIKeyStore.shared.isConfigured }.value
+        statusTask = Task { [weak self] in
+            let value = await APIKeyStore.shared.status()
             guard let self, self.configurationRevision == revision else { return }
-            self.configured = value
+            self.configuration = value.configuration
+            self.hasKeychainKey = value.hasKeychainKey
+            self.configured = value.configuration != nil
         }
         #if DEBUG && targetEnvironment(simulator)
         if UITestSupport.script != nil { return }
         #endif
         if unavailableModel != model { clear() }
     }
+    func waitForRefresh() async { await statusTask?.value }
     func saveModel(_ name: String) throws {
         let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !clean.isEmpty, clean.count <= 200, !clean.contains(where: { $0.isNewline }) else { throw YubaiError.invalid("请输入有效的模型名字。") }
         UserDefaults.standard.set(clean, forKey: DeepSeekConfiguration.modelPreferenceKey)
-        model = DeepSeekConfiguration.modelName(); clear()
+        model = DeepSeekConfiguration.modelName(); configuration?.model = model; clear()
     }
     func succeeded(model: String) {
         guard model == DeepSeekConfiguration.modelName() else { return }
@@ -274,7 +280,7 @@ private struct FeatureCloudTransport: ChatTransport {
             }
         }
         #endif
-        let configuration = continuingOrganization ? organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
+        let configuration = continuingOrganization ? organizationExecution?.configurationForTransport() : IntelligenceRuntime.cloud.configuration
         guard let configuration else { return nil }
         let snapshotConfiguration = configuration
         let redactor = preparedRedactor ?? Redactor(ledger: snapshot)
@@ -286,10 +292,11 @@ private struct FeatureCloudTransport: ChatTransport {
                 return CloudBackend(client: DeepSeekClient(configuration: authorized, redactor: redactor))
             }
             #endif
-            return CloudBackend.configured(preferences: self.preferences, feature: feature, redactor: redactor)
+            guard let configuration = IntelligenceRuntime.cloud.configuration else { return nil }
+            return CloudBackend(client: DeepSeekClient(configuration: configuration, redactor: redactor))
         }
         return ActiveLedgerTransport(base: live, model: reportingLedgerChanges ? nil : configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
-            let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : APIKeyStore.shared.configuration()
+            let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : IntelligenceRuntime.cloud.configuration
             return (reportingLedgerChanges || self.ledgerRevision == revision) && self.preferences.isAIEnabled(for: feature) && (!self.locked || (continuingOrganization && self.organizationContinuesInBackground)) && (reportingLedgerChanges ? configuration?.baseURL == snapshotConfiguration.baseURL && configuration?.apiKey == snapshotConfiguration.apiKey : configuration == snapshotConfiguration)
         }
     }
@@ -444,7 +451,7 @@ private struct FeatureCloudTransport: ChatTransport {
             await flushPersistence()
             try Task.checkCancellation()
             let before = current, revision = ledgerRevision, repository = localRepository
-            let diskRevision = repository.revision
+            let diskRevision = try await ledgerWriter.submit(invalidatingOnFailure: false) { repository.revision }.value
             let location = ledgerLocation, batches = organizingImportBatchIDs
             let preparation = Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()

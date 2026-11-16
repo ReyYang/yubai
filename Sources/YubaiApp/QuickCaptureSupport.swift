@@ -20,13 +20,14 @@ struct QuickEntryPrefill {
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
-        if locked { pendingQuickSheet = next }
+        if loadingLedger || locked { pendingQuickSheet = next }
         else {
             if accounts.isEmpty || !preferences.onboardingComplete { _ = update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Dates.now) } }
             sheetSource = nil; sheet = next
         }
     }
     func handleCaptureURL(_ url: URL) {
+        if loadingLedger { pendingOpenURL = url; return }
         guard url.scheme?.lowercased() == "yubai", let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return }
         func value(_ name: String) -> String? { parts.queryItems?.first { $0.name == name }?.value }
         switch url.host?.lowercased() {
