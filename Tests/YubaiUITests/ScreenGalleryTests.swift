@@ -278,6 +278,11 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
     }
     private func keys(_ value: String) throws { for key in value { try tap("keypad_" + String(key)) } }
+    private func recordEntry(_ amount: String, purpose: String? = nil, category: String = "餐饮") throws {
+        try keys(amount)
+        if let purpose { try type(purpose + "\n", into: "entryPurpose") }
+        try tap("entryCategory_" + category); try tap("saveQuickEntry"); try require("entrySavedReceipt")
+    }
     private func back() throws {
         let custom = element("BackButton")
         if custom.exists && custom.isHittable { try tap(custom) }
@@ -540,7 +545,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Empty-Restraint") { try load("v47r-restraint-empty"); try root("yubai"); try tap("openProfile"); try require("emptyState_restraint") }
         stop("First-A") { try load("v47-first"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
         stop("First-A-ReduceMotion") { try launch("v47-first", dark: dark, large: large, reduceMotion: true); try require("firstOpenScene") }
-        stop("First-After") { try load("v47-first"); try add("28"); try require("firstSalaryCard"); try require("entriesScroll") }
+        stop("First-After") { try load("v47-first"); try tap("addEntry"); try recordEntry("28"); try close(); try require("firstSalaryCard"); try require("entriesScroll") }
         stop("First-After-Setup") { try load("v47-after"); try tap("setupFirstSalary"); try require("paydaySetupSheet") }
         stop("First-After-Deferred") { try load("v47-after"); try tap("deferFirstSalary"); try require("entriesScroll") }
         stop("First-After-Income") { try load("v47-after-income"); try require("firstSalaryCard") }
@@ -981,17 +986,12 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     private func round46Batch2(dark: Bool, large: Bool, hidden: Bool) {
         func load(_ fixture: String = "v46-entry") throws { try launch(fixture, dark: dark, large: large) }
-        func add(_ amount: String, purpose: String? = nil, category: String = "餐饮") throws {
-            try keys(amount)
-            if let purpose { try type(purpose + "\n", into: "entryPurpose") }
-            try tap("entryCategory_" + category); try tap("saveQuickEntry"); try require("entrySavedReceipt")
-        }
         stop("Add") {
-            try load(); try tap("addEntry"); try add("32"); try require("entrySessionSummary")
+            try load(); try tap("addEntry"); try recordEntry("32"); try require("entrySessionSummary")
         }
         stop("Add-Again") { try keys("8"); try require("saveQuickEntry"); try require("entrySessionSummary") }
         stop("Add-List") {
-            try load(); try tap("addEntry"); try add("28", purpose: "午饭"); try add("8", purpose: "地铁", category: "交通")
+            try load(); try tap("addEntry"); try recordEntry("28", purpose: "午饭"); try recordEntry("8", purpose: "地铁", category: "交通")
             try tap("entrySessionSummary"); try require("entryAddedList")
         }
         stop("Add-Inline") {
@@ -1035,7 +1035,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Quick-Configured") { try load("v46-entry-receipt"); try longPress(element("addEntry")); try require("quickReceipt"); try require("manageQuickRepeats") }
         stop("Quick-Manage") { try tap("manageQuickRepeats"); try require("frequentEntriesPage"); try require("frequentPin_0"); try require("frequentHide_0") }
         stop("Add-Edit") {
-            try load(); try tap("addEntry"); try add("32", purpose: "咖啡"); try tap("entrySessionSummary")
+            try load(); try tap("addEntry"); try recordEntry("32", purpose: "咖啡"); try tap("entrySessionSummary")
             try tap(buttonPrefix("editSessionEntry_")); try require("saveSessionEdit")
         }
         stop("Add-Delete-Undo") {
