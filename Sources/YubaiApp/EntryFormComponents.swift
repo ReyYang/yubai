@@ -361,7 +361,8 @@ struct EntryCategoryGrid: View {
                     HStack(spacing: YubaiSpace.space8) {
                         ForEach(Array(items.prefix(4)) + [Slot.all]) { slot in largeCell(slot) }
                     }
-                }.frame(height: YubaiSize.tapMin + YubaiSpace.space8)
+                }.fixedSize(horizontal: false, vertical: true)
+                    .frame(minHeight: YubaiSize.tapMin + YubaiSpace.space8)
             } else {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: 5), spacing: YubaiSpace.space8) {
                     ForEach(items) { slot in cell(slot) }
@@ -375,9 +376,9 @@ struct EntryCategoryGrid: View {
             CategoryChoiceChip(title: category.name, selected: selection.category == category.name,
                                outlined: hint == category.name && selection.category != category.name) {
                 choose(selection.category == category.name ? nil : .init(category: category.name))
-            }.dynamicTypeSize(...DynamicTypeSize.xxxLarge).accessibilityIdentifier("entryCategory_" + category.name)
+            }.accessibilityIdentifier("entryCategory_" + category.name)
         case .all:
-            CategoryChoiceChip(title: "更多", action: more).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            CategoryChoiceChip(title: "更多", action: more)
                 .accessibilityIdentifier("entryCategoryMore")
         }
     }

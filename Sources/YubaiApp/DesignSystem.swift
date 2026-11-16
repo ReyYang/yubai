@@ -162,18 +162,14 @@ private struct TextLineBox: ViewModifier {
     func body(content: Content) -> some View { content.frame(minHeight: height) }
 }
 
-/// Custom outlines use the same Dynamic Type curve as their adjacent text,
-/// including the stroke, rather than leaving a fixed-size drawing in a chip.
+/// Draw outlines in their final layout frame, proportional to adjacent text.
 private struct TextIconSize: ViewModifier {
-    let base: CGFloat
     @ScaledMetric private var side: CGFloat
     init(_ size: CGFloat, relativeTo style: YubaiFont.Style) {
-        base = size
         _side = ScaledMetric(wrappedValue: size, relativeTo: style.relativeTo)
     }
     func body(content: Content) -> some View {
-        content.frame(width: base, height: base).scaleEffect(side / base)
-            .frame(width: side, height: side)
+        content.frame(width: side, height: side)
     }
 }
 
@@ -1344,6 +1340,10 @@ struct AmountLabel: View {
             if hide { Text(showsCurrency ? "¥••••" : "••••").transition(.opacity) }
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(ink)
+            // Page headline numerals are the one scale-to-fit exception.
+            // Keep the full amount together, including the last cent digit.
+            .lineLimit(resolvedRole == .hero || resolvedRole == .display ? 1 : nil)
+            .minimumScaleFactor(resolvedRole == .hero || resolvedRole == .display ? 0.1 : 1)
             .fixedSize(horizontal: false, vertical: true)
             .accessibilityLabel(hide ? "金额已隐藏" : text)
             .animation(YubaiMotion.quick, value: hide)
@@ -1848,6 +1848,15 @@ struct Toast: View {
             }
         }.padding(.leading, YubaiSpace.insetCard).padding(.trailing, YubaiSpace.space8).padding(.vertical, YubaiSpace.space4)
             .frame(maxWidth: .infinity)
+            // The unconstrained ruler must not be a descendant of the
+            // message's accessible button: SwiftUI unions those bounds even
+            // when the ruler is hidden from accessibility.
+            .background(alignment: .topLeading) {
+                Text(text).yubaiFont(YubaiFont.body).lineLimit(1).fixedSize()
+                    .deferredGeometryChange(for: CGFloat.self, of: { $0.size.width }) { intrinsicWidth = $0 }
+                    .hidden().accessibilityHidden(true).allowsHitTesting(false)
+                    .frame(width: 0, height: 0).clipped()
+            }
             .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).yubaiShadow(YubaiShadow.card)
             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
@@ -1866,10 +1875,7 @@ struct Toast: View {
             .deferredGeometryChange(for: CGSize.self, of: { $0.size }) { size in
                 availableWidth = size.width; naturalHeight = size.height
             }
-            .background(alignment: .leading) {
-                Text(text).yubaiFont(YubaiFont.body).lineLimit(1).fixedSize().hidden().accessibilityHidden(true)
-                    .deferredGeometryChange(for: CGFloat.self, of: { $0.size.width }) { intrinsicWidth = $0 }
-            }.onTapGesture(perform: toggle).accessibilityAction { toggle() }
+            .onTapGesture(perform: toggle).accessibilityAction { toggle() }
     }
     private func toggle() {
         if expanded || !truncated { dismiss() }
@@ -3582,7 +3588,7 @@ struct EntryForm<Content: View>: View {
                 .padding(.horizontal, YubaiSpace.insetPage)
             ScrollView {
                 VStack(alignment: .leading, spacing: YubaiSpace.gapGroup, content: content)
-                    .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, compactHeader ? 0 : YubaiSpace.gapSection)
+                    .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
                     .frame(maxWidth: 620).frame(maxWidth: .infinity)
             }.modifier(ScrollContentViewport()).scrollDismissesKeyboard(.interactively).accessibilityElement(children: .contain).accessibilityIdentifier(scrollIdentifier)
         }.accessibilityElement(children: .contain)
@@ -4282,6 +4288,9 @@ struct WaterBar: View {
 }
 
 struct SavedPill: View {
+    // SavingJarOutline uses a 24pt design grid. Scale its stroke from that
+    // grid, not from the small chip's rasterized frame.
+    @ScaledMetric(relativeTo: .callout) private var jarStroke = YubaiSize.outline * YubaiSize.smallGlyph / 24
     let total: Int64
     var hide = false
     var body: some View {
@@ -4292,7 +4301,7 @@ struct SavedPill: View {
     }
     private var title: some View {
         HStack(spacing: YubaiSpace.space6) {
-            SavingJarOutline().stroke(YubaiColor.brandInk, style: StrokeStyle(lineWidth: YubaiSize.outline, lineCap: .round, lineJoin: .round))
+            SavingJarOutline().stroke(YubaiColor.brandInk, style: StrokeStyle(lineWidth: jarStroke, lineCap: .round, lineJoin: .round))
                 .yubaiTextIcon(YubaiSize.smallGlyph, relativeTo: YubaiFont.callout).accessibilityHidden(true)
             Text("已存").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
         }

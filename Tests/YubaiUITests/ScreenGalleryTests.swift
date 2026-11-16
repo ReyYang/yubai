@@ -767,11 +767,32 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Home-Topup-All") { try load("v47-topup"); try tap("savingsTopupAll"); try require("openSaving"); try toast() }
         stop("Home-Topup-Declined") { try load("v47-topup-queue"); try tap("savingsTopupDecline"); try require("renewalCard") }
         stop("Toast-Short") { try load("v47-toast-short"); try require("toastMessage"); try require("undoLastChange") }
-        stop("Toast") { try load("v47-toast-long"); try require("expandToast") }
-        stop("Toast-Truncated") { try load("v47-toast-long"); try require("expandToast") }
-        stop("Toast-Expanded") { try load("v47-toast-long"); try tap("expandToast"); try require("toastMessage") }
-        stop("Toast-Undo") { try load("v47-toast-long"); try tap("expandToast"); try tap("undoLastChange"); try require("toastMessage") }
-        stop("Toast-Dismissed") { try load("v47-toast-long"); try tap("expandToast"); try tap("expandToast"); try require("openSaving") }
+        stop("Toast") { try load("v47-toast-long"); try fullToast() }
+        stop("Toast-Truncated") { try load("v47-toast-long"); try fullToast() }
+        stop("Toast-Expanded") { try load("v47-toast-long"); try fullToast(expand: true) }
+        stop("Toast-Undo") {
+            try load("v47-toast-long"); try fullToast(expand: true); try tap("undoLastChange")
+            try wait({ self.element("toastMessage").label == "已撤销" }, "Toast undo receipt")
+        }
+        stop("Toast-Dismissed") {
+            try load("v47-toast-long"); try fullToast(expand: true)
+            if large { element("toastMessage").swipeDown() } else { try tap("expandToast") }
+            try wait({ !self.element("toastMessage").exists }, "Toast dismissed"); try require("openSaving")
+        }
+    }
+
+    private func fullToast(expand: Bool = false) throws {
+        try require("toastMessage"); try require("undoLastChange")
+        try wait({ self.element("toastMessage").label == "已删除 · 为了搬家以后和家人朋友一起长期使用而认真挑选的生活用品 2 笔" }, "Full toast message")
+        if galleryMode == .a11y {
+            try wait({ !self.element("expandToast").exists }, "Accessible toast has no expand control")
+            let message = element("toastMessage")
+            try wait({ self.app.frame.insetBy(dx: -0.5, dy: -0.5).contains(message.frame) }, "Wrapped toast frame inside window")
+            try wait({ message.frame.height > 44 }, "Accessible toast wraps its full message")
+        } else {
+            try require("expandToast")
+            if expand { try tap("expandToast"); try wait({ self.element("expandToast").value as? String == "已展开" }, "Expanded toast") }
+        }
     }
 
     // One method per area: each starts from a fresh launch, so one area cannot stall the others.

@@ -106,6 +106,18 @@ final class Round47ViewportGeometryTests: XCTestCase {
         XCTAssertFalse(UIViewportGeometry.canClearToast(CGRect(x: 20, y: 130, width: 400, height: 650),
             viewport: CGRect(x: 0, y: 130, width: 440, height: 656), toast: CGRect(x: 20, y: 738, width: 400, height: 44), remainingDown: 1000))
     }
+    func testRunSixToastRejectsTheWrappedHeroButAllowsASingleLineHeroAndScrollableRows() {
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 668)
+        let toast = CGRect(x: 36, y: 465.3, width: 376, height: 316.7)
+        let wrappedHero = CGRect(x: 20, y: 150, width: 400, height: 377.7)
+        XCTAssertFalse(UIViewportGeometry.canClearToast(wrappedHero, viewport: viewport, toast: toast, remainingDown: 1000))
+        // Dropping the second numeral line removes its 103pt line box.
+        let hero = CGRect(x: 20, y: 150, width: 400, height: 274.7)
+        XCTAssertTrue(UIViewportGeometry.canClearToast(hero, viewport: viewport, toast: toast, remainingDown: 0))
+        let row = CGRect(x: 20, y: 701.7, width: 400, height: 121.3)
+        XCTAssertFalse(UIViewportGeometry.canClearToast(row, viewport: viewport, toast: toast, remainingDown: 360))
+        XCTAssertTrue(UIViewportGeometry.canClearToast(row, viewport: viewport, toast: toast, remainingDown: 370))
+    }
     func testNativeWindowMetricsDecodeSafeAreaAndRemainingScrollTravel() {
         let json = #"{"safeArea":[0,62,440,860],"transitioning":false,"focused":"frequentEntryPurpose","scrolls":[{"identifier":"nowScroll","frame":[0,130,440,656],"remainingDown":64,"remainingUp":0}]}"#
         let metrics = UIWindowMetrics.decode(json)

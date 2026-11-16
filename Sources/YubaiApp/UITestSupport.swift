@@ -45,6 +45,29 @@ struct UITestWindowMetrics: UIViewRepresentable {
         private var values: [ObjectIdentifier: (at: TimeInterval, json: String)] = [:]
         private var pending: Set<ObjectIdentifier> = []
         private weak var focusedResponder: UIResponder?
+        private final class TransitionObservation {
+            weak var coordinator: AnyObject?
+            var completed = false
+            init(_ coordinator: AnyObject) { self.coordinator = coordinator }
+        }
+        private var transitions: [ObjectIdentifier: TransitionObservation] = [:]
+
+        private func transitionIsActive(_ coordinator: UIViewControllerTransitionCoordinator) -> Bool {
+            let object = coordinator as AnyObject
+            let key = ObjectIdentifier(object)
+            if let observation = transitions[key], observation.coordinator === object, !observation.completed { return true }
+            let observation = TransitionObservation(object)
+            transitions[key] = observation
+            // UIKit can retain a coordinator after it has finished (notably
+            // through the keyboard handoff). Its existence is not activity.
+            // Observe actual completion; rejected registration is already over.
+            // Recheck completed objects in case UIKit reuses one for a new transition.
+            let registered = coordinator.animate(alongsideTransition: nil) { [weak observation] _ in
+                observation?.completed = true
+            }
+            if !registered { observation.completed = true }
+            return !observation.completed
+        }
         override init() {
             super.init()
             for name in [UITextField.textDidBeginEditingNotification, UITextField.textDidEndEditingNotification,
@@ -103,20 +126,26 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 }
                 pending.append(contentsOf: view.subviews.prefix(max(0, remaining - pending.count)))
             }
+            transitions = transitions.filter { $0.value.coordinator != nil }
             var controllers = windows.compactMap(\.rootViewController)
-            var transitioning = false
+            var activeTransitions: [String] = []
+            var visited: Set<ObjectIdentifier> = []
             remaining = 128
             while remaining > 0, let controller = controllers.popLast() {
                 remaining -= 1
-                if controller.transitionCoordinator != nil || controller.isBeingPresented || controller.isBeingDismissed {
-                    transitioning = true; break
+                guard visited.insert(ObjectIdentifier(controller)).inserted else { continue }
+                let active = controller.transitionCoordinator.map { transitionIsActive($0) } ?? false
+                if active || controller.isBeingPresented || controller.isBeingDismissed {
+                    activeTransitions.append(String(describing: type(of: controller)) +
+                        ":coordinator=\(active),presenting=\(controller.isBeingPresented),dismissing=\(controller.isBeingDismissed)")
                 }
                 var children = controller.children
                 if let presented = controller.presentedViewController { children.append(presented) }
                 controllers.append(contentsOf: children.prefix(max(0, remaining - controllers.count)))
             }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
-            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": transitioning,
+            let value: [String: Any] = ["safeArea": rect(safe), "transitioning": !activeTransitions.isEmpty,
+                                      "activeTransitions": activeTransitions,
                                       "focused": focused, "scrolls": scrolls,
                                       "bamboo": BambooRasterCache.shared.diagnostics]
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),

@@ -246,10 +246,15 @@ class YubaiUITestCase: XCTestCase {
 
     func waitForNativeTransition(in app: XCUIApplication, deadline: Date) -> Bool {
         let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
-        return UIConditionWait.run(timeout: 15, deadline: end, read: {
+        let settled = UIConditionWait.run(timeout: 15, deadline: end, read: {
             guard let value = self.windowMetrics(in: app) else { return false }
             return !value.transitioning
         })
+        if !settled {
+            let metrics = windowMetrics(in: app)
+            print("UI-TRANSITION-WAIT active=\(metrics?.activeTransitions ?? []) focused=\(metrics?.focused ?? "<metrics absent>") remaining=\(deadline.timeIntervalSinceNow)")
+        }
+        return settled
     }
 
     /// Save identity before a gesture that can hide its source behind a modal.

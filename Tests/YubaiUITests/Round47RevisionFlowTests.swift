@@ -243,6 +243,51 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             tap("saveQuickEntry"); expect("entrySessionSummary", contains: "1 笔")
         }
     }
+    func testLargestSoftLineKeypadHandoffsSettleAndCategoryRowScrollsClear() {
+        for dark in [false, true] {
+            for (fixture, purpose, amount, expected) in [
+                ("v47r-soft-lines", "外卖", "38", "282.00"),
+                ("v47r-soft-lines", "外卖", "338", "18.00"),
+                ("v47r-soft-count", "咖啡", "18", "3 次")
+            ] {
+                // Compare the real shared chip at default and largest size.
+                launch(fixture, dark: dark); tap("addEntry"); tap("entryNature_income")
+                let ordinaryChip = element("entryCategory_工资")
+                XCTAssertTrue(ordinaryChip.waitForExistence(timeout: 5))
+                XCTAssertTrue(waitForStableFrame(ordinaryChip))
+                let ordinaryHeight = ordinaryChip.frame.height
+                launch(fixture, large: true, dark: dark); tap("addEntry")
+                typeIntoField(purpose + "\n", identifier: "entryPurpose", in: app)
+                XCTAssertFalse(app.keyboards.firstMatch.exists)
+                // A second keyboard cycle must also be observed and completed.
+                typeIntoField("\n", identifier: "entryPurpose", in: app)
+                XCTAssertFalse(app.keyboards.firstMatch.exists)
+                keys(amount); expect("entrySavingHint", contains: expected)
+                let deadline = Date().addingTimeInterval(20)
+                XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline))
+                let metrics = windowMetrics(in: app)
+                XCTAssertEqual(metrics?.transitioning, false)
+                XCTAssertEqual(metrics?.focused, "")
+                XCTAssertEqual(metrics?.activeTransitions, [])
+                let scroll = element("entryFormScroll"), row = element("entryCategoryGrid")
+                let chip = element("entryCategory_餐饮"), tray = element("fixedBottomBar")
+                XCTAssertTrue(revealControl(chip, in: app, deadline: Date().addingTimeInterval(60), searching: scroll))
+                XCTAssertGreaterThan(chip.frame.height, ordinaryHeight + 8)
+                XCTAssertTrue(row.frame.insetBy(dx: -0.5, dy: -0.5).contains(chip.frame))
+                XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(chip.frame))
+                XCTAssertLessThanOrEqual(chip.frame.maxY, tray.frame.minY - 8)
+                XCTAssertTrue(chip.isHittable)
+                tap("entryCategory_餐饮"); XCTAssertTrue(chip.isSelected)
+                let more = element("entryCategoryMore")
+                XCTAssertTrue(revealControl(more, in: app, deadline: Date().addingTimeInterval(60), searching: row))
+                XCTAssertLessThanOrEqual(more.frame.maxY, tray.frame.minY - 8)
+                tap("entryCategoryMore"); XCTAssertTrue(element("entryCategoryPicker").waitForExistence(timeout: 5))
+                tap("entryMoreCancel"); tap("saveQuickEntry")
+                expect("entrySessionSummary", contains: "1 笔")
+                XCTAssertEqual(app.state, .runningForeground)
+            }
+        }
+    }
     func testCategoryPlaceFactsWrapWithoutClippingAcrossAllGalleryModes() {
         for mode in galleryModes {
             launch("v47r-soft-lines", large: mode.large, dark: mode.dark, hidden: mode.hidden)

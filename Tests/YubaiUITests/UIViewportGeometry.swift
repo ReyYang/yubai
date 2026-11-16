@@ -87,6 +87,7 @@ struct UIWindowMetrics: Decodable {
     let focused: String
     let scrolls: [Scroll]
     var bamboo: Bamboo? = nil
+    var activeTransitions: [String]? = nil
     var safeRectangle: CGRect { Self.rectangle(safeArea) }
     static func decode(_ value: Any?) -> Self? {
         guard let value = value as? String, let data = value.data(using: .utf8) else { return nil }

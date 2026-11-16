@@ -254,6 +254,75 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertEqual(element("toastMessage").label, "已撤销")
         launch("v47-toast-long"); tap("expandToast"); element("expandToast").swipeDown(); gone("toastMessage")
     }
+    func testLargestToastWrapsInsideItsVisibleViewportAndKeepsUndoAndDismiss() {
+        for dark in [false, true] {
+            launch("v47-toast-long", large: true, dark: dark)
+            let message = element("toastMessage"), undo = element("undoLastChange"), viewport = element("toastBody")
+            XCTAssertTrue(message.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitForStableFrame(message))
+            XCTAssertEqual(message.label, "已删除 · 为了搬家以后和家人朋友一起长期使用而认真挑选的生活用品 2 笔")
+            XCTAssertFalse(element("expandToast").exists)
+            XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "toastMessage").count, 1)
+            XCTAssertTrue(viewport.frame.insetBy(dx: -0.5, dy: -0.5).contains(message.frame))
+            XCTAssertTrue(app.frame.contains(message.frame))
+            XCTAssertGreaterThan(message.frame.height, 44)
+            XCTAssertGreaterThanOrEqual(undo.frame.minY, message.frame.maxY)
+            XCTAssertTrue(message.isHittable); XCTAssertTrue(undo.isHittable)
+            XCTAssertLessThanOrEqual(element("fundsFormula").frame.maxY, message.frame.minY - 12 + 0.5)
+            XCTAssertNoThrow(try auditAppText(in: app) { issue in
+                if let target = issue.element, target.label.contains("已删除") { XCTFail(issue.detailedDescription) }
+                return true
+            })
+            let last = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
+            XCTAssertTrue(revealControl(last, in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")))
+            XCTAssertTrue(last.isHittable)
+            XCTAssertLessThanOrEqual(last.frame.maxY, message.frame.minY - 12 + 0.5)
+            tap("undoLastChange"); XCTAssertEqual(message.label, "已撤销")
+
+            launch("v47-toast-long", large: true, dark: dark)
+            XCTAssertTrue(waitForStableFrame(element("toastMessage")))
+            element("toastMessage").swipeDown(); gone("toastMessage")
+            XCTAssertTrue(element("openSaving").exists)
+        }
+    }
+
+    func testLargestHeadlineAmountsStayOnOneLineOnHomeSavingsAndFormula() {
+        for hidden in [false, true] {
+            for fixture in ["v47-savings", "v47r-less", "v47r-deficit", "v47-spend-no-salary", "v47-savings-hard"] {
+                launch(fixture, large: true, hidden: hidden)
+                let home = element("availableFunds")
+                assertHeadlineFits(home)
+                if element("fundsFormula").exists {
+                    let expected = home.label
+                    tap("fundsFormula")
+                    let result = element("formulaResult")
+                    XCTAssertTrue(revealControl(result, in: app, deadline: Date().addingTimeInterval(60), searching: element("formulaPage")))
+                    XCTAssertEqual(result.label, expected)
+                    assertHeadlineFits(result)
+                    back()
+                }
+                saved(); assertHeadlineFits(element("reserveTotal"))
+            }
+        }
+    }
+    private func assertHeadlineFits(_ target: XCUIElement) {
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForStableFrame(target))
+        XCTAssertTrue(app.frame.insetBy(dx: -0.5, dy: -0.5).contains(target.frame))
+        // The largest scaled hero token's one-line box is below 120pt;
+        // the supplied wrapped amount measured 206pt. Never accept two lines.
+        XCTAssertLessThan(target.frame.height, 120)
+        XCTAssertTrue(target.label == "金额已隐藏" || target.label.range(of: #"¥[0-9,]+\.[0-9]{2}$"#, options: .regularExpression) != nil)
+        XCTAssertNoThrow(try auditAppText(in: app) { issue in
+            if let element = issue.element, element.identifier == target.identifier || element.label.contains(target.label) {
+                XCTFail("Headline amount clipped: " + issue.detailedDescription)
+            }
+            return true
+        })
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = "largest-single-line-" + target.identifier
+        attachment.lifetime = .keepAlways; add(attachment)
+    }
     func testToastUndoWinsOverReceiptLedgerAndScrollingRevealsTheLedgerAction() {
         launch("v47-toast-short")
         let undo = element("undoLastChange"), scroll = element("entriesScroll")
