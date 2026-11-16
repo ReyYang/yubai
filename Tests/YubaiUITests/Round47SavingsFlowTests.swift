@@ -102,6 +102,30 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertFalse(element("ledgerEntry_47000000-0000-0000-0000-000000471100").exists)
         XCTAssertFalse(element("formulaRow_income").exists)
     }
+    func testFormulaEvidencePresetsSurviveRepeatedRootReplacement() {
+        for large in [false, true] {
+            launch("v47-spend-no-salary", large: large)
+            for _ in 0..<2 {
+                tap("fundsFormula"); tap("formulaRow_income")
+                XCTAssertTrue(element("entriesScroll").waitForExistence(timeout: 5))
+                for suffix in ["471030", "471031"] {
+                    XCTAssertTrue(element("ledgerEntry_47000000-0000-0000-0000-000000" + suffix).waitForExistence(timeout: 5))
+                }
+                XCTAssertEqual(element("activeEntryCount").label, "2 笔")
+                XCTAssertEqual(amount("entriesSearchTotal"), 801_000)
+                XCTAssertFalse(element("ledgerEntry_47000000-0000-0000-0000-000000471100").exists)
+                XCTAssertFalse(element("fundsFormula").exists)
+                tap("tab_ledger")
+                XCTAssertTrue(element("fundsFormula").waitForExistence(timeout: 5))
+                tap("fundsFormula"); tap("formulaRow_spent")
+                XCTAssertTrue(element("ledgerEntry_47000000-0000-0000-0000-000000471100").waitForExistence(timeout: 5))
+                XCTAssertEqual(amount("entriesSearchTotal"), 83_600)
+                XCTAssertFalse(element("ledgerEntry_47000000-0000-0000-0000-000000471030").exists)
+                tap("tab_ledger")
+                XCTAssertTrue(element("fundsFormula").waitForExistence(timeout: 5))
+            }
+        }
+    }
     func testFormulaBackWorksWhileIncomeCrossesNavigationAndIncomeStillEditsAtLargestText() {
         launch("v47-spend", large: true); tap("fundsFormula")
         let scroll = app.scrollViews["formulaPage"], income = element("formulaRow_income")

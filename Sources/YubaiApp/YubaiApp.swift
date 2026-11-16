@@ -1325,7 +1325,7 @@ struct RootView: View {
     @ViewBuilder func destination(_ d: Destination) -> some View {
         switch d {
         case .insights: InsightsTabView()
-        case .ledger: LedgerTabView()
+        case .ledger: LedgerTabView(navigationRevision: store.navigationRevision)
         case .yubai: YubaiTabView()
         }
     }

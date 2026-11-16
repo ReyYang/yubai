@@ -229,11 +229,17 @@ class YubaiUITestCase: XCTestCase {
     }
 
     func windowMetrics(in app: XCUIApplication) -> UIWindowMetrics? {
-        // A sheet and its root can both publish a probe. An index obtained
-        // before dismissal no longer identifies that probe after dismissal.
-        // Decode one coherent tree instead of re-querying disappearing indices.
-        guard let tree = try? app.snapshot() else { return nil }
-        return windowMetrics(in: tree)
+        if let tree = try? app.snapshot(), let metrics = windowMetrics(in: tree) { return metrics }
+        // A keyboard handoff can leave the app snapshot without the modal's
+        // background probe even after the keyboard has gone. Ask for the actual
+        // native probes before declaring telemetry absent. Bind by AX identity:
+        // sheet dismissal can change both the count and order of these nodes.
+        let probes = app.otherElements.matching(identifier: UIWindowMetrics.probeIdentifier)
+            .allElementsBoundByAccessibilityElement
+        for probe in probes.reversed() {
+            if let snapshot = try? probe.snapshot(), let metrics = UIWindowMetrics.decode(snapshot.value) { return metrics }
+        }
+        return nil
     }
 
     func waitForBambooRasters(in app: XCUIApplication, deadline: Date? = nil) -> UIBambooWait.Result {
