@@ -93,13 +93,17 @@ struct ProfileView: View {
     private func areas(_ rows: [ProfileArea], stance: ProfileStance, title: String) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             Text(title).yubaiFont(YubaiFont.cardTitle).padding(.horizontal, YubaiSpace.space4)
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    ForEach(rows) { area in
-                        areaRow(area, stance: stance)
-                        EntryFormDivider()
+            if rows.isEmpty && stance == .restrain {
+                EmptyState(.restraint, actionIdentifier: "watchCategory", onAction: { sheet = .area(ProfileArea(title: ""), .restrain) })
+            } else {
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        ForEach(rows) { area in
+                            areaRow(area, stance: stance)
+                            EntryFormDivider()
+                        }
+                        addRow(label: "添加" + title) { sheet = .area(ProfileArea(title: ""), stance) }
                     }
-                    addRow(label: "添加" + title) { sheet = .area(ProfileArea(title: ""), stance) }
                 }
             }
         }

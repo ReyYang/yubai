@@ -17,6 +17,7 @@ final class Round46ControlsFlowTests: YubaiUITestCase {
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
+        if id == "openSettings" && element("mainNavigation").exists { tap("tab_yubai") }
         let target = element(id); XCTAssertTrue(target.waitForExistence(timeout: 6), id)
         for _ in 0..<8 { if target.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(target.isHittable, id); target.tap()

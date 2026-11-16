@@ -6,11 +6,17 @@ struct EntriesView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
-    @Binding var mode: LedgerMode
     @Binding var request: LedgerPreset?
     @State private var month = Dates.calendar.dateInterval(of: .month, for: Dates.now)!.start
     @State private var filter = EntryTimeline.Filter.all
     @State private var search = ""
+    @State private var searchExpanded = false
+    @State private var showsFilters = false
+    @State private var savedOffset = CGFloat.zero
+    @State private var currentOffset = CGFloat.zero
+    #if os(iOS)
+    @State private var position = ScrollPosition(edge: .top)
+    #endif
     @State private var scope: DateInterval?
     @State private var entryIDsScope: Set<UUID>?
     @State private var categoryScope: String?
@@ -23,12 +29,12 @@ struct EntriesView: View {
     @State private var categoryTarget: CategoryTarget?
     @FocusState private var searchFocused: Bool
 
-    init(mode: Binding<LedgerMode> = .constant(.detail), request: Binding<LedgerPreset?> = .constant(nil)) {
-        _mode = mode; _request = request
+    init(request: Binding<LedgerPreset?> = .constant(nil)) {
+        _request = request
     }
     private struct CategoryTarget: Identifiable { let id: UUID }
     private enum RowContext { case day, search, uncategorized }
-    private var searching: Bool { searchFocused || !search.isEmpty }
+    private var searching: Bool { searchExpanded || !search.isEmpty }
 
     var body: some View {
         // Cached once per ledger revision/query. List creates the display rows
@@ -39,16 +45,19 @@ struct EntriesView: View {
         let groups = scoped(displayMonths(timeline))
         ScrollViewReader { proxy in
             List {
-                headerBlock(timeline: timeline, groups: groups, hide: hideAmounts)
-                    .id("entriesTop")
-                    .listRowInsets(EdgeInsets(top: YubaiSpace.none, leading: YubaiSpace.none, bottom: YubaiSpace.space12, trailing: YubaiSpace.none))
-                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
-                if groups.allSatisfy({ $0.days.isEmpty }) { emptyRow }
-                else if search.isEmpty && scope == nil && filter != .uncategorized { monthRows(groups, hide: hideAmounts) }
-                else { resultRows(groups, hide: hideAmounts) }
+                if (categoryScope != nil || entryIDsScope != nil) && categoryTimeline == nil {
+                    ProgressView().listRowBackground(Color.clear).listRowSeparator(.hidden)
+                } else {
+                    headerBlock(groups: groups, hide: hideAmounts)
+                        .id("entriesTop")
+                        .listRowInsets(EdgeInsets(top: YubaiSpace.none, leading: YubaiSpace.none, bottom: YubaiSpace.space12, trailing: YubaiSpace.none))
+                        .listRowBackground(Color.clear).listRowSeparator(.hidden)
+                    if groups.allSatisfy({ $0.days.isEmpty }) { emptyRow }
+                    else { monthRows(groups, hide: hideAmounts) }
+                }
             }
             #if os(iOS)
-            .listStyle(.insetGrouped).listSectionSpacing(12)
+            .listStyle(.insetGrouped).listSectionSpacing(YubaiSpace.space12)
             .contentMargins(.horizontal, YubaiSpace.insetPage, for: .scrollContent)
             #else
             .listStyle(.inset)
@@ -56,14 +65,32 @@ struct EntriesView: View {
             .scrollContentBackground(.hidden).contentMargins(.top, 0, for: .scrollContent)
             .environment(\.defaultMinListRowHeight, 0)
             .scrollDismissesKeyboard(.interactively).amountPrivacy(hideAmounts).accessibilityIdentifier("entriesScroll")
-            .rootScrollContentMargins(for: .ledger).rootTabScroll(.ledger)
+            .rootScrollContentMargins(for: .ledger)
+            .coordinateSpace(name: "ledgerTimeline")
+            #if os(iOS)
+            .scrollPosition($position)
+            .onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y } action: { _, offset in currentOffset = offset }
+            #endif
+            .rootPageHeader { topBar.accessibilityHidden(store.destination != .ledger) }
+            .onChange(of: store.rootScrollRequest[.ledger]) { _, _ in
+                searchExpanded = false; searchFocused = false; search = ""; filter = .all; showsFilters = false
+                scope = nil; entryIDsScope = nil; categoryScope = nil; categoryTimeline = nil
+                month = Dates.calendar.dateInterval(of: .month, for: store.financialNow)!.start
+                proxy.scrollTo("entriesTop", anchor: .top)
+            }
             .onChange(of: scrollToTop) { _, value in
                 guard value else { return }
                 proxy.scrollTo("entriesTop", anchor: .top); scrollToTop = false
             }
+            .onChange(of: store.receiptFeedbackTrigger) { _, _ in
+                guard !store.receiptEntryIDs.isEmpty else { return }
+                searchFocused = false; searchExpanded = false; search = ""; filter = .all; showsFilters = false
+                scope = nil; entryIDsScope = nil; categoryScope = nil; categoryTimeline = nil
+                scrollToTop = true
+            }
             .onChange(of: scrollMonth) { _, value in
                 guard let value else { return }
-                withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo(value, anchor: .top) }
+                withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { proxy.scrollTo("month-" + Dates.text(value), anchor: .top) }
                 scrollMonth = nil
             }
             .onChange(of: store.entryFilterRequest, initial: true) { _, pending in
@@ -80,34 +107,47 @@ struct EntriesView: View {
 
     // MARK: 页首
 
-    @ViewBuilder private func headerBlock(timeline: EntryTimeline.Snapshot, groups: [EntryTimeline.Month], hide: Bool) -> some View {
-        VStack(spacing: YubaiSpace.gapGroup) {
-            Group {
-                if !searching {
-                    Segmented(choices: LedgerMode.allCases.map { ($0, $0 == .detail ? "明细" : "去向") }, selection: $mode,
-                                  identifier: { "ledgerMode_" + $0.rawValue })
-                }
-                searchField
-                if !searching && store.sortedEntries.contains(where: { $0.deletedAt == nil }) { filters }
-                if let categoryScope {
-                    Button { self.categoryScope = nil; categoryTimeline = nil; scope = nil } label: {
-                        Label(Classification.displayCategory(categoryScope), systemImage: "xmark.circle")
-                            .yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin)
-                    }.buttonStyle(PressButtonStyle()).accessibilityLabel("清掉分类筛选").accessibilityIdentifier("clearLedgerCategory")
-                }
-                summary(groups, hide: hide)
+    @ViewBuilder private func headerBlock(groups: [EntryTimeline.Month], hide: Bool) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            if !searching && !showsFilters && filter == .all && categoryScope == nil && scope == nil {
+                LedgerHomeHeader(model: LedgerHomeModel.make(store))
             }
+            if searching || showsFilters { filters }
+            if let categoryScope {
+                Button { self.categoryScope = nil; categoryTimeline = nil; scope = nil } label: {
+                    Label(Classification.displayCategory(categoryScope), systemImage: "xmark.circle")
+                        .yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin)
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("清掉分类筛选").accessibilityIdentifier("clearLedgerCategory")
+            }
+            summary(groups, hide: hide)
         }.padding(.top, YubaiSpace.space4)
+    }
+    @ViewBuilder private var topBar: some View {
+        if searching { searchField }
+        else {
+            HStack(spacing: YubaiSpace.space8) {
+                AmountVisibilityButton()
+                Spacer(minLength: YubaiSpace.none)
+                monthButton(month)
+                Spacer(minLength: YubaiSpace.none)
+                HeaderIconButton {
+                    savedOffset = currentOffset; searchExpanded = true; searchFocused = true; scrollToTop = true
+                } icon: { size in Image(systemName: "magnifyingglass").font(.system(size: size)) }
+                    .accessibilityLabel("搜索").accessibilityIdentifier("openLedgerSearch")
+                HeaderIconButton { showsFilters.toggle(); scrollToTop = true } icon: { size in Image(systemName: "line.3.horizontal.decrease").font(.system(size: size)) }
+                    .accessibilityLabel("筛选").accessibilityIdentifier("openLedgerFilters")
+            }.frame(minHeight: YubaiSize.headerHeight)
+        }
     }
     private var searchField: some View {
         SearchInput(text: $search, placeholder: "搜名字、金额、备注", identifier: "entriesSearch", label: "搜索账目",
-                    focus: $searchFocused, showsCancel: searching, cancelIdentifier: "entriesSearchCancel", cancel: endSearch)
+                    focus: $searchFocused, showsCancel: true, cancelIdentifier: "entriesSearchCancel", cancel: endSearch)
     }
     private var filters: some View {
         ChipFlow {
             ForEach(EntryTimeline.Filter.allCases, id: \.self) { choice in
                 Button { filter = choice } label: {
-                    Text(choice.rawValue).yubaiFont(YubaiFont.callout, weight: filter == choice ? .medium : .regular)
+                    Text(choice == .all ? "全部时间" : choice.rawValue).yubaiFont(YubaiFont.callout, weight: filter == choice ? .medium : .regular)
                         .fixedSize(horizontal: false, vertical: true)
                         .foregroundStyle(filter == choice ? YubaiColor.canvas : YubaiColor.label)
                         .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.chipHeight)
@@ -122,7 +162,7 @@ struct EntriesView: View {
         let days = groups.flatMap(\.days)
         let count = days.reduce(0) { $0 + $1.entries.count }
         let net = days.reduce(Int64(0)) { $0 + $1.income - $1.spending }
-        if !search.isEmpty || scope != nil {
+        if searching || scope != nil || (filter != .all && filter != .uncategorized) {
             summaryLine(left: "\(count) 笔", hide: hide, net: net)
         } else if filter == .uncategorized, count > 0 {
             let ids = days.flatMap { $0.entries.map(\.id) }
@@ -142,7 +182,7 @@ struct EntriesView: View {
             Text(left).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                 .accessibilityIdentifier("activeEntryCount")
             Spacer(minLength: YubaiSpace.space8)
-            AmountLabel(cents: net, hide: hide, role: .summary).fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("entriesSearchTotal")
+            HStack(spacing: YubaiSpace.space4) { Text("共").yubaiFont(YubaiFont.callout); AmountLabel(cents: abs(net), hide: hide, role: .small) }.fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("entriesSearchTotal")
         }.padding(.horizontal, YubaiSpace.space4)
     }
     @ViewBuilder private var emptyRow: some View {
@@ -161,29 +201,27 @@ struct EntriesView: View {
     // MARK: 行
 
     @ViewBuilder private func monthRows(_ groups: [EntryTimeline.Month], hide: Bool) -> some View {
-        let previousDay = store.funds.cycleIsPayday ? groups.flatMap(\.days).first { $0.date < store.funds.cycleStart }?.date : nil
-        ForEach(groups) { group in
-            monthHeader(group, hide: hide)
-                .id(group.date)
-                .listRowInsets(EdgeInsets(top: YubaiSpace.space12, leading: YubaiSpace.none, bottom: YubaiSpace.space4, trailing: YubaiSpace.none))
-                .listRowBackground(Color.clear).listRowSeparator(.hidden)
+        ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+            if index == 0 && !group.days.isEmpty {
+                Color.clear.frame(height: YubaiSize.separator).id("month-" + Dates.text(group.date))
+                    .listRowInsets(EdgeInsets()).listRowBackground(Color.clear).listRowSeparator(.hidden).accessibilityHidden(true)
+            }
+            if index > 0 || group.days.isEmpty {
+                monthHeader(group, hide: hide)
+                    .id("month-" + Dates.text(group.date))
+                    .listRowInsets(EdgeInsets(top: YubaiSpace.space12, leading: YubaiSpace.none, bottom: YubaiSpace.space4, trailing: YubaiSpace.none))
+                    .listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
             ForEach(group.days) { day in
-                if day.date == previousDay {
-                    cycleDivider.listRowBackground(Color.clear).listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: YubaiSpace.space8, leading: YubaiSpace.none, bottom: YubaiSpace.space8, trailing: YubaiSpace.none))
-                }
                 Section {
                     ForEach(day.entries) { entry in entryRow(entry, hide: hide, context: filter == .uncategorized ? .uncategorized : .day) }
                 } header: {
                     dayHeader(day, hide: hide)
-                }
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named("ledgerTimeline")).minY } action: { y in
+                            if !searching && y >= 0 && y < YubaiSize.rowDouble { month = group.date }
+                        }
+                }.id(day.date)
             }
-        }
-    }
-    @ViewBuilder private func resultRows(_ groups: [EntryTimeline.Month], hide: Bool) -> some View {
-        let rows = groups.flatMap { $0.days.flatMap(\.entries) }
-        Section {
-            ForEach(rows) { entry in entryRow(entry, hide: hide, context: filter == .uncategorized && search.isEmpty ? .uncategorized : .search) }
         }
     }
     private func dayHeader(_ day: EntryTimeline.Day, hide: Bool) -> some View {
@@ -200,7 +238,7 @@ struct EntriesView: View {
                     .controlSurface(in: Circle()).yubaiHitTarget()
             }.buttonStyle(PressButtonStyle()).accessibilityLabel("补记到" + FixedFlowPresentation.monthDay(day.date))
                 .accessibilityIdentifier("addEntryOnDay_" + Dates.text(day.date))
-        }.yubaiFont(YubaiFont.callout, weight: .semibold).dynamicTypeSize(...DynamicTypeSize.xxxLarge).textCase(nil).padding(.top, YubaiSpace.space8)
+        }.yubaiFont(YubaiFont.callout, weight: .semibold).textCase(nil).padding(.top, YubaiSpace.space8)
     }
     private func entryRow(_ entry: EntryTimeline.Row, hide: Bool, context: RowContext) -> some View {
         LedgerEntryRow(entry: entry, subtitle: subtitle(entry, context), hideAmounts: hide, isFresh: store.freshEntryIDs.contains(entry.id),
@@ -233,14 +271,18 @@ struct EntriesView: View {
                 if let date = Dates.calendar.date(from: DateComponents(year: pickerYear, month: pickerMonth, day: 1)) { jump(to: date) }
                 pickingMonth = false
             })
-            HStack(spacing: YubaiSpace.none) {
-                Picker("年", selection: $pickerYear) { ForEach(monthYears, id: \.self) { Text(verbatim: "\($0) 年").tag($0) } }
-                Picker("月", selection: $pickerMonth) { ForEach(1...12, id: \.self) { Text("\($0) 月").tag($0) } }
+            Picker("年", selection: $pickerYear) { ForEach(monthYears, id: \.self) { Text(verbatim: "\($0) 年").tag($0) } }
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space8), count: 3), spacing: YubaiSpace.space8) {
+                ForEach(1...12, id: \.self) { number in
+                    Button("\(number)月") {
+                        pickerMonth = number
+                        if let date = Dates.calendar.date(from: DateComponents(year: pickerYear, month: number, day: 1)) { jump(to: date) }
+                        pickingMonth = false
+                    }.buttonStyle(NowCardButtonStyle(primary: number == pickerMonth))
+                        .accessibilityIdentifier("ledgerJumpMonth_\(number)")
+                }
             }
-            #if os(iOS)
-            .pickerStyle(.wheel)
-            #endif
-        }.padding(.horizontal, YubaiSpace.space20).yubaiSheetBackground().presentationDetents([.height(YubaiSize.sheet300 + YubaiSpace.sheetHeaderTop)])
+        }.padding(.horizontal, YubaiSpace.space20).yubaiSheetBackground().presentationDetents(textSize.isAccessibilitySize ? [.large] : [.height(YubaiSize.sheet480 + YubaiSpace.sheetHeaderTop)])
     }
     private func categorySheet(_ id: UUID) -> some View {
         let entry = store.entriesByID[id]
@@ -271,7 +313,7 @@ struct EntriesView: View {
     private func applyRequest(_ value: LedgerPreset?) {
         guard let value, value.mode == .detail else { return }
         filter = .all
-        search = value.search
+        search = value.search; searchExpanded = !value.search.isEmpty; showsFilters = true
         categoryScope = value.category; categoryTimeline = nil
         scope = value.interval
         entryIDsScope = value.entryIDs
@@ -283,7 +325,12 @@ struct EntriesView: View {
         // Scroll after List has received the target header (also for an empty month).
         Task { @MainActor in await Task.yield(); scrollMonth = month }
     }
-    private func endSearch() { searchFocused = false; search = ""; scope = nil; entryIDsScope = nil; categoryScope = nil; categoryTimeline = nil; scrollToTop = true }
+    private func endSearch() {
+        searchFocused = false; searchExpanded = false; search = ""; scope = nil; entryIDsScope = nil; categoryScope = nil; categoryTimeline = nil
+        #if os(iOS)
+        Task { @MainActor in await Task.yield(); position.scrollTo(y: savedOffset) }
+        #endif
+    }
     private var categoryQuery: String { "\(store.ledgerRevision)-\(store.financialNow)-\(categoryScope ?? "")-\(String(describing: entryIDsScope))-\(String(describing: scope))-\(search)-\(filter.rawValue)-\(month)" }
     @MainActor private func refreshCategoryTimeline() async {
         guard categoryScope != nil || entryIDsScope != nil else { categoryTimeline = nil; return }
@@ -320,8 +367,8 @@ struct EntriesView: View {
     }
     private func monthHeader(_ group: EntryTimeline.Month, hide: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
-            HStack { monthButton(group.date); Spacer(minLength: YubaiSpace.space8); monthTotal(group, hide: hide) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) { monthButton(group.date); monthTotal(group, hide: hide) }
+            HStack { Text(monthTitle(group.date)).yubaiFont(YubaiFont.month); Spacer(minLength: YubaiSpace.space8); monthTotal(group, hide: hide) }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(monthTitle(group.date)).yubaiFont(YubaiFont.month); monthTotal(group, hide: hide) }
         }
     }
     private func monthButton(_ date: Date) -> some View {
@@ -329,7 +376,7 @@ struct EntriesView: View {
             pickerYear = Dates.calendar.component(.year, from: date); pickerMonth = Dates.calendar.component(.month, from: date); pickingMonth = true
         } label: {
             HStack(spacing: YubaiSpace.space4) {
-                Text(monthTitle(date)).yubaiFont(YubaiFont.callout, weight: .semibold)
+                Text(monthTitle(date)).yubaiFont(YubaiFont.callout, weight: .semibold).accessibilityIdentifier("rootHeaderTitle")
                 Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta)
             }.fixedSize().yubaiHitTarget(alignment: .leading)
         }.buttonStyle(PressButtonStyle())
@@ -342,26 +389,10 @@ struct EntriesView: View {
         }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
     }
     private func monthSpending(_ group: EntryTimeline.Month, hide: Bool) -> some View {
-        AdaptiveValueRow(spreadsValue: false) { Text("支出") } value: { AmountLabel(cents: group.spending, hide: hide, role: .day, sign: .none) }
+        AdaptiveValueRow(spreadsValue: false) { Text("支出") } value: { AmountLabel(cents: group.spending, hide: hide, role: .small, sign: .none) }
     }
     private func monthIncome(_ group: EntryTimeline.Month, hide: Bool) -> some View {
-        AdaptiveValueRow(spreadsValue: false) { Text("收入") } value: { AmountLabel(cents: group.income, hide: hide, role: .day, sign: .none, ink: YubaiColor.brandInk) }
-    }
-    private var cycleDivider: some View {
-        let start = store.funds.cycleStart
-        let previous = Finance.cycle(in: store.current, now: start.addingTimeInterval(-0.001))
-        let title = "上一期 · " + FixedFlowPresentation.monthDay(previous.start) + " – " + FixedFlowPresentation.monthDay(Dates.addDays(-1, to: start))
-        return HStack(spacing: YubaiSpace.space8) {
-            dashedLine
-            Text(title).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
-            dashedLine
-        }.accessibilityElement(children: .combine).accessibilityIdentifier("entriesPreviousCycle")
-    }
-    private var dashedLine: some View {
-        Line().stroke(style: StrokeStyle(lineWidth: YubaiSize.separator, dash: [3, 3])).foregroundStyle(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)
-    }
-    private struct Line: Shape {
-        func path(in rect: CGRect) -> Path { Path { $0.move(to: .zero); $0.addLine(to: CGPoint(x: rect.width, y: YubaiSpace.none)) } }
+        AdaptiveValueRow(spreadsValue: false) { Text("收入") } value: { AmountLabel(cents: group.income, hide: hide, role: .small, sign: .none, ink: YubaiColor.brandInk) }
     }
     private func dayTotal(_ day: EntryTimeline.Day, hide: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
@@ -370,10 +401,10 @@ struct EntriesView: View {
         }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
     }
     private func daySpending(_ day: EntryTimeline.Day, hide: Bool) -> some View {
-        HStack(spacing: YubaiSpace.space4) { if day.income > 0 { Text("支出") }; AmountLabel(cents: day.income > 0 ? day.spending : -day.spending, hide: hide, role: .day) }.fixedSize()
+        HStack(spacing: YubaiSpace.space4) { if day.income > 0 { Text("支出") }; AmountLabel(cents: day.income > 0 ? day.spending : -day.spending, hide: hide, role: .small) }.fixedSize()
     }
     private func dayIncome(_ day: EntryTimeline.Day, hide: Bool) -> some View {
-        HStack(spacing: YubaiSpace.space4) { Text("收入"); AmountLabel(cents: day.income, hide: hide, role: .day, ink: YubaiColor.brandInk) }.fixedSize()
+        HStack(spacing: YubaiSpace.space4) { Text("收入"); AmountLabel(cents: day.income, hide: hide, role: .small, ink: YubaiColor.brandInk) }.fixedSize()
     }
     private func dayLabel(_ date: Date) -> String {
         let label = ManualBookkeeping.dayLabel(date)
@@ -387,6 +418,7 @@ struct LedgerEntryRow: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var highlighted = true
+    @State private var acknowledged = false
     let entry: EntryTimeline.Row
     let subtitle: String
     let hideAmounts: Bool
@@ -395,7 +427,7 @@ struct LedgerEntryRow: View {
     var body: some View {
         entryButton
             .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
-            .accessibilityValue(isFuture ? "未来" : "")
+            .accessibilityValue(isFuture ? "未来" : acknowledged ? "已记下" : "")
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
                     .tint(YubaiColor.amberTint).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
@@ -409,13 +441,18 @@ struct LedgerEntryRow: View {
             }
             .accessibilityAction(named: "改分类") { onSortCategory() }
             .accessibilityAction(named: "删掉") { delete() }
-            .task(id: isFresh) {
-                guard isFresh, YubaiMotion.claim("new-row-" + entry.id.uuidString) else { highlighted = false; return }
-                withAnimation(YubaiMotion.wash(reduceMotion: reduceMotion)) { highlighted = false }
+            .task(id: isFresh && store.sheet == nil) {
+                guard isFresh, store.sheet == nil, YubaiMotion.claim("new-row-" + entry.id.uuidString) else {
+                    highlighted = false; acknowledged = false; return
+                }
+                highlighted = true; acknowledged = true
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                acknowledged = false
+                withAnimation(YubaiMotion.quick) { highlighted = false }
             }
     }
     private var entryButton: some View {
-        TabNavigationLink(.entryDetail(entry.id)) { EntryDetailView(entryID: entry.id) } label: { content }
+        Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: { content }
     }
     private var savedEntry: Entry? { store.entriesByID[entry.id] }
     private var title: String { savedEntry?.displayTitle ?? entry.categoryName }

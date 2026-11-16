@@ -82,7 +82,7 @@ enum YubaiColor {
 }
 
 enum YubaiFont {
-    enum Family: Equatable { case num, serif, sans, code }
+    enum Family: Equatable { case num, sans, code }
     struct Style {
         let size: CGFloat
         let lineHeight: CGFloat
@@ -90,7 +90,7 @@ enum YubaiFont {
         let family: Family
         var tracking: CGFloat = 0
         var relativeTo: Font.TextStyle = .body
-        var design: Font.Design { switch family { case .num: .rounded; case .serif: .serif; case .sans: .default; case .code: .monospaced } }
+        var design: Font.Design { switch family { case .num: .rounded; case .sans: .default; case .code: .monospaced } }
     }
     static let entryAmount = Style(size: 48, lineHeight: 56, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
     static let entrySheetTitle = Style(size: 17, lineHeight: 24, weight: .semibold, family: .sans, relativeTo: .headline)
@@ -109,11 +109,11 @@ enum YubaiFont {
     static let amountDonut = Style(size: 22, lineHeight: 28, weight: .semibold, family: .num, relativeTo: .title2)
     static let amountAccount = Style(size: 24, lineHeight: 30, weight: .semibold, family: .num, relativeTo: .title2)
     static let chartValue = Style(size: 11, lineHeight: 14, weight: .medium, family: .num, tracking: 0, relativeTo: .caption2)
-    static let lead = Style(size: 22, lineHeight: 32, weight: .semibold, family: .serif, tracking: 0, relativeTo: .title2)
-    static let quote = Style(size: 20, lineHeight: 30, weight: .semibold, family: .serif, tracking: 0, relativeTo: .title3)
-    static let heroLabel = Style(size: 17, lineHeight: 24, weight: .semibold, family: .serif, tracking: 0, relativeTo: .headline)
-    static let cardTitle = Style(size: 16, lineHeight: 22, weight: .semibold, family: .serif, tracking: 0, relativeTo: .headline)
-    static let month = Style(size: 17, lineHeight: 24, weight: .semibold, family: .serif, tracking: 0, relativeTo: .headline)
+    static let lead = Style(size: 22, lineHeight: 32, weight: .semibold, family: .sans, tracking: 0, relativeTo: .title2)
+    static let quote = Style(size: 20, lineHeight: 30, weight: .semibold, family: .sans, tracking: 0, relativeTo: .title3)
+    static let heroLabel = Style(size: 17, lineHeight: 24, weight: .semibold, family: .sans, tracking: 0, relativeTo: .headline)
+    static let cardTitle = Style(size: 16, lineHeight: 22, weight: .semibold, family: .sans, tracking: 0, relativeTo: .headline)
+    static let month = Style(size: 17, lineHeight: 24, weight: .semibold, family: .sans, tracking: 0, relativeTo: .headline)
     static let navTitle = Style(size: 16, lineHeight: 22, weight: .bold, family: .sans, tracking: 0, relativeTo: .headline)
     static let body = Style(size: 15, lineHeight: 22, weight: .regular, family: .sans, tracking: 0, relativeTo: .body)
     static let rowTitle = Style(size: 15, lineHeight: 20, weight: .medium, family: .sans, tracking: 0, relativeTo: .body)
@@ -342,10 +342,10 @@ enum YubaiSize {
     static let marker: CGFloat = 8
     static func rootBottomPadding(for destination: Destination) -> CGFloat {
         #if os(macOS)
-        destination == .now ? homeEntryPillHeight + YubaiSpace.gapSection : YubaiSpace.none
+        destination == .ledger ? homeEntryPillHeight + YubaiSpace.gapSection : YubaiSpace.none
         #else
-        floatingTabbarHeight + floatingTabbarBottom + YubaiSpace.space12 +
-            (destination == .now ? homeEntryPillHeight + YubaiSpace.space12 : YubaiSpace.none)
+        floatingTabbarHeight + floatingTabbarBottom +
+            (destination == .ledger ? homeEntryPillHeight + YubaiSpace.space12 : YubaiSpace.none)
         #endif
     }
 }
@@ -497,6 +497,7 @@ private struct SheetSurfaceKey: EnvironmentKey { static let defaultValue = false
 private struct RootSurfaceKey: EnvironmentKey { static let defaultValue = false }
 private struct FormSurfaceKey: EnvironmentKey { static let defaultValue = false }
 private struct CardContentKey: EnvironmentKey { static let defaultValue = false }
+private struct ButlerCardDismissKey: EnvironmentKey { static let defaultValue: (() -> Void)? = nil }
 private struct ZoomNamespaceKey: EnvironmentKey { static let defaultValue: Namespace.ID? = nil }
 private struct ToastClearanceKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
 private struct PresentationScaleKey: EnvironmentKey { static let defaultValue: CGFloat = 1 }
@@ -510,6 +511,10 @@ private struct PresentationScaleKey: EnvironmentKey { static let defaultValue: C
 }
 private struct RowInputSessionKey: EnvironmentKey { static let defaultValue: RowInputSession? = nil }
 extension EnvironmentValues {
+    var butlerCardDismiss: (() -> Void)? {
+        get { self[ButlerCardDismissKey.self] }
+        set { self[ButlerCardDismissKey.self] = newValue }
+    }
     /// SwiftUI's system value is read-only; scripted tests opt in at the readers.
     var yubaiReduceMotion: Bool {
         #if DEBUG && targetEnvironment(simulator)
@@ -522,6 +527,7 @@ extension EnvironmentValues {
     var yubaiFormSurface: Bool { get { self[FormSurfaceKey.self] } set { self[FormSurfaceKey.self] = newValue } }
     var yubaiCardContent: Bool { get { self[CardContentKey.self] } set { self[CardContentKey.self] = newValue } }
     var yubaiZoomNamespace: Namespace.ID? { get { self[ZoomNamespaceKey.self] } set { self[ZoomNamespaceKey.self] = newValue } }
+    var yubaiRootNavigationHeight: CGFloat { get { self[RootNavigationHeightKey.self] } set { self[RootNavigationHeightKey.self] = newValue } }
     var yubaiToastClearance: CGFloat { get { self[ToastClearanceKey.self] } set { self[ToastClearanceKey.self] = newValue } }
     var yubaiPresentationScale: CGFloat { get { self[PresentationScaleKey.self] } set { self[PresentationScaleKey.self] = newValue } }
     fileprivate var yubaiRowInputSession: RowInputSession? { get { self[RowInputSessionKey.self] } set { self[RowInputSessionKey.self] = newValue } }
@@ -798,10 +804,12 @@ private struct ToastContentSlot: ViewModifier {
     }
 }
 
+private struct RootNavigationHeightKey: EnvironmentKey { static let defaultValue: CGFloat = 0 }
+
 private struct RootScrollMargins: ViewModifier {
     @Environment(\.yubaiToastClearance) private var clearance
     func body(content: Content) -> some View {
-        content.contentMargins(.bottom, YubaiSpace.gapGroup + clearance, for: .scrollContent)
+        content.contentMargins(.bottom, YubaiSpace.space16 + clearance, for: .scrollContent)
     }
 }
 
@@ -1145,12 +1153,7 @@ extension View {
         #if os(iOS)
         // Insetting content alone still lets rows rest underneath the floating
         // controls. Keep the clipped viewport above them at every scroll offset.
-        self.modifier(RootScrollMargins())
-            .scrollEdgeEffectHidden(true, for: .bottom)
-            .scrollEdgeEffectStyle(.soft, for: .top)
-            .scrollClipDisabled(false)
-            .modifier(ScrollContentViewport())
-            .padding(.bottom, reservesNavigation ? YubaiSize.rootBottomPadding(for: destination) : YubaiSpace.none)
+        self.modifier(MeasuredRootScroll(destination: destination, reservesNavigation: reservesNavigation))
         #else
         self.padding(.bottom, reservesNavigation ? YubaiSize.rootBottomPadding(for: destination) : YubaiSpace.none)
         #endif
@@ -1390,14 +1393,15 @@ struct AmountLabel: View {
     var currency: Bool? = nil
     var ink: Color = YubaiColor.label
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
-    private var text: String { Self.text(cents, sign: sign, currency: currency ?? (resolvedRole == .hero)) }
+    private var showsCurrency: Bool { currency ?? (resolvedRole == .hero || resolvedRole == .display) }
+    private var text: String { Self.text(cents, sign: sign, currency: showsCurrency) }
     private var numericValue: Double {
         switch sign { case .automatic: Double(cents) / 100; case .inflow, .none: abs(Double(cents)) / 100; case .outflow: -abs(Double(cents)) / 100 }
     }
     var body: some View {
         let font = resolvedRole.font
         Group {
-            if hide { Text("••••").transition(.opacity) }
+            if hide { Text(showsCurrency ? "¥••••" : "••••").transition(.opacity) }
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(ink)
             .fixedSize(horizontal: false, vertical: true)
@@ -1658,7 +1662,7 @@ struct InlineNote: View {
 }
 
 enum EmptyStateKind: String, CaseIterable {
-    case ledger, saving, wish, bills, assistant, profile, memories, frequent, budget, search
+    case ledger, saving, wish, bills, assistant, profile, memories, frequent, restraint, search
     var title: String {
         switch self {
         case .ledger: "还没有账"
@@ -1669,7 +1673,7 @@ enum EmptyStateKind: String, CaseIterable {
         case .profile: "钱该怎么花，你说了算"
         case .memories: "聊过的会记在这里"
         case .frequent: "常记的会自己出现"
-        case .budget: "给一类定个数"
+        case .restraint: "最容易花多的那一类"
         case .search: "没有找到"
         }
     }
@@ -1683,7 +1687,7 @@ enum EmptyStateKind: String, CaseIterable {
         case .profile: "写一句"
         case .memories: "去聊一句"
         case .frequent: "自己加一个"
-        case .budget: "定一个"
+        case .restraint: "盯住某个分类"
         case .search: "清掉筛选"
         }
     }
@@ -1710,7 +1714,7 @@ struct EmptyState: View {
         self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = secondaryIdentifier
         self.titleIdentifier = titleIdentifier
     }
-    // Custom facts use the same ghost and serif line as the named page presets.
+    // Custom facts use the same ghost and sans title as the named page presets.
     init(_ icon: String, _ title: String, action: String? = nil, actionIdentifier: String = "", onAction: (() -> Void)? = nil) {
         self.kind = icon == "calendar" ? .bills : icon == "heart" ? .wish : icon == "text.book.closed" ? .memories : .ledger
         self.title = title; self.action = action; self.onAction = onAction
@@ -1807,7 +1811,7 @@ private struct EmptyGhostDrawing: View {
                     if day == 20 { context.stroke(Path(roundedRect: CGRect(x: x - 12, y: y - 12, width: 24, height: 24), cornerRadius: 8), with: .color(YubaiColor.brand), style: dash) }
                 }
             case .profile:
-                context.draw(Text("“ ”").font(.system(size: 48, design: .serif)).foregroundColor(YubaiColor.separator), at: CGPoint(x: 120, y: 68))
+                context.draw(Text("“ ”").font(.system(size: 48, design: .default)).foregroundColor(YubaiColor.separator), at: CGPoint(x: 120, y: 68))
                 var rule = Path(); rule.move(to: CGPoint(x: 42, y: 105)); rule.addLine(to: CGPoint(x: 198, y: 105))
                 context.stroke(rule, with: .color(YubaiColor.separator), style: dash)
             case .memories:
@@ -1821,7 +1825,7 @@ private struct EmptyGhostDrawing: View {
                     let x: CGFloat = i == 4 ? 86 : (i % 2 == 0 ? 35 : 118), y = CGFloat(33 + (i / 2) * 38)
                     box(CGRect(x: x, y: y, width: i == 3 ? 84 : 70, height: 29), radius: 15)
                 }
-            case .budget:
+            case .restraint:
                 box(CGRect(x: 12, y: 43, width: 216, height: 70), paper: true)
                 line(27, 61, 186); line(27, 86, 186)
                 var marker = Path(); marker.move(to: CGPoint(x: 161, y: 53)); marker.addLine(to: CGPoint(x: 161, y: 81))
@@ -2115,13 +2119,14 @@ struct HomeEntryPill: View {
     let title: String
     let action: () -> Void
     let quick: () -> Void
+    @ScaledMetric(relativeTo: .body) private var pillHeight = YubaiSize.homeEntryPillHeight
     var body: some View {
         HStack(spacing: YubaiSpace.space8) {
             Image(systemName: "plus").yubaiFont(YubaiFont.tabIcon, weight: .semibold)
             Text(title).yubaiFont(YubaiFont.fieldValue, weight: .semibold)
         }.foregroundStyle(YubaiColor.onBrand)
             .padding(.leading, YubaiSpace.space22).padding(.trailing, YubaiSpace.space28)
-            .frame(height: YubaiSize.homeEntryPillHeight)
+            .padding(.vertical, YubaiSpace.space8).frame(minHeight: pillHeight)
             .background { Capsule().fill(YubaiColor.brand).yubaiShadow(YubaiShadow.ask) }
             .contentShape(Capsule())
             #if os(iOS)
@@ -2329,7 +2334,7 @@ struct DestinationGlyph: View {
     }
     @ViewBuilder private var glyph: some View {
         switch destination {
-        case .now: Image(systemName: "clock").font(.system(size: size, weight: selected ? .medium : .regular))
+        case .insights: Image(systemName: "chart.pie").font(.system(size: size, weight: selected ? .medium : .regular))
         case .ledger: NowTabGlyph(size: size, selected: selected)
         case .yubai: Image(systemName: "leaf.fill").font(.system(size: size, weight: selected ? .medium : .regular))
         }
@@ -2340,35 +2345,20 @@ struct DestinationGlyph: View {
 struct RootHeader: View {
     @Environment(AppStore.self) private var store
     let title: String
-    private var iconSize: CGFloat { YubaiSize.headerIcon }
     private var side: CGFloat { YubaiSize.iconButton }
     var body: some View {
         HStack(spacing: YubaiSpace.none) {
-            amountToggle
+            AmountVisibilityButton()
             Text(title).yubaiFont(YubaiFont.navTitle).lineLimit(1).frame(maxWidth: .infinity)
                 .accessibilityAddTraits(.isHeader).accessibilityIdentifier("rootHeaderTitle")
-            settingsLink
+            Color.clear.frame(width: side, height: side)
         }.frame(minHeight: YubaiSize.headerHeight)
             .accessibilityElement(children: .contain)
             // Safe-area headers can escape a hidden NavigationStack's AX
             // boundary. Hide the header at its own boundary as well.
             .accessibilityHidden(store.destination.title != title)
     }
-    private var amountToggle: some View {
-        Button { store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() } } label: {
-            icon(store.preferences.hideAmounts ? "eye.slash" : "eye")
-        }.buttonStyle(PressButtonStyle())
-            .accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额").accessibilityIdentifier("toggleAmountVisibility")
-    }
-    private var settingsLink: some View {
-        TabNavigationLink(.settings) { SettingsView() } label: {
-            icon("slider.horizontal.3")
-        }.buttonStyle(PressButtonStyle()).accessibilityLabel("设置").accessibilityIdentifier("openSettings")
-    }
-    private func icon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: iconSize)).accessibilityHidden(true)
-            .frame(width: side, height: side).controlSurface(in: Circle()).yubaiHitTarget()
-    }
+
 }
 
 // MARK: - Round 45 shared components
@@ -2376,6 +2366,7 @@ struct RootHeader: View {
 /// 现在页的一问两答卡：眉标、标题（名字 + 金额 + 问句）、两个答案；同时有几件事时右上角写「还有 N 件」。
 struct QuestionCard: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.butlerCardDismiss) private var inheritedDismiss
     @Environment(\.dynamicTypeSize) private var textSize
     let eyebrow: String
     let title: String
@@ -2391,10 +2382,12 @@ struct QuestionCard: View {
     let noTitle: String
     var yesIdentifier = ""
     var noIdentifier = ""
+    var yesEnabled = true
     let yes: () -> Void
     let no: () -> Void
     var onDismiss: (() -> Void)? = nil
     var dismissIdentifier = ""
+    private var dismissAction: (() -> Void)? { onDismiss ?? inheritedDismiss }
     private var headline: String {
         var parts = [title]
         if let amount { parts.append(amount2(amount, hide: store.preferences.hideAmounts)) }
@@ -2404,21 +2397,18 @@ struct QuestionCard: View {
     var body: some View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                topLine
-                Text(headline).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier(titleIdentifier)
+                if !eyebrow.isEmpty || more > 0 || evidenceTitle != nil || dismissAction != nil { topLine }
+                ButlerHeadline(text: headline, identifier: titleIdentifier)
                 answers.padding(.top, YubaiSpace.space4)
             }
         }.accessibilityElement(children: .contain)
     }
     @ViewBuilder private var topLine: some View {
-        if !eyebrow.isEmpty || onDismiss != nil {
+        if !eyebrow.isEmpty || dismissAction != nil {
             HStack(alignment: .top, spacing: YubaiSpace.space8) {
                 ButlerKicker(title: eyebrow, more: more, evidenceTitle: evidenceTitle, onEvidence: onEvidence)
-                if let onDismiss {
-                    HeaderIconButton(action: onDismiss) { size in Image(systemName: "xmark").font(.system(size: size)) }
-                        .accessibilityLabel("收起").accessibilityIdentifier(dismissIdentifier)
+                if let dismissAction {
+                    CardDismissButton(action: dismissAction).accessibilityIdentifier(dismissIdentifier.isEmpty ? "dismissHomeCard" : dismissIdentifier)
                 }
             }
         }
@@ -2426,9 +2416,47 @@ struct QuestionCard: View {
     private var answers: some View {
         let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space8)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
         return layout {
-            Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).accessibilityIdentifier(yesIdentifier)
+            Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).disabled(!yesEnabled).accessibilityIdentifier(yesIdentifier)
             if !noTitle.isEmpty { Button(noTitle, action: no).buttonStyle(NowCardButtonStyle(primary: false)).accessibilityIdentifier(noIdentifier) }
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.none) }
+        }
+    }
+}
+
+struct CardDismissButton: View {
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark").yubaiFont(YubaiFont.meta)
+                .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
+        }.buttonStyle(PressButtonStyle()).accessibilityLabel("收起")
+    }
+}
+
+private struct ButlerHeadline: View {
+    let text: String
+    let identifier: String
+    @State private var expanded = false
+    @State private var fullHeight: CGFloat = 0
+    @State private var visibleHeight: CGFloat = 0
+    var body: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.none) {
+            Text(text).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
+                .lineLimit(expanded ? nil : 3).fixedSize(horizontal: false, vertical: true)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { visibleHeight = $0 }
+                .background(alignment: .topLeading) {
+                    Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
+                        .hidden().accessibilityHidden(true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { fullHeight = $0 }
+                }.accessibilityLabel(text).accessibilityIdentifier(identifier)
+            if expanded || fullHeight > visibleHeight + 0.5 {
+                Button { expanded.toggle() } label: {
+                    Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)
+                        .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel(expanded ? "收起全文" : "展开全文")
+                    .accessibilityValue(expanded ? "已展开" : "")
+                    .accessibilityIdentifier("expandButlerHeadline")
+            }
         }
     }
 }
@@ -2560,6 +2588,7 @@ struct AmountEntrySheet<Accessory: View>: View {
     var primaryIdentifier = "amountSheetDone"
     var canSave = true
     var primaryAboveKeypad = false
+    var counting = false
     var cancel: (() -> Void)? = nil
     let save: () -> Void
     let accessory: Accessory
@@ -2567,11 +2596,11 @@ struct AmountEntrySheet<Accessory: View>: View {
 
     init(title: String, subtitle: String? = nil, presets: [AmountPreset] = [], keypad: Binding<EntryKeypad>,
          rows: [AmountSheetRow] = [], primaryTitle: String, primaryIdentifier: String = "amountSheetDone",
-         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void,
+         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, counting: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void,
          @ViewBuilder accessory: () -> Accessory) {
         self.title = title; self.subtitle = subtitle; self.presets = presets; _keypad = keypad; self.rows = Array(rows.prefix(2))
         self.primaryTitle = primaryTitle; self.primaryIdentifier = primaryIdentifier; self.canSave = canSave; self.primaryAboveKeypad = primaryAboveKeypad
-        self.cancel = cancel; self.save = save; self.accessory = accessory()
+        self.counting = counting; self.cancel = cancel; self.save = save; self.accessory = accessory()
         _selected = State(initialValue: startsSelected)
     }
     var body: some View {
@@ -2630,23 +2659,23 @@ struct AmountEntrySheet<Accessory: View>: View {
             }
             HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
                 if primaryAboveKeypad { Spacer(minLength: 0) }
-                Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-                Text(keypad.groupedResultText).yubaiFont(YubaiFont.entryAmount)
+                if !counting { Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary) }
+                Text(counting ? "\((keypad.amount ?? 0) / 100) 次" : keypad.groupedResultText).yubaiFont(YubaiFont.entryAmount)
                     .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
                     .padding(.horizontal, 6)
                 if !primaryAboveKeypad { EntryAmountCursor() }
                 Spacer(minLength: 0)
             }.frame(minHeight: YubaiSize.rowDouble)
-        }.accessibilityElement(children: .ignore).accessibilityLabel("金额").accessibilityValue(keypad.resultText)
+        }.accessibilityElement(children: .ignore).accessibilityLabel(counting ? "次数" : "金额").accessibilityValue(counting ? "\((keypad.amount ?? 0) / 100) 次" : keypad.resultText)
             .accessibilityIdentifier("amountSheetAmount")
     }
 }
 extension AmountEntrySheet where Accessory == EmptyView {
     init(title: String, subtitle: String? = nil, presets: [AmountPreset] = [], keypad: Binding<EntryKeypad>,
          rows: [AmountSheetRow] = [], primaryTitle: String, primaryIdentifier: String = "amountSheetDone",
-         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void) {
+         canSave: Bool = true, startsSelected: Bool = true, primaryAboveKeypad: Bool = false, counting: Bool = false, cancel: (() -> Void)? = nil, save: @escaping () -> Void) {
         self.init(title: title, subtitle: subtitle, presets: presets, keypad: keypad, rows: rows, primaryTitle: primaryTitle,
-                  primaryIdentifier: primaryIdentifier, canSave: canSave, startsSelected: startsSelected, primaryAboveKeypad: primaryAboveKeypad, cancel: cancel,
+                  primaryIdentifier: primaryIdentifier, canSave: canSave, startsSelected: startsSelected, primaryAboveKeypad: primaryAboveKeypad, counting: counting, cancel: cancel,
                   save: save) { EmptyView() }
     }
 }
@@ -3203,18 +3232,34 @@ struct SearchInput: View {
     }
 }
 
+enum SystemGlyph {
+    static func validated(_ candidate: String) -> String {
+        #if os(iOS)
+        return UIImage(systemName: candidate) == nil ? "square.grid.2x2" : candidate
+        #elseif os(macOS)
+        return NSImage(systemSymbolName: candidate, accessibilityDescription: nil) == nil ? "square.grid.2x2" : candidate
+        #else
+        return candidate.isEmpty ? "square.grid.2x2" : candidate
+        #endif
+    }
+}
+
 /// A row icon describes its category; an unknown category is a neutral dot.
 struct LedgerCategoryIcon: View {
     @Environment(AppStore.self) private var store
     let category: String
     var pending = false
     var income: Bool? = nil
+    private var symbol: String {
+        let name = category.components(separatedBy: " · ").first ?? category
+        let candidate = store.current.categories.first { $0.name == name && (income == nil || $0.income == income) }?.symbol ?? "square.grid.2x2"
+        return SystemGlyph.validated(candidate)
+    }
     var body: some View {
         Group {
             if pending { Circle().fill(YubaiColor.labelSecondary).frame(width: 6, height: 6) }
             else {
-                let name = category.components(separatedBy: " · ").first ?? category
-                Image(systemName: store.current.categories.first { $0.name == name && (income == nil || $0.income == income) }?.symbol ?? "square.grid.2x2")
+                Image(systemName: symbol)
                     .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
             }
         }.accessibilityHidden(true)
@@ -4151,5 +4196,155 @@ private struct ReceiptPrint: ViewModifier {
 extension View {
     func receiptPrint(highlighted: Bool, trigger: Int) -> some View {
         modifier(ReceiptPrint(highlighted: highlighted, trigger: trigger))
+    }
+}
+
+/// The scroll viewport clears the measured floating controls. At the end no
+/// fade may wash out the last actionable row.
+#if os(iOS)
+private struct MeasuredRootScroll: ViewModifier {
+    @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
+    let destination: Destination
+    let reservesNavigation: Bool
+    @State private var atEnd = false
+    private var bottom: CGFloat {
+        reservesNavigation ? (navigationHeight > 0 ? navigationHeight : YubaiSize.rootBottomPadding(for: destination)) : 0
+    }
+    func body(content: Content) -> some View {
+        content.modifier(RootScrollMargins())
+            .scrollEdgeEffectHidden(true, for: .bottom)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .scrollClipDisabled(false).modifier(ScrollContentViewport())
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.contentOffset.y + geometry.containerSize.height >= geometry.contentSize.height + geometry.contentInsets.bottom - 1
+            } action: { _, end in atEnd = end }
+            .overlay(alignment: .bottom) { if !atEnd { PageFade(edge: .bottom) } }
+            .padding(.bottom, bottom)
+    }
+}
+#endif
+
+extension YubaiSize {
+    static let waterHeight: CGFloat = 6
+    static let waterHeightAccessible: CGFloat = 10
+    static let waterTickHeight: CGFloat = 16
+    static let waterTickHeightAccessible: CGFloat = 24
+    static let waterTickWidth: CGFloat = 2
+    static let waterTickWidthAccessible: CGFloat = 3
+    static let waterLabelWidth: CGFloat = 24
+    static let savedPillHeight: CGFloat = 32
+    static let cashChartHeight: CGFloat = 120
+    static let categoryBarHeight: CGFloat = 4
+}
+extension YubaiFont {
+    static let waterToday = Style(size: 10, lineHeight: 14, weight: .regular, family: .sans, relativeTo: .caption2)
+}
+
+struct WaterBar: View {
+    @Environment(\.dynamicTypeSize) private var textSize
+    let fill: Double
+    let tick: Double
+    var fast = false
+    var hide = false
+    @ScaledMetric(relativeTo: .caption2) private var labelHeight = YubaiFont.waterToday.lineHeight
+    @ScaledMetric(relativeTo: .caption2) private var labelWidth = YubaiSize.waterLabelWidth
+    private var height: CGFloat { textSize.isAccessibilitySize ? YubaiSize.waterHeightAccessible : YubaiSize.waterHeight }
+    private var tickHeight: CGFloat { textSize.isAccessibilitySize ? YubaiSize.waterTickHeightAccessible : YubaiSize.waterTickHeight }
+    var body: some View {
+        GeometryReader { geometry in
+            let x = min(max(0, tick), 1) * geometry.size.width
+            ZStack(alignment: .topLeading) {
+                Capsule().fill(YubaiColor.card).frame(height: height)
+                Capsule().fill(fast ? YubaiColor.amberDot : YubaiColor.brand)
+                    .frame(width: geometry.size.width * min(max(0, fill), 1), height: height)
+                RoundedRectangle(cornerRadius: YubaiSpace.space2).fill(YubaiColor.label)
+                    .frame(width: textSize.isAccessibilitySize ? YubaiSize.waterTickWidthAccessible : YubaiSize.waterTickWidth, height: tickHeight)
+                    .position(x: x, y: height / 2)
+                Text("今天").yubaiFont(YubaiFont.waterToday).foregroundStyle(YubaiColor.labelSecondary)
+                    .fixedSize().position(x: min(max(labelWidth / 2, x), geometry.size.width - labelWidth / 2), y: tickHeight / 2 + labelHeight / 2 + YubaiSpace.space4)
+            }
+        }.frame(height: tickHeight / 2 + labelHeight + YubaiSpace.space4)
+            .accessibilityElement(children: .ignore).accessibilityLabel(hide ? "金额已隐藏" : "已经花了 \(Int(fill * 100))%，日子过了 \(Int(tick * 100))%")
+            .accessibilityValue(fast ? "花得比日子快" : "")
+            .accessibilityIdentifier("ledgerWaterBar")
+    }
+}
+
+struct SavedPill: View {
+    let total: Int64
+    var hide = false
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space6) { title; amount; chevron }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) { HStack { title; chevron }; amount }
+        }.padding(.horizontal, YubaiSpace.space10).padding(.vertical, YubaiSpace.space6)
+            .frame(minHeight: YubaiSize.savedPillHeight)
+            .controlSurface(in: RoundedRectangle(cornerRadius: YubaiSize.savedPillHeight / 2))
+    }
+    private var title: some View {
+        HStack(spacing: YubaiSpace.space6) {
+            SavingJarOutline().stroke(YubaiColor.brandInk, style: StrokeStyle(lineWidth: YubaiSize.outline, lineCap: .round, lineJoin: .round))
+                .frame(width: YubaiSize.smallGlyph, height: YubaiSize.smallGlyph).accessibilityHidden(true)
+            Text("已存").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+        }
+    }
+    private var amount: some View { AmountLabel(cents: total, hide: hide, role: .small, currency: true) }
+    private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
+}
+
+struct ProportionalBar: View {
+    let fraction: Double
+    var body: some View {
+        GeometryReader { geometry in
+            Capsule().fill(YubaiColor.card)
+            Capsule().fill(YubaiColor.brand).frame(width: geometry.size.width * min(1, max(0, fraction)))
+        }.frame(height: YubaiSize.categoryBarHeight).accessibilityHidden(true)
+    }
+}
+
+struct CashCurvePoint: Equatable, Sendable { var date: Date; var amount: Int64 }
+
+/// One cash curve renderer: actual to today, then a dashed forecast. It accepts
+/// only dated values, keeping financial rules outside the drawing code.
+struct CashCurve: View {
+    let history: [CashCurvePoint]
+    let forecast: [CashCurvePoint]
+    let start: Date
+    let end: Date
+    var body: some View {
+        Canvas { context, size in
+            let values = (history + forecast).map { Double($0.amount) }
+            let low = values.min() ?? 0, high = values.max() ?? 1
+            let span = max(1, high - low), duration = max(1, end.timeIntervalSince(start))
+            func point(_ value: CashCurvePoint) -> CGPoint {
+                CGPoint(x: size.width * min(1, max(0, value.date.timeIntervalSince(start) / duration)),
+                        y: size.height * (0.12 + 0.76 * (1 - (Double(value.amount) - low) / span)))
+            }
+            func path(_ points: [CashCurvePoint]) -> Path {
+                Path { path in
+                    for (index, value) in points.enumerated() {
+                        if index == 0 { path.move(to: point(value)) } else { path.addLine(to: point(value)) }
+                    }
+                }
+            }
+            context.stroke(path(history), with: .color(YubaiColor.brand), style: StrokeStyle(lineWidth: YubaiSize.lineWidth, lineCap: .round, lineJoin: .round))
+            context.stroke(path(forecast), with: .color(YubaiColor.brand), style: StrokeStyle(lineWidth: YubaiSize.lineWidth, lineCap: .round, lineJoin: .round, dash: [3, 5]))
+            if let today = history.last {
+                let p = point(today)
+                context.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)), with: .color(YubaiColor.brand))
+            }
+        }.frame(height: YubaiSize.cashChartHeight).accessibilityHidden(true)
+    }
+}
+
+struct AmountVisibilityButton: View {
+    @Environment(AppStore.self) private var store
+    var body: some View {
+        HeaderIconButton {
+            store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() }
+        } icon: { size in
+            Image(systemName: store.preferences.hideAmounts ? "eye.slash" : "eye").font(.system(size: size))
+        }.accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额")
+            .accessibilityIdentifier("toggleAmountVisibility")
     }
 }

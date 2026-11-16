@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Round-46 source contracts. Run on Linux before the Apple SDK build."""
+"""Round-47 revision source contracts. Run on Linux before the Apple SDK build."""
 import argparse
 import re
 from pathlib import Path
@@ -39,6 +39,9 @@ def violations(name, source):
     for old in OLD_NAMES:
         reject(re.escape(old), 'obsolete interface name', comments)
     reject(r'(?:日均|年付每月先留)', 'removed period allowance or annual reserve copy', comments)
+    reject(r'\.serif\b', 'serif fonts are absent from the revision', comments)
+    reject(r'\.serif\b', 'serif fonts are not part of the revision')
+    reject(r'\b(?:NowView|HomeReceiptView|HomeSavingCardView)\b', 'removed home screen or receipt')
     reject(r'CashTimeline|PaceChart|LineMark|AreaMark|AnswerChart|ShowChartTool|show_chart|import\s+Charts', 'deleted line-chart code')
     reject(r'\b(?:ContentViewportTarget|ViewportButtonStyle|yubaiContentViewport)\b|\.contentViewportTarget\s*\(',
            'removed per-control viewport gate: bound the scroll view in layout')
@@ -82,7 +85,8 @@ def self_test():
                'struct HandmadeToast: View {}', 'VStack(spacing: 12) {}',
                'Text("x").frame(height: 52)', 'Text("x").padding(.horizontal, 20)',
                'Text("x").frame(height: large ? 48 : 44)',
-               'Button("全部") {}.buttonStyle(PressButtonStyle()).yubaiHitTarget()']
+               'Button("全部") {}.buttonStyle(PressButtonStyle()).yubaiHitTarget()',
+               'Text("标题").font(.system(design: .serif))', 'NowView()']
     for sample in invalid:
         assert violations('Page.swift', sample), sample
     assert not violations('Page.swift', '// TextField("sample", text: $name)\nVStack(spacing: YubaiSpace.gapGroup) { CardTextFieldRow(title: "名字", text: $name) }')
@@ -109,9 +113,16 @@ def main():
                 errors.append(str(path.relative_to(ROOT)) + ': deleted chart reference')
     ds = (ROOT / 'Sources/YubaiApp' / SHARED).read_text()
     app_source = '\n'.join(p.read_text() for p in (ROOT / 'Sources/YubaiApp').glob('*.swift'))
-    for symbol in ('CardTextFieldRow', 'MoneyInputRow', 'SearchInput', 'ChatInputBar', 'Toast', 'ManualSheetHeader', 'HeaderIconButton', 'ConfirmationSheet', 'KeypadSheet', 'AmountKeypad', 'EntryCalendarView', 'EntryDateChip', 'Segmented', 'CategoryChoiceChip', 'EmptyState', 'DestructiveButtonStyle', 'TextLinkStyle', 'RowToggleStyle', 'AdaptiveValueRow'):
+    for symbol in ('CardTextFieldRow', 'MoneyInputRow', 'SearchInput', 'ChatInputBar', 'Toast', 'ManualSheetHeader', 'HeaderIconButton', 'ConfirmationSheet', 'KeypadSheet', 'AmountKeypad', 'EntryCalendarView', 'EntryDateChip', 'Segmented', 'CategoryChoiceChip', 'EmptyState', 'DestructiveButtonStyle', 'TextLinkStyle', 'RowToggleStyle', 'AdaptiveValueRow', 'WaterBar', 'SavedPill', 'CashCurve'):
         if len(re.findall(r'\bstruct ' + symbol + r'\b', ds)) != 1 or len(re.findall(r'\bstruct ' + symbol + r'\b', app_source)) != 1:
             errors.append('Expected one DS definition: ' + symbol)
+    for path in (ROOT / 'Sources/YubaiApp').glob('*.swift'):
+        code, literals = masks(path.read_text())
+        if '我的消费观' in literals and path.name != 'YubaiTabView.swift':
+            errors.append(str(path.relative_to(ROOT)) + ': use 消费观 outside the approved 余白 entry')
+        for word in ('日均', '年付每月先留'):
+            if word in literals:
+                errors.append(str(path.relative_to(ROOT)) + ': removed visible copy: ' + word)
     # Names also occur in accessibility fixtures and documentation; forbid stale
     # presentation wording there. Escaped archived raw values remain compatible.
     text_files = list((ROOT / 'Sources').rglob('*.swift')) + list((ROOT / 'Tests').rglob('*.swift'))

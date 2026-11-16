@@ -40,7 +40,8 @@ final class Round45CycleTests: XCTestCase {
         XCTAssertEqual(Payday.due(in: l, now: at)?.lateDays, 2)
         Savings.closeCycles(&l, now: at); XCTAssertTrue(l.savingHistory.isEmpty)
         l.plans.append(Plan(title: "Next month", amount: 10_000, dueDate: d("2026-12-13")))
-        XCTAssertEqual(Finance.funds(l, now: at).committed, 0)
+        // A late salary extends the period only to today; overdue bills remain owed.
+        XCTAssertEqual(Finance.funds(l, now: at).committed, 361_000)
     }
     func testEarlyIncomeAndEarliestOfTwoConfirmationsDefineStartAndDeleteReverts() throws {
         var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")

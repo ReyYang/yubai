@@ -27,7 +27,7 @@ struct BudgetView: View {
         let suggested = proposal ?? []
         Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.gapGroup) {
             if parts.isEmpty && !manual {
-                EmptyState(.budget, actionIdentifier: "addBudgetPart", onAction: { newName = ""; manual = true; if suggested.isEmpty { adding = true } })
+                EmptyState(.restraint, actionIdentifier: "watchCategory", onAction: { store.tabRouteRequest = .profile })
             } else if parts.isEmpty && !suggested.isEmpty { proposalContent(suggested) }
             else { regularContent }
         }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("spendingPartsPage")

@@ -97,7 +97,7 @@ struct ButlerEvidenceView: View {
                             }
                         }
                         if card.kind == .shortfall {
-                            Button("查看接下来要付") { store.sheet = nil; store.destination = .now }
+                            Button("查看接下来要付") { store.sheet = nil; store.destination = .ledger; store.tabRouteRequest = .fixedFlows }
                         }
                     }
                 }

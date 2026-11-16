@@ -4,7 +4,6 @@ V46-Words
 V46-Home-C
 V46-Home-A
 V46-Home-B
-V46-Deck
 V46-Home-Payday
 V46-Payday-Amount
 V46-First

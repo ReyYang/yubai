@@ -9,7 +9,7 @@ struct BillBrandIcon: View {
     @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var scheme
     private var symbol: String {
-        store.current.categories.first { $0.name == category && $0.income == inflow }?.symbol ?? "square.grid.2x2"
+        SystemGlyph.validated(store.current.categories.first { $0.name == category && $0.income == inflow }?.symbol ?? "square.grid.2x2")
     }
     var body: some View {
         Group {
@@ -267,7 +267,7 @@ struct BillCalendarRow: View {
             VStack(alignment: .trailing, spacing: YubaiSpace.space2) {
                 Text(plan.currency.amountText(plan.amount, hidden: store.preferences.hideAmounts)).yubaiFont(YubaiFont.amount)
                     .fixedSize(horizontal: false, vertical: true)
-                Text((row.state == .paid ? "实付 ¥" : "约 ¥") + amount2(row.amount, hide: store.preferences.hideAmounts))
+                Text((row.state == .paid ? "实付 " : "约 ") + amount2(row.amount, hide: store.preferences.hideAmounts))
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     .fixedSize(horizontal: false, vertical: true)
                 if row.state != .paid, FixedFlows.lastActual(planID: plan.id, in: store.current, now: store.financialNow) != nil {

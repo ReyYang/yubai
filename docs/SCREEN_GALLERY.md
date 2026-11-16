@@ -16,14 +16,14 @@ bash scripts/check-ui-consistency.sh --self-test
 
 ## 覆盖与命名
 
-当前规划 **105 块稿（第四十六轮 88 块、第四十七轮 17 块）、49 条巡游、1,113 个截屏停点**，其中第四十七轮 A 批 88 个、B 批 128 个、C 批 80 个、D 批 76 个。数量是源码清单，不代表已经取得截图。
+当前规划 **110 块稿（第四十六轮 87 块、第四十七轮 23 块）、49 条巡游、1,293 个截屏停点**。数量是源码清单，不代表已经取得截图。
 
 第四十七轮统一命名为 `V47-{light|dark|a11y|hidden}-{BoardOrState}`，已有巡游继续保留 V46 前缀并使用当前界面。四种状态分别为浅色、深色、最大辅助字号（Accessibility XXXL）、隐藏金额；每块稿在四种状态中各有一个同名停点。补充交互状态使用独立名称，避免同图多名。`scripts/round46-boards.txt` 与 `scripts/round47-boards.txt` 只保存稿名，不保存私有设计地址。
 
 | 巡游方法 | 条数 | 每条停点 |
 |---|---:|---:|
 | testWalk47BatchA / Dark / Large / Hidden | 4 | 22 |
-| testWalk47BatchB / Dark / Large / Hidden | 4 | 32 |
+| testWalk47BatchB / Dark / Large / Hidden | 4 | 77 |
 | testWalk47BatchC / Dark / Large / Hidden | 4 | 20 |
 | testWalk47BatchD / Dark / Large / Hidden | 4 | 19 |
 | testWalk46Batch1 / Dark / Large / Hidden | 4 | 25 |
@@ -45,7 +45,7 @@ bash scripts/check-ui-consistency.sh --self-test
 | testAccessibilityWalk | 1 | 21 |
 | testDarkWalk | 1 | 21 |
 
-`Tests/YubaiUITests/ScreenGalleryTests.swift` 是停点的来源。`scripts/gallery_inventory.py` 从实际方法和共享巡游生成清单，检查重复名称、105 块稿的四种状态以及 CI 是否逐条排入。`scripts/gallery.sh` 使用同一清单生成 `expected.txt`；未执行的停点也会报缺失。CI 每个 part 只跑一条巡游，测试方法最多 30 分钟，作业上限 50 分钟。实际耗时仍需在 Mac 验证。
+`Tests/YubaiUITests/ScreenGalleryTests.swift` 是停点的来源。`scripts/gallery_inventory.py` 从实际方法和共享巡游生成清单，检查重复名称、110 块稿的四种状态以及 CI 是否逐条排入。`scripts/gallery.sh` 使用同一清单生成 `expected.txt`；未执行的停点也会报缺失。CI 每个 part 只跑一条巡游，测试方法最多 30 分钟，作业上限 50 分钟。实际耗时仍需在 Mac 验证。
 
 ## 每个停点的检查
 
@@ -77,10 +77,15 @@ DerivedData、xcresult 和构建日志在脚本打印的 `/tmp/yubai-gallery.*` 
 
 Linux 可运行清单、脚本合约、UI lint、条件语法解析与 Core 单测；Apple SDK 构建、UI XCTest 与实际截图须在 Mac 上执行。
 
-第四十七轮 A 批覆盖：三标签和居中记账宽钮、推入的存钱页、存钱卡四态、小票空态／正常／新增／滑出撤销／撤销后／超过六笔、首次「窗」场景与减弱动态效果、首笔后工资设置／延期／新收入触发／日期到期，以及超长名称与大额。小票新增态通过正式记账流程产生，不伪造页面状态。存钱页的存取操作由 B 批停点验证。
+第四十七轮 A 批返修覆盖账本首页、月份、搜索、最底账目、三标签回顶、洞察与余白、首次「窗」场景和工资设置／延期；删除独立现在页、小票和存钱大卡片。存钱页的存取操作由 B 批停点验证。
 
 第四十七轮 C 批覆盖：十种空态、常用模板添加、首页建议、证据首四笔／全部／纠正、两周回看、设置开关与上次运行、零建议、长名称和大额。首页建议由脚本回复经过正式每周请求、Core 验算和队列产生；错误合计、未知记录、未知动作与损坏 JSON 另由流程测试验证。`V47-Butler-AI` 是 Core 合约板，画廊对应其设置入口；不新增一张解释机制的产品页面。
 
-第四十七轮 B 批覆盖：单卡竖式及零扣项／负数／大额、每项去向、拿出和放回的预览／限额／保存／撤销、底线改清、普通存取流水、发薪日全部／部分／不补与队列轮转，以及短回执、截断、展开、撤销和关闭。
+第四十七轮 B 批覆盖：单卡竖式及零扣项／少攒／缺口／大额、每项去向、拿出和放回的预览／限额／保存／撤销、底线改清、普通存取流水、发薪日全部／部分／不补与队列轮转，以及短回执、截断、展开、撤销和关闭。
 
-第四十七轮 D 批覆盖：补回与 AI 建议共用的首页／牌组／证据页、各自回答后状态、长名称与大额、多条建议、五种错误或空回复、关闭建议、空句纠正与回看答复。`V47-Changes` 是八项变更的总览合约板，其停点验证整合后的首页和共用队列，不把设计说明加入产品界面。
+第四十七轮 D 批覆盖：补回与 AI 建议共用的首页单卡队列／证据页、各自回答后状态、长名称与大额、多条建议、五种错误或空回复、关闭建议、空句纠正与回看答复。`V47-Changes` 是八项变更的总览合约板，其停点验证整合后的首页和共用队列，不把设计说明加入产品界面。
+
+
+2026-11-16 第四十七轮返修：`testWalk47BatchA` 及 Dark / Large / Hidden 四个走查从账本首页开始，覆盖 `Ledger-Home`、`Ledger-Find`、`Ledger-Modes`、`Insights-Two`、`Yubai`、`First-A`、`First-After`。`Ledger-Find-End` 验收最早账目完整位于记账宽钮上方，`Ledger-Return-To-Top` 验收重选账本后清搜索、筛选并回顶。设置走「余白 → 设置」；搜索先点 `openLedgerSearch`，在顶栏展开。已删除独立现在页、首页小票和存钱大卡片的截图要求；存钱页从「已存」胶囊进入。
+
+2026-11-16 rB 整合：B 批四种模式补齐六种 hero 状态、少攒／缺口补救与撤销、上期自动存好与留这月花、发薪补回、每周 AI、设线建议与纠正、余额偏差、下一期年季付账单、竖式的结转／取用／余额差额、金额和次数提醒、记账实时剩余与超出、对账覆盖和底线两态、洞察设线／改数／按次数。深色账本带 carry 卡；账本底部实测留白、末笔可点可左滑及回顶验收保持。上述停点仍需 Apple SDK 构建和模拟器执行。

@@ -126,7 +126,7 @@ private enum ReferenceFinance {
             (0..<2400).map { plan.frequency.advance(plan.dueDate, by: $0) }.filter { Dates.day($0) > today && $0 < end && (plan.endDate == nil || $0 <= plan.endDate!) }
         }.min().map(Dates.day)
         let horizonEnd = payday.map { Dates.addDays(-1, to: $0) } ?? Dates.addDays(-1, to: Dates.calendar.dateInterval(of: .month, for: now)!.end)
-        let committed = commitments.filter { Dates.day($0.date) >= Dates.day(now) && Dates.day($0.date) <= horizonEnd }.reduce(Int64(0)) { $0 + $1.amount }
+        let committed = commitments.filter { Dates.day($0.date) <= horizonEnd }.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let daily = Finance.estimatedDailyLiving(ledger, now: now)
         let living: Int64 = 0

@@ -18,6 +18,7 @@ struct WhereCategoryView: View {
                 comparison(detail.cycles)
                 places(detail.frequentPlaces)
                 recordsButton(detail)
+                SoftLineSection(category: category, editable: true)
             } else { ProgressView() }
         }.navigationTitle(Classification.displayCategory(category)).yubaiNavigation()
             .amountPrivacy(hide).accessibilityIdentifier("whereCategoryPage")

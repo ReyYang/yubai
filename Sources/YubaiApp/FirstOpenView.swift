@@ -3,9 +3,11 @@ import YubaiCore
 
 struct FirstOpenView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
+    @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
     var body: some View {
         GeometryReader { geometry in
-            let availableHeight = geometry.size.height - YubaiSize.rootBottomPadding(for: .now)
+            let availableHeight = geometry.size.height - navigationHeight
             ScrollView {
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     HStack {
@@ -14,7 +16,7 @@ struct FirstOpenView: View {
                             VStack(spacing: YubaiSpace.space12) {
                                 Text("余").frame(height: YubaiSize.firstOpenBrand)
                                 Text("白").frame(height: YubaiSize.firstOpenBrand)
-                            }.font(.system(size: YubaiSize.firstOpenBrand, weight: .semibold, design: .serif))
+                            }.font(.system(size: YubaiSize.firstOpenBrand, weight: .semibold, design: .default))
                                 .accessibilityElement(children: .ignore).accessibilityLabel("余白")
                             AssistantMark(size: YubaiFont.callout.size, color: YubaiColor.onBrand)
                                 .frame(width: YubaiSize.rowIcon - YubaiSpace.space6, height: YubaiSize.rowIcon - YubaiSpace.space6)
@@ -37,7 +39,7 @@ struct FirstOpenView: View {
                 }.padding(.horizontal, YubaiSpace.space28).padding(.top, YubaiSpace.space28)
                     .padding(.bottom, YubaiSpace.space12)
                     .frame(minHeight: max(YubaiSize.firstOpenMinimum, availableHeight), alignment: .topLeading)
-            }.accessibilityIdentifier("firstOpenScroll").rootScrollContentMargins(for: .now).rootTabScroll(.now)
+            }.accessibilityIdentifier("firstOpenScroll").rootScrollContentMargins(for: .ledger).rootTabScroll(.ledger)
         }.background { FirstWindowWall() }.accessibilityElement(children: .contain).accessibilityIdentifier("firstOpenScene")
     }
 }

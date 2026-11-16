@@ -1,7 +1,8 @@
-V47-Home
-V47-Book
-V47-Save-Card
-V47-Receipt
+V47-Ledger-Home
+V47-Ledger-Find
+V47-Ledger-Modes
+V47-Insights-Two
+V47-Yubai
 V47-First-A
 V47-First-After
 V47-Save-Page
@@ -18,3 +19,5 @@ V47-Changes
 V47-Spend-States
 V47-Butler-Cards
 V47-Entry-Recon
+V47-Hero-States
+V47-Ledger-Over

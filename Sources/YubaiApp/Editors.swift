@@ -81,7 +81,7 @@ struct AccountEditor: View {
                 Toggle("已与真实账户核对", isOn: $verified).tint(YubaiColor.toggleOn)
                 if let a = account, let entered = try? Money.parse(amount, allowNegative: kind != .credit) {
                     let actual = kind == .credit ? -entered : entered
-                    LabeledContent("与账本计算余额的差额", value: Money.text(actual - store.balance(a, at: at)))
+                    LabeledContent("与账本计算余额的差额", value: Money.text(actual - store.balance(a, at: at), currency: false))
                 }
             }
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)

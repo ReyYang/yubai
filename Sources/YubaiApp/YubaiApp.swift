@@ -9,13 +9,13 @@ import AppKit
 #endif
 
 enum Destination: String, CaseIterable, Identifiable {
-    case now, ledger, yubai
+    case ledger, insights, yubai
     var id: Self { self }
-    var title: String { switch self { case .now: "现在"; case .ledger: "账本"; case .yubai: "余白" } }
+    var title: String { switch self { case .ledger: "账本"; case .insights: "洞察"; case .yubai: "余白" } }
     /// SF Symbol for the large content viewer and the macOS sidebar fallback.
-    var symbol: String { switch self { case .now: "clock"; case .ledger: "text.book.closed"; case .yubai: "leaf" } }
+    var symbol: String { switch self { case .ledger: "text.book.closed"; case .insights: "chart.pie"; case .yubai: "leaf" } }
 }
-/// 账本页的两个视图（`ledgerMode_detail` / `ledgerMode_where`）。
+/// Kept for incoming presets from older feature pages; insights is now a tab.
 enum LedgerMode: String, CaseIterable, Identifiable {
     case detail, whereTo = "where"
     var id: Self { self }
@@ -32,7 +32,7 @@ struct LedgerPreset: Equatable {
 enum TabRoute: Hashable {
     case fixedFlows, profile, wishlist, accounts
     case triage([UUID])
-    case quickCapture, importHistory, intelligencePrivacy, backup, storage
+    case quickCapture, importHistory, intelligencePrivacy, backup, storage, imports, frequent
     case unsortedGroups(UUID)
     case formula, budget, billDetail(UUID), billDate(Date), todo, settings, categories, savingRule, reserve, saved
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
@@ -290,6 +290,9 @@ enum AppSheet: Identifiable {
     private let dailyReceiptSlot = TimedSlot<DailyReceipt>()
     private let salaryPromptSlot = TimedSlot<Bool>()
     private let formulaSlot = TimedSlot<SpendableBreakdown>()
+    private let softLinesSlot = TimedSlot<[SoftLineUsage]>()
+    private let categorySoftLinesSlot = TimedSlot<[String: [SoftLineUsage]]>()
+    @ObservationIgnored private var cachedWatchFact: (revision: UInt64, at: Date, id: UUID, value: ButlerWatchFact?)?
     private let reserveSlot = TimedSlot<ReserveOverview>()
     private let paydaySlot = TimedSlot<Payday.Due?>()
     private let gapSlot = TimedSlot<Reconciliation.Gap?>()
@@ -315,6 +318,18 @@ enum AppSheet: Identifiable {
     var salaryPromptDue: Bool { derived(salaryPromptSlot) { FirstUse.salaryPromptDue($0, now: $1) } }
     /// 算式页与首页使用同一周期结果（`Finance.formula`）。
     var formula: SpendableBreakdown { derived(formulaSlot) { Finance.formula($0, now: $1) } }
+    var softLineUsage: [SoftLineUsage] { derived(softLinesSlot) { SoftLines.usage($0, now: $1) } }
+    var categorySoftLines: [String: [SoftLineUsage]] {
+        let rows = softLineUsage
+        return derived(categorySoftLinesSlot) { SoftLines.byCategory($0, usages: rows, now: $1) }
+    }
+    func butlerWatchFact(_ suggestion: ButlerSuggestion) -> ButlerWatchFact? {
+        let at = financialNow
+        if let cachedWatchFact, cachedWatchFact.revision == ledgerRevision, cachedWatchFact.at == at, cachedWatchFact.id == suggestion.id { return cachedWatchFact.value }
+        let value = ButlerSuggestions.watchFact(suggestion, in: derivedSource, now: at)
+        cachedWatchFact = (ledgerRevision, at, suggestion.id, value)
+        return value
+    }
     /// 存钱页：存下的总额与最近进出。
     var reserve: ReserveOverview { derived(reserveSlot) { Reserve.overview($0, now: $1) } }
     var financialNow: Date { _ = timeRevision; _ = fundsValue(); return cachedFunds?.at ?? Dates.now }
@@ -465,6 +480,7 @@ enum AppSheet: Identifiable {
         reserveSlot.clear(); paydaySlot.clear(); gapSlot.clear()
         leftoverSlot.clear(); overspendSlot.clear(); homeTasksSlot.clear(); butlerSavedSlot.clear()
         homeHeroSlot.clear(); homeSavingSlot.clear(); dailyReceiptSlot.clear(); salaryPromptSlot.clear()
+        softLinesSlot.clear(); categorySoftLinesSlot.clear()
         timeRevision &+= 1
         derivedRevision &+= 1
         cachedButlerVisibility = nil
@@ -502,10 +518,10 @@ enum AppSheet: Identifiable {
     var pendingUploadRecoveryReason = "修改"
     @ObservationIgnored var syncMonitor: CloudLedgerMonitor?
     var iCloudAvailable: Bool { locations.cloud != nil }
-    var destination: Destination = .now
+    var destination: Destination = .ledger
     private(set) var navigationRevision: UInt64 = 0
     func resetRootNavigation() {
-        destination = .now; pickingInsightDates = false; ledgerPreset = nil
+        destination = .ledger; pickingInsightDates = false; ledgerPreset = nil
         homeReceipt = nil
         unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
@@ -875,7 +891,7 @@ enum AppSheet: Identifiable {
             try eraseLocalStorageAndResetLocation()
             cancelEntrySaveMotion(); ledger = Ledger(); undoLedger = nil; undoLabel = nil
             loadFailure = nil; locked = false; importedURL = nil; sheet = nil; sheetSource = nil; pendingQuickSheet = nil
-            destination = .now; toast = nil; organizationErrors.removeAll(); pickingInsightDates = false; ledgerPreset = nil
+            destination = .ledger; toast = nil; organizationErrors.removeAll(); pickingInsightDates = false; ledgerPreset = nil
             return true
         } catch { self.error = error.localizedDescription; return false }
     }
@@ -937,6 +953,7 @@ struct RootView: View {
     @Namespace private var motionNamespace
     @State private var tabPaths: [Destination: NavigationPath] = [:]
     @State private var toastHeight = CGFloat.zero
+    @State private var navigationHeights: [Destination: CGFloat] = [:]
     private var hasToast: Bool { !store.locked && (store.unsortedUndo != nil || store.toast != nil) }
     #if os(iOS)
     @State private var keyboardVisible = false
@@ -944,8 +961,7 @@ struct RootView: View {
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     private var toastBottomPadding: CGFloat {
         if keyboardVisible || tabBarHidden { return YubaiSpace.none }
-        return YubaiSize.floatingTabbarHeight + YubaiSize.floatingTabbarBottom +
-            (store.destination == .now ? YubaiSize.homeEntryPillHeight + YubaiSpace.space12 : YubaiSpace.none)
+        return navigationHeights[store.destination] ?? YubaiSize.rootBottomPadding(for: store.destination)
     }
     #endif
     var body: some View {
@@ -1091,7 +1107,7 @@ struct RootView: View {
             }
             .onChange(of: store.butlerFocusID) { _, id in
                 guard id != nil, !store.locked else { return }
-                var path = NavigationPath(); path.append(TabRoute.todo); tabPaths[.now] = path
+                var path = NavigationPath(); path.append(TabRoute.todo); tabPaths[.ledger] = path
             }
             .onChange(of: store.locked) { _, locked in
                 if !locked, let id = store.pendingButlerTaskID { store.pendingButlerTaskID = nil; store.openButlerNotice(id) }
@@ -1120,7 +1136,7 @@ struct RootView: View {
             ZStack(alignment: .bottom) {
                 if quickMenuShown {
                     QuickRepeatMenu { quickMenuShown = false }
-                        .padding(.bottom, YubaiSize.rootBottomPadding(for: store.destination))
+                        .padding(.bottom, navigationHeights[store.destination] ?? YubaiSize.rootBottomPadding(for: store.destination))
                         .zIndex(1)
                         .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
                 }
@@ -1131,7 +1147,7 @@ struct RootView: View {
         }
     }
     private var tabBar: some View {
-        FloatingTabBar(select: selectTab, add: addEntry, quick: showQuickMenu)
+        FloatingTabBar(select: selectTab, add: addEntry, quick: showQuickMenu, measured: { navigationHeights[$0] = $1 })
             #if DEBUG && targetEnvironment(simulator)
             .onAppear {
                 if ProcessInfo.processInfo.environment["YUBAI_UI_TEST_TOAST_ON_RETURN"] == "1",
@@ -1203,6 +1219,8 @@ struct RootView: View {
         case .weekly(let id): weeklyDestination(id)
         case let .whereCategory(category, interval): WhereCategoryView(category: category, interval: interval)
         case .memories: MemoryView()
+        case .imports: ImportView()
+        case .frequent: FrequentEntriesView()
         case .quickCapture: QuickCaptureSettingsView()
         case .importHistory: ImportHistoryView()
         case .intelligencePrivacy: IntelligencePrivacyView()
@@ -1217,7 +1235,7 @@ struct RootView: View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if d == .now && store.sheet == nil && !store.pickingInsightDates {
+            if d == .ledger && store.sheet == nil && !store.pickingInsightDates {
                 HomeEntryPill(title: store.homeHero.isFirstOpen ? "记第一笔" : "记一笔", action: {
                     store.homeEntrySession = true
                     if store.accounts.isEmpty { store.beginFirstEntry() } else { store.sheet = .addEntry }
@@ -1227,11 +1245,12 @@ struct RootView: View {
         }.background(YubaiColor.canvas)
         #else
         destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
+            .environment(\.yubaiRootNavigationHeight, navigationHeights[d] ?? YubaiSize.rootBottomPadding(for: d))
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
         switch d {
-        case .now: NowView()
+        case .insights: InsightsTabView()
         case .ledger: LedgerTabView()
         case .yubai: YubaiTabView()
         }
@@ -1327,18 +1346,19 @@ private struct FloatingTabBar: View {
     let select: (Destination) -> Void
     let add: () -> Void
     let quick: () -> Void
+    let measured: (Destination, CGFloat) -> Void
     var body: some View {
         VStack(spacing: YubaiSpace.space12) {
-            if store.destination == .now { addButton }
+            if store.destination == .ledger { addButton }
             HStack(spacing: YubaiSpace.space2) {
-                tab(.now); tab(.ledger); tab(.yubai)
+                tab(.ledger); tab(.insights); tab(.yubai)
             }.padding(.horizontal, YubaiSpace.space6).frame(width: YubaiSize.navigationCapsuleWidth, height: YubaiSize.floatingTabbarHeight)
                 .background { barSurface }
                 .overlay { Capsule().strokeBorder(YubaiColor.white.opacity(0.6), lineWidth: YubaiSize.separator).allowsHitTesting(false) }
+                .dynamicTypeSize(.large)
                 .accessibilityElement(children: .contain).accessibilityLabel("标签导航").accessibilityIdentifier("navigationCapsule")
-        }.frame(width: YubaiSize.navigationCapsuleWidth,
-                height: YubaiSize.rootBottomPadding(for: store.destination) - YubaiSpace.space12, alignment: .bottom)
-            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        }.fixedSize(horizontal: false, vertical: true)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { measured(store.destination, $0) }
             .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
             .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
     }

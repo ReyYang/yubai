@@ -199,7 +199,28 @@ final class Round47RevisionTests: XCTestCase {
         XCTAssertEqual(HomeButler.billHeadsUps(l, now: now).map(\.title), ["季付"])
         let decoded = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(l))
         XCTAssertEqual(HomeButler.billHeadsUps(decoded, now: now).map(\.title), ["季付"])
-        XCTAssertEqual(Finance.spendableBreakdown(l, now: d("2026-12-10")).billsRest, 510_000)
+        XCTAssertEqual(Finance.spendableBreakdown(l, now: d("2026-12-10")).billsRest, 841_000)
+    }
+    func testUnpaidOverdueBillsFromThisAndEarlierPeriodsRemainOwed() throws {
+        var l = ledger(spent: 505_000)
+        let earlier = Plan(title: "上期未付", amount: 10_000, dueDate: d("2026-10-25"), frequency: .once)
+        let current = Plan(title: "本期未付", amount: 20_000, dueDate: d("2026-11-15"), frequency: .once)
+        let today = Plan(title: "今天到期", amount: 3000, dueDate: d("2026-11-20"), frequency: .once)
+        let later = Plan(title: "下期", amount: 50_000, dueDate: d("2026-12-10"), frequency: .once)
+        l.plans += [earlier, current, today, later]
+        let f = value(l)
+        XCTAssertEqual(f.billsRest, 364_000)
+        XCTAssertEqual(f.deficit, 68_000)
+        guard case .deficit(_, let bill) = f.state else { return XCTFail("Expected deficit") }
+        XCTAssertEqual(bill?.planID, earlier.id)
+        XCTAssertEqual(f.rows.first { $0.kind == .bills }?.occurrences.map(\.title), ["上期未付", "本期未付", "今天到期", "房租"])
+        XCTAssertEqual(Finance.formula(l, now: now).bills.first?.planID, earlier.id)
+        let payment = Entry(date: now, amount: earlier.amount, accountID: l.accounts[0].id, title: earlier.title)
+        l.entries.append(payment)
+        try FixedFlows.markPaid(planID: earlier.id, occurrence: earlier.dueDate, with: payment.id, in: &l)
+        XCTAssertEqual(value(l).billsRest, 354_000)
+        guard case .deficit(_, let next) = value(l).state else { return XCTFail("Expected deficit") }
+        XCTAssertEqual(next?.planID, current.id)
     }
     func testQueuePriorityCarryBeforeMismatchAndHeadup() {
         var l = ledger(); l.accounts[0].anchorBalance = -300_000
@@ -248,6 +269,64 @@ final class Round47RevisionTests: XCTestCase {
         XCTAssertEqual(SoftLines.remainingAfterTyping(3800, category: "餐饮", purpose: "外卖", in: l, now: now)?.remaining, 28_200)
         XCTAssertEqual(SoftLines.remainingAfterTyping(33_800, category: "餐饮", purpose: "外卖", in: l, now: now)?.exceeded, 1800)
         XCTAssertEqual(l, before)
+    }
+    func testCategoryAndFormulaWatchesShareSubpurposeCountAndExceededFacts() throws {
+        var l = ledger(spent: 48_000)
+        l.entries[1].subcategory = "外卖"
+        l.profile.restrain = [ProfileArea(title: "外卖", match: .init(subcategories: ["餐饮/外卖"]), softLimit: .init(perPeriodAmount: 80_000)),
+                             ProfileArea(title: "咖啡", match: .init(subcategories: ["餐饮/咖啡饮品"]), softLimit: .init(perPeriodCount: 4)),
+                             ProfileArea(title: "打车", match: .init(categories: ["交通"], keywords: ["打车"]), softLimit: .init(perPeriodAmount: 20_000))]
+        l.entries.append(Entry(date: now, amount: 28_000, accountID: l.accounts[0].id, title: "打车", category: "交通"))
+        let all = SoftLines.usage(l, now: now), categories = SoftLines.byCategory(l, usages: all, now: now)
+        XCTAssertEqual(categories["餐饮"], Array(all.prefix(2)))
+        XCTAssertEqual(categories["交通"], [all[2]])
+        XCTAssertEqual(all[0].remaining, 32_000); XCTAssertEqual(all[0].fraction, 0.6)
+        XCTAssertEqual(all[1].remaining, 4); XCTAssertEqual(all[1].fraction, 0)
+        XCTAssertEqual(all[2].exceeded, 8000); XCTAssertEqual(all[2].fraction, 1)
+        var change = l.profile.restrain[0]; change.softLimit = .init(perPeriodCount: 5)
+        try SoftLines.set(change, in: &l, now: now)
+        XCTAssertEqual(SoftLines.byCategory(l, now: now)["餐饮"]?.first?.mode, .count)
+        XCTAssertEqual(SoftLines.byCategory(l, now: now)["餐饮"]?.first?.remaining, 4)
+    }
+    func testSuggestionWatchesSubcategoryWithoutWatchingItsEntireParent() throws {
+        var l = ledger(spent: 48_000); l.entries[1].subcategory = "外卖"
+        let before = value(l)
+        let suggestion = ButlerSuggestion(id: UUID(), topic: "外卖", observation: [.text("外卖 "), .count, .sum], proposal: [],
+            entryIDs: [l.entries[1].id], count: 1, sumCents: 48_000, action: .setBudget(category: "外卖", cents: 80_000), memoryIDs: [], createdAt: now)
+        l.butlerAI = ButlerAIState(); l.butlerAI?.suggestions = [suggestion]
+        XCTAssertTrue(ButlerSuggestionVerifier.verify(suggestion, in: l, now: now))
+        try ButlerSuggestions.answer(suggestion.id, .accept, in: &l, now: now)
+        XCTAssertEqual(l.profile.restrain.first?.match.subcategories, ["餐饮/外卖"])
+        XCTAssertEqual(l.profile.restrain.first?.match.categories, [])
+        XCTAssertEqual(SoftLines.usage(l, now: now).first?.remaining, 32_000)
+        XCTAssertEqual(value(l), before)
+        XCTAssertFalse(l.memories.isEmpty)
+        XCTAssertEqual(try LedgerCodec.decode(LedgerCodec.encode(l)).profile.restrain, l.profile.restrain)
+    }
+    func testPurposeMatchesSubcategoryWatchBeforeClassificationAndAfterSaving() throws {
+        var l = ledger(spent: 48_000); l.entries[1].subcategory = "外卖"
+        l.profile.restrain = [ProfileArea(title: "外卖", match: .init(subcategories: ["餐饮/外卖"]), softLimit: .init(perPeriodAmount: 80_000))]
+        let preview = try XCTUnwrap(SoftLines.remainingAfterTyping(3800, category: Classification.pendingCategory, purpose: "外卖", in: l, now: now))
+        XCTAssertEqual(preview.remaining, 28_200)
+        l.entries.append(Entry(date: now, amount: 3800, accountID: l.accounts[0].id, title: "外卖", category: Classification.pendingCategory))
+        XCTAssertEqual(SoftLines.usage(l, now: now).first?.remaining, preview.remaining)
+        XCTAssertEqual(l.entries.last?.category, Classification.pendingCategory)
+        XCTAssertNil(SoftLines.remainingAfterTyping(100, category: "购物", purpose: "外卖", in: l, now: now))
+    }
+    func testWatchCardTwiceUsualComesFromVerifiedBaseline() throws {
+        var l = ledger(spent: 124_000); l.entries[1].subcategory = "外卖"
+        let suggestion = ButlerSuggestion(id: UUID(), topic: "外卖", observation: [.count, .sum], proposal: [.text("盯住外卖")],
+            entryIDs: [l.entries[1].id], count: 1, sumCents: 124_000, action: .setBudget(category: "外卖", cents: 80_000), memoryIDs: [], createdAt: now)
+        for offset in [35, 63, 91] {
+            var old = Entry(date: Dates.addDays(-offset, to: now), amount: 62_000, accountID: l.accounts[0].id, title: "外卖", category: "餐饮")
+            old.subcategory = "外卖"; l.entries.append(old)
+        }
+        let fact = try XCTUnwrap(ButlerSuggestions.watchFact(suggestion, in: l, now: now))
+        XCTAssertEqual(fact.amount, 124_000); XCTAssertTrue(fact.twiceUsual)
+        l.entries[l.entries.count - 1].amount += 300
+        XCTAssertFalse(try XCTUnwrap(ButlerSuggestions.watchFact(suggestion, in: l, now: now)).twiceUsual)
+        l.entries[1].amount += 1
+        XCTAssertNil(ButlerSuggestions.watchFact(suggestion, in: l, now: now))
     }
     func testNewPeriodLinesFeedButlerProgressWeeklyAndAIFacts() throws {
         var l = ledger(spent: 48_000)

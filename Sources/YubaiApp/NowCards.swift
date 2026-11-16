@@ -75,7 +75,7 @@ struct NewCycleCard: View {
     var more = 0
     var body: some View {
         let copy = HomeTaskCopy.make(.leftover(saving), now: store.financialNow, hidden: store.preferences.hideAmounts)!
-        QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more,
+        QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more, titleIdentifier: "carryNoticeText",
                      yesTitle: "留这月花", noTitle: "", yesIdentifier: "leftoverKeep",
                      yes: {
             var undo = store.current
@@ -110,9 +110,9 @@ struct OverspendRows: View {
         let bill = value.rows.first { $0.kind == .bills }?.occurrences.first
         let kicker = bill.map { "还要付 · " + $0.title + " " + NowFormat.monthDay($0.date) } ?? "还要付"
         let amount = min(options.overBy, max(0, store.reserve.total))
-        QuestionCard(eyebrow: kicker, title: "要付的账单差 " + amount2(options.overBy, hide: store.preferences.hideAmounts), more: more,
-                     yesTitle: "拿出来用 " + (store.preferences.hideAmounts ? "••••" : Money.text(amount)), noTitle: "先不动",
-                     yesIdentifier: "coverFromReserve", noIdentifier: "deficitKeep", yes: {
+        QuestionCard(eyebrow: kicker, title: "要付的账单差 " + amount2(options.overBy, hide: store.preferences.hideAmounts), more: more, titleIdentifier: "deficitRescueText",
+                     yesTitle: "拿出来用 " + (store.preferences.hideAmounts ? "¥••••" : Money.text(amount)), noTitle: "先不动",
+                     yesIdentifier: "coverFromReserve", noIdentifier: "deficitKeep", yesEnabled: amount > 0, yes: {
             _ = store.update("拿出来用", entryMotion: false) { try HomeButler.rescueDeficit(in: &$0, now: store.financialNow) }
         }, no: { store.answerHome(.overspend(options)) }).accessibilityIdentifier("deficitRescueCard")
     }

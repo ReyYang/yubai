@@ -8,7 +8,7 @@ struct FormulaView: View {
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
         let value = derivation
-        return Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8, identifier: "formulaPage") {
+        return Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "formulaPage") {
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     question(value)
@@ -17,6 +17,7 @@ struct FormulaView: View {
                     answer(value)
                 }
             }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
+            SoftLineSection()
         }.navigationTitle("还能花是怎么算的").yubaiNavigation().amountPrivacy(hide)
     }
     private func question(_ value: SpendableBreakdown) -> some View {
@@ -69,7 +70,7 @@ struct FormulaView: View {
         case .spent: showEntries(value.interval, entryIDs: Set(item.entryIDs))
         case .saving: store.present(.formulaEdit)
         case .carry, .withdrawal: store.tabRouteRequest = .reserve
-        case .balanceGap: store.sheet = .reconcileAll
+        case .balanceGap: showEntries(value.interval, entryIDs: Set(item.entryIDs))
         default: showEntries(value.interval)
         }
     }
@@ -93,7 +94,7 @@ struct FormulaView: View {
                 Text(title).yubaiFont(YubaiFont.row)
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
             }
-            if let detail { Text(detail).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+            if let detail { Text(detail).yubaiFont(YubaiFont.meta).foregroundStyle(title == "要攒" && derivation.savingLess > 0 ? YubaiColor.amberInk : YubaiColor.labelSecondary) }
         }
     }
     private func numericColumn(_ amount: Int64, sign: String, value: SpendableBreakdown, constrained: Bool = false) -> some View {
@@ -122,14 +123,8 @@ struct FormulaView: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaRow_available")
     }
     private func answerLabel(_ ink: Color) -> some View {
-        HStack(spacing: YubaiSpace.space8) {
-            Text(derivation.headlineTitle).yubaiFont(YubaiFont.row, weight: .semibold).fixedSize()
-            Image(systemName: "checkmark").yubaiFont(YubaiFont.caption, weight: .semibold)
-                .foregroundStyle(ink).frame(width: YubaiSpace.space24, height: YubaiSpace.space24)
-                .background(valueIsNegative ? YubaiColor.amberTint : YubaiColor.brandTint, in: Circle()).accessibilityHidden(true)
-        }
+        Text(derivation.headlineTitle).yubaiFont(YubaiFont.row, weight: .semibold).fixedSize()
     }
-    private var valueIsNegative: Bool { derivation.rawR < 0 }
     private func answerAmount(_ amount: Int64, ink: Color) -> some View {
         AmountLabel(cents: amount, hide: hide, role: .display, currency: true, ink: ink)
             .padding(.bottom, YubaiSpace.space8)
@@ -139,7 +134,7 @@ struct FormulaView: View {
                     Rectangle().fill(YubaiColor.label).frame(height: YubaiSize.separator)
                 }.accessibilityHidden(true)
             }.accessibilityElement(children: .ignore)
-            .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(amount))
+            .accessibilityLabel(hide ? "金额已隐藏" : AmountLabel.text(amount, currency: true))
             .accessibilityIdentifier("formulaResult")
     }
     private func showEntries(_ interval: DateInterval, entryIDs: Set<UUID>? = nil) {

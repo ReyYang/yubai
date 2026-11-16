@@ -434,7 +434,7 @@ class YubaiUITestCase: XCTestCase {
     /// real tab buttons are present on every root; their union plus the existing
     /// 6pt surface inset is exactly the capsule, excluding the home entry pill.
     func capsuleFrame(in app: XCUIApplication) -> CGRect {
-        let tabs = ["tab_now", "tab_ledger", "tab_yubai"].map { app.buttons[$0] }
+        let tabs = ["tab_ledger", "tab_insights", "tab_yubai"].map { app.buttons[$0] }
         for tab in tabs { XCTAssertTrue(tab.waitForExistence(timeout: 5), tab.identifier) }
         return tabs.map(\.frame).reduce(CGRect.null) { $0.union($1) }.insetBy(dx: -6, dy: -6)
     }

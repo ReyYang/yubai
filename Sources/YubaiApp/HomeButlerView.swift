@@ -16,7 +16,7 @@ struct ButlerReceipt: Identifiable, Equatable {
         }
     }
     func beginFirstEntry(importing: Bool = false) {
-        homeEntrySession = !importing && destination == .now
+        homeEntrySession = !importing && destination == .ledger
         guard update("开始记账", recordUndo: false, entryMotion: false, showToast: false, {
             FirstUse.prepareForEntry(&$0, now: Dates.now)
         }) else { return }
@@ -39,7 +39,11 @@ struct HomeTaskCard: View {
     var more = 0
     private var hide: Bool { store.preferences.hideAmounts }
     var body: some View {
-        content
+        content.environment(\.butlerCardDismiss, dismissAction)
+    }
+    private var dismissAction: (() -> Void)? {
+        guard item.isDismissible else { return nil }
+        return { store.answerHome(item) }
     }
     @ViewBuilder private var content: some View {
         switch item {
@@ -66,14 +70,17 @@ struct HomeTaskCard: View {
     }
     private func mismatchCard(_ value: Reconciliation.Mismatch) -> some View {
         let copy = HomeTaskCopy.make(.balanceMismatch(value), now: store.financialNow, hidden: hide)!
-        return QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more,
+        return QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more, titleIdentifier: "mismatchText",
                             yesTitle: "对一下余额", noTitle: "", yesIdentifier: "openReconcile",
                             yes: { store.sheet = .reconcileAll }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBalanceMismatch")
             .accessibilityIdentifier("balanceMismatchCard")
     }
     private func headsUpCard(_ value: Occurrence) -> some View {
         let copy = HomeTaskCopy.make(.billHeadsUp(value), now: store.financialNow, hidden: hide)!
-        return QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more,
+        let frequency = value.planID.flatMap { id in store.plans.first { $0.id == id }?.frequency }
+        let months = value.rentID.flatMap { id in store.current.rents.first { $0.id == id }?.monthsPerPayment }
+        let cadence = frequency == .yearly || months == 12 ? "，一年一次" : "，一季一次"
+        return QuestionCard(eyebrow: copy.kicker, title: copy.title + cadence, more: more, titleIdentifier: "billHeadsUpText",
                             yesTitle: "看这张账单", noTitle: "", yesIdentifier: "openBillHeadsUp", yes: {
             store.answerHome(item)
             if let id = value.planID { store.tabRouteRequest = .billDetail(id) }
@@ -138,7 +145,10 @@ struct HomeTaskCard: View {
         let month = pending.dates.min().map { "\(Dates.calendar.component(.month, from: $0))月导入" } ?? "导入"
         return Card(style: .compact) {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                ButlerKicker(title: "没分类 · " + month, more: more)
+                HStack(alignment: .top) {
+                    ButlerKicker(title: "没分类 · " + month, more: more)
+                    CardDismissButton { store.answerHome(item) }.accessibilityIdentifier("dismissHomeCard")
+                }
                 Text("\(entries.count) 笔还没分类，共 " + amount2(total, hide: hide)).yubaiFont(YubaiFont.butlerTitle)
                     .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("unsortedQuestionTitle")
                 ChipFlow {
@@ -158,7 +168,10 @@ struct HomeTaskCard: View {
         let amount = HomeButler.confirmationAmount(card, in: store.current)
         return Card(style: .compact) {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                ButlerKicker(title: NowFormat.monthDay(card.createdAt) + " · " + HomeButler.privacyText(card.title, hidden: hide), more: more)
+                HStack(alignment: .top) {
+                    ButlerKicker(title: NowFormat.monthDay(card.createdAt) + " · " + HomeButler.privacyText(card.title, hidden: hide), more: more)
+                    CardDismissButton { store.answerHome(item) }.accessibilityIdentifier("dismissHomeCard")
+                }
                 Text(amount2(amount, hide: hide)).yubaiFont(YubaiFont.butlerTitle)
                 if let question = card.importQuestion, !question.isFallback,
                    let batch = store.imports.first(where: { $0.undoneAt == nil && $0.organization?.questions.contains(where: { $0.id == question.id }) == true }) {

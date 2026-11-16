@@ -1,6 +1,16 @@
 import SwiftUI
 import YubaiCore
 
+private extension ButlerSuggestionAction {
+    func buttonTitle(hidden: Bool) -> String {
+        guard hidden else { return title }
+        if case .setBudget(let category, _) = self {
+            return "盯住" + HomeButler.privacyText(category, hidden: true) + " ¥••••"
+        }
+        return HomeButler.privacyText(title, hidden: true)
+    }
+}
+
 @MainActor extension AppStore {
     @discardableResult func answerSuggestion(_ suggestion: ButlerSuggestion, _ answer: ButlerSuggestionAnswer) -> Bool {
         let plan: Plan?
@@ -21,13 +31,25 @@ struct ButlerSuggestionCard: View {
     @Environment(AppStore.self) private var store
     let suggestion: ButlerSuggestion
     var more = 0
+    @State private var correcting = false
+    private var headline: String {
+        if let fact = store.butlerWatchFact(suggestion) {
+            return HomeButler.privacyText(fact.category, hidden: store.preferences.hideAmounts) + " "
+                + amount2(fact.amount, hide: store.preferences.hideAmounts) + (fact.twiceUsual ? "，是平常的两倍" : "")
+        }
+        return suggestion.text(suggestion.observation + suggestion.proposal, hidden: store.preferences.hideAmounts)
+    }
     var body: some View {
-        QuestionCard(eyebrow: "余白看了这 4 周", title: suggestion.text(suggestion.observation + suggestion.proposal, hidden: store.preferences.hideAmounts),
+        QuestionCard(eyebrow: "余白看了这 4 周", title: headline,
                      more: more, evidenceTitle: "看这 \(suggestion.count) 笔", onEvidence: { store.tabRouteRequest = .butlerEvidence(suggestion.id) }, titleIdentifier: "butlerAIText",
-                     yesTitle: suggestion.action.title, noTitle: suggestion.action == .neverMention ? "" : "不用",
-                     yesIdentifier: "butlerAIAccept", noIdentifier: "butlerAINever",
-                     yes: { store.answerSuggestion(suggestion, .accept) }, no: { store.answerSuggestion(suggestion, .never) })
+                     yesTitle: suggestion.action.buttonTitle(hidden: store.preferences.hideAmounts), noTitle: "说得不对",
+                     yesIdentifier: "butlerAIAccept", noIdentifier: "butlerAIIncorrect",
+                     yes: { store.answerSuggestion(suggestion, .accept) }, no: { correcting = true })
             .accessibilityElement(children: .contain).accessibilityIdentifier("butlerSuggestionCard")
+            .sheet(isPresented: $correcting) {
+                ButlerSuggestionCorrection(suggestion: suggestion) { correcting = false }
+                    .environment(store).appErrors().yubaiSheetBackground()
+            }
     }
 }
 
@@ -39,7 +61,7 @@ struct ButlerSuggestionActions: View {
     var correct: () -> Void = {}
     var body: some View {
         ChipFlow {
-            Button(suggestion.action.title) { if store.answerSuggestion(suggestion, .accept) { finished() } }
+            Button(suggestion.action.buttonTitle(hidden: store.preferences.hideAmounts)) { if store.answerSuggestion(suggestion, .accept) { finished() } }
                 .buttonStyle(NowCardButtonStyle(primary: true)).accessibilityIdentifier("butlerAIAccept")
             if suggestion.action != .neverMention {
                 Button("不用") { if store.answerSuggestion(suggestion, .never) { finished() } }

@@ -34,7 +34,7 @@ struct FrequentEntriesView: View {
                 SectionHeading(title: "不显示的")
                 CardRows(hidden) { row in hiddenRow(row) }
             }
-        }
+        }.navigationTitle("常用").yubaiNavigation()
             .sheet(isPresented: $adding) { addForm }
             .task(id: store.ledgerRevision) { await refresh() }
             #if os(iOS)

@@ -1,155 +1,115 @@
 import SwiftUI
 import YubaiCore
 
-/// 余白：最近问过的、消费观、余白记得的；输入框和三句常问的贴在底栏上方。
+/// Conversation and global management, with current facts beside each route.
 struct YubaiTabView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
     @State private var input = ""
+    @State private var repeatCount = 0
     @FocusState private var focused: Bool
-    private let suggestions = ["这个能买吗", "这个月钱去哪了", "帮我记一笔"]
+    private let suggestions = ["这个能买吗", "这个月钱去哪了"]
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-                if store.recentQuestions.isEmpty {
-                    EmptyState(.assistant, onExample: { openQuestion($0) })
+        Page(spacing: YubaiSpace.space12, topPadding: YubaiSpace.space8, identifier: "yubaiScroll") {
+            askArea
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
+                    destination(.wishlist, "心愿单", detail: wishStatus, id: "openWishlist")
+                    EntryFormDivider()
+                    destination(.weekly(nil), "每周来信", detail: latestLetter, id: "openWeekly")
+                    EntryFormDivider()
+                    destination(.profile, "消费观", detail: store.profile.restrain.isEmpty ? "" : "盯住 \(store.profile.restrain.count) 类", id: "openProfile")
+                    EntryFormDivider()
+                    destination(.memories, "余白记得的", detail: "\(store.settingsSummary.memoryCount) 条", id: "openMemories")
                 }
-                recentSection
-                valuesCard
-                memoriesRow
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.space8)
-                .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
-        }.rootScrollContentMargins(for: .yubai, reservesNavigation: false).rootTabScroll(.yubai)
-            .scrollDismissesKeyboard(.interactively)
-            // Fade belongs to the scroll slot. Keeping it inside askArea
-            // expanded the bar's AX/hit region 40pt above its visible surface.
-            .overlay(alignment: .bottom) { PageFade(edge: .bottom) }
-            .fixedBottomBar() { askArea }
+            }
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
+                    destination(.accounts, "账户", detail: accountStatus, id: "openAccounts")
+                    EntryFormDivider()
+                    destination(.fixedFlows, "会回来的账单", detail: billStatus, id: "openFixedFlows")
+                    EntryFormDivider()
+                    destination(.frequent, "常用", detail: "\(repeatCount) 个", id: "openFrequentEntries")
+                }
+            }
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
+                    destination(.imports, "导入账单", id: "openImports")
+                    EntryFormDivider()
+                    destination(.backup, "备份", detail: store.preferences.lastBackupAt.map(dayText) ?? "", id: "openBackup")
+                    EntryFormDivider()
+                    destination(.settings, "设置", id: "openSettings")
+                }
+            }
+        }.rootScrollContentMargins(for: .yubai).rootTabScroll(.yubai)
             .rootPageHeader { RootHeader(title: "余白") }
-            .amountPrivacy(store.preferences.hideAmounts)
-            .navigationTitle("余白").yubaiNavigation()
+            .amountPrivacy(store.preferences.hideAmounts).navigationTitle("余白").yubaiNavigation()
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
             #endif
+            .task(id: store.ledgerRevision) {
+                let ledger = store.current, now = store.financialNow
+                let count = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now, limit: 1000).count }.value
+                guard !Task.isCancelled else { return }; repeatCount = count
+            }
     }
-
-    // MARK: 最近问过的
-    @ViewBuilder private var recentSection: some View {
-        let questions = Array(store.recentQuestions.prefix(5))
-        if !questions.isEmpty {
-            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                Text("最近问过的").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
-                    .padding(.horizontal, YubaiSpace.space4)
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        ForEach(Array(questions.enumerated()), id: \.offset) { index, question in
-                            questionRow(question, index: index)
-                            if index < questions.count - 1 { EntryFormDivider() }
-                        }
-                    }
+    private var askArea: some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            ChatInputBar(text: $input, placeholder: "问余白", accessibilityLabel: "问余白", inputID: "askYubai", sendID: "sendAskHome",
+                         showSend: !input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, focus: $focused, send: ask) {
+                AssistantMark(size: YubaiFont.navTitle.size).accessibilityHidden(true)
+            } accessory: { EmptyView() }
+            ChipFlow {
+                ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
+                    CategoryChoiceChip(title: text) {
+                        if index == 1 { store.tabRouteRequest = .askQuestion(text) }
+                        else { input = text; focused = true }
+                    }.accessibilityIdentifier("askSuggestion_\(index)")
                 }
             }
-        }
+        }.padding(.bottom, YubaiSpace.space4)
     }
-    private func questionRow(_ question: (text: String, date: Date), index: Int) -> some View {
-        Button { openQuestion(question.text) } label: {
-            HStack(spacing: YubaiSpace.gapGroup) {
-                Text(store.preferences.hideAmounts ? "金额已隐藏" : question.text).yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail).multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
-                Text(dayText(question.date)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                chevron
-            }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("recentQuestion_\(index)")
-            .accessibilityLabel(question.text + "，" + dayText(question.date))
+    private func destination(_ route: TabRoute, _ title: String, detail: String = "", id: String) -> some View {
+        Button { focused = false; store.tabRouteRequest = route } label: {
+            AdaptiveValueRow {
+                Text(title).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
+            } value: {
+                HStack(spacing: YubaiSpace.space6) {
+                    if !detail.isEmpty {
+                        Text(store.preferences.hideAmounts ? HomeButler.privacyText(detail, hidden: true) : detail)
+                            .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                }
+            }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(id)
+    }
+    private var wishStatus: String {
+        let wishes = store.current.wishlist.filter { $0.status == .thinking }
+        guard !wishes.isEmpty else { return "0 个" }
+        let saved = LedgerHomeModel.make(store).savedTotal ?? 0
+        let funded = wishes.filter { $0.amount <= saved }.min { $0.amount < $1.amount }
+        return "\(wishes.count) 个" + (funded.map { " · " + $0.title + "够了" } ?? "")
+    }
+    private var latestLetter: String {
+        store.cards.filter { $0.kind == .weeklyLetter }.map(\.createdAt).max().map(FixedFlowPresentation.monthDay) ?? ""
+    }
+    private var accountStatus: String {
+        let date = store.current.lastReconciledAt
+        return "对一下余额" + (date.map { " · 上次 " + FixedFlowPresentation.monthDay($0) } ?? "")
+    }
+    private var billStatus: String {
+        let count = store.formula.billCount
+        return "这一期还有 \(count) 样"
     }
     private func dayText(_ date: Date) -> String {
-        let calendar = Dates.calendar
-        let days = calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(Dates.now)).day ?? 0
-        if days <= 0 { return "今天" }
-        if days == 1 { return "昨天" }
-        if days < 7 { return date.formatted(.dateTime.weekday(.abbreviated).locale(Locale(identifier: "zh_CN"))) }
+        if Dates.calendar.isDate(date, inSameDayAs: store.financialNow) { return "今天" }
+        if Dates.calendar.isDate(date, inSameDayAs: Dates.addDays(-1, to: store.financialNow)) { return "昨天" }
         return FixedFlowPresentation.monthDay(date)
     }
-
-    // MARK: 消费观
-    private var valuesCard: some View {
-        let profile = store.profile
-        return TabNavigationLink(.profile) { ProfileView() } label: {
-            Card {
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    HStack(spacing: YubaiSpace.gapGroup) {
-                        Text("消费观").yubaiFont(YubaiFont.cardTitle)
-                        Spacer(minLength: YubaiSpace.space8)
-                        chevron
-                    }
-                    valueLine("想克制", profile.restrain.map(\.title).joined(separator: "、"))
-                    valueLine("愿意多花", profile.generous.map(\.title).joined(separator: "、"))
-                    valueLine("原则", profile.principles.first ?? "")
-                }
-            }
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openProfile")
-    }
-    @ViewBuilder private func valueLine(_ title: String, _ value: String) -> some View {
-        if !value.isEmpty {
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .top, spacing: YubaiSpace.gapGroup))
-            layout {
-                Text(title).foregroundStyle(YubaiColor.labelSecondary).frame(minWidth: textSize.isAccessibilitySize ? YubaiSpace.none : YubaiSize.fieldMinimum, alignment: .leading)
-                Text(store.preferences.hideAmounts ? "••••" : value).multilineTextAlignment(.leading)
-                    .lineLimit(1).truncationMode(.tail).accessibilityIdentifier("truncatableName")
-            }.yubaiFont(YubaiFont.callout)
-        }
-    }
-
-    // MARK: 余白记得的
-    private var memoriesRow: some View {
-        let count = "\(store.settingsSummary.memoryCount) 条"
-        return TabNavigationLink(.memories) { MemoryView() } label: {
-            Card(style: .list) {
-                HStack(spacing: YubaiSpace.gapGroup) {
-                    Text("余白记得的").yubaiFont(YubaiFont.rowTitle)
-                    Spacer(minLength: YubaiSpace.space8)
-                    Text(count).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                    chevron
-                }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-            }
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("openMemories")
-            .accessibilityLabel("余白记得的，" + count)
-    }
-
-    // MARK: 输入
-    private var askArea: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            if !store.recentQuestions.isEmpty { ChipFlow {
-                ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
-                    CategoryChoiceChip(title: text) { choose(text, send: index == 1) }.accessibilityIdentifier("askSuggestion_\(index)")
-                }
-            }.frame(maxWidth: .infinity, alignment: .leading) }
-            field
-        }.padding(.horizontal, YubaiSpace.insetPage)
-            .padding(.bottom, focused ? YubaiSpace.gapGroup : YubaiSize.rootBottomPadding(for: .yubai))
-            .contentShape(Rectangle()).background(YubaiColor.canvas)
-            .accessibilityHidden(store.destination != .yubai)
-            .allowsHitTesting(store.destination == .yubai)
-    }
-    private var field: some View {
-        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        return ChatInputBar(text: $input, placeholder: "问一句", accessibilityLabel: "问余白", inputID: "askYubai", sendID: "sendAskHome",
-                            showSend: !trimmed.isEmpty, focus: $focused, send: { ask(trimmed) }) {
-            AssistantMark(size: YubaiFont.navTitle.size).accessibilityHidden(true)
-        } accessory: { EmptyView() }
-    }
-    private func choose(_ text: String, send: Bool) {
-        if send { openQuestion(text) }
-        else { input = text; focused = true }
-    }
-    private func ask(_ text: String) {
+    private func ask() {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        input = ""; focused = false
-        openQuestion(text)
-    }
-    private func openQuestion(_ text: String) {
-        store.tabRouteRequest = .askQuestion(text)
-    }
-    private var chevron: some View {
-        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+        input = ""; focused = false; store.tabRouteRequest = .askQuestion(text)
     }
 }

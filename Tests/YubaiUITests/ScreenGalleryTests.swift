@@ -176,6 +176,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
         app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
+        if fixture.hasPrefix("v47") {
+            let instant = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 20))!
+            app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(instant.timeIntervalSince1970)
+        }
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = galleryMode == .hidden ? "1" : "0"
         app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
         app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
@@ -256,8 +260,12 @@ final class ScreenGalleryTests: YubaiUITestCase {
         rememberTap(target, in: app)
         target.tap()
     }
-    private func tap(_ id: String) throws { try tap(element(id)) }
+    private func tap(_ id: String) throws {
+        if id.hasPrefix("tab_"), app.keyboards.firstMatch.exists { try drag(element("entriesScroll")); try wait({ !self.app.keyboards.firstMatch.exists }, "Keyboard did not dismiss before switching tabs") }
+        try tap(element(id))
+    }
     private func type(_ value: String, into id: String) throws {
+        if id == "entriesSearch" && !element(id).exists { try tap("openLedgerSearch") }
         let field = element(id); try tap(field)
         if !app.keyboards.firstMatch.exists { press(field) }
         try wait({ self.app.keyboards.firstMatch.exists }, "Keyboard did not open for " + id)
@@ -277,6 +285,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         guard waitForNativeTransition(in: app, deadline: stopDeadline) else { throw Miss(description: "Back transition did not finish") }
     }
     private func root(_ tab: String) throws {
+        if app.keyboards.firstMatch.exists && element("entriesSearchCancel").exists { try tap("entriesSearchCancel") }
         for _ in 0..<10 {
             guard waitForNativeTransition(in: app, deadline: stopDeadline) else { throw Miss(description: "Root transition did not finish") }
             if element("mainNavigation").exists && element("mainNavigation").isHittable { break }
@@ -300,39 +309,46 @@ final class ScreenGalleryTests: YubaiUITestCase {
               !element("BackButton").exists else { throw Miss(description: "Root state not verified: " + tab) }
     }
     private func savingPage() throws {
-        try root("now"); try tap("openSaving"); try destination("savingTabScroll")
+        try root("ledger")
+        if element("openSaving").exists { try tap("openSaving") }
+        else { app.open(URL(string: "yubai://saving")!) }
+        try destination("savingTabScroll")
         guard !element("mainNavigation").exists else { throw Miss(description: "Saving page did not push") }
     }
     private func settings(_ requestedDestination: String? = nil) throws {
-        try root("now"); try tap("openSettings"); try destination("settingsScroll")
+        try root("yubai"); try tap("openSettings"); try destination("settingsScroll")
         if let id = requestedDestination {
             try tap(id)
             if id == "openIntelligencePrivacy" { try self.destination("intelligencePrivacyPage") }
         }
     }
-    private func formula() throws { try root("now"); try tap("fundsFormula"); try destination("formulaPage") }
+    private func formula() throws { try root("ledger"); try tap("fundsFormula"); try destination("formulaPage") }
     private func close(_ id: String = "cancelManualSheet") throws { try tap(id) }
-    private func bill(_ title: String) -> XCUIElement {
-        let check = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'billCheck_' AND label == %@", "付了 " + title)).firstMatch
-        if !check.exists && element("billDueNotYet").exists { press(element("billDueNotYet")) }
-        return check
+    private func bill(_ title: String) throws -> XCUIElement {
+        if !element("cycleBillsPage").exists { try formula(); try tap("formulaRow_bills") }
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'editFixedFlow_' AND label CONTAINS %@", title)).firstMatch
+        try require(row.identifier)
+        return row
+    }
+    private func advanceHomeCard() throws -> Bool {
+        for id in ["dismissHomeCard", "leftoverDismiss", "dismissBalanceMismatch", "dismissBillHeadsUp", "dismissWeeklyCard", "deficitKeep", "paydayNotYet", "savingsTopupDecline", "deferFirstSalary"] {
+            if element(id).exists { try tap(id); return true }
+        }
+        return false
     }
     private func deckAction(_ id: String) throws {
         for _ in 0..<16 {
             if element(id).exists { return }
-            guard element("butlerDeckNext").exists else { break }
-            try tap("butlerDeckNext")
+            if try !advanceHomeCard() { break }
         }
         try require(id)
     }
     private func billDecision(_ title: String) throws {
-        if element("openLetterInbox").exists { try tap("openLetterInbox") }
         let card = element("dueBills")
         let expected = card.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", title)).firstMatch
         for _ in 0..<16 {
             if expected.exists { break }
-            guard element("butlerDeckNext").exists else { break }
-            try tap("butlerDeckNext")
+            if try !advanceHomeCard() { break }
         }
         guard expected.exists else { throw Miss(description: "Missing bill decision: " + title) }
         try require("billDuePaid")
@@ -382,7 +398,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         return rows.joined(separator: "\n")
     }
     private func detail() throws {
-        try root("ledger"); try tap("ledgerEntry_" + galleryID(106)); try require("entryDetailTitle")
+        try root("ledger"); try tap("ledgerEntry_" + galleryID(106)); try tap("entryProvenance"); try require("entryDetailTitle")
     }
 
     private func walk46(_ mode: GalleryMode, _ walk: (Bool, Bool, Bool) -> Void) {
@@ -454,7 +470,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try load(); try longPress(element("addEntry")); try tap("manageQuickRepeats")
             try tap("emptyAction_frequent"); try type(longName, into: "frequentEntryPurpose"); try require("saveFrequentEntry")
         }
-        stop("Empty-Budget") { try load(); try settings("openSpendingParts"); try require("emptyState_budget") }
+        stop("Empty-Budget") { try load(); try settings("openSpendingParts"); try require("emptyState_restraint") }
         stop("Empty-Search") { try load("v47-home-hard"); try search("星巴克"); try drag(element("entriesScroll")); try require("emptyState_search"); try reveal(element("emptySecondary_search")) }
     }
     private func round47BatchD(dark: Bool, large: Bool) {
@@ -463,87 +479,70 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try load(fixture)
             try settings("openIntelligencePrivacy")
             try wait({ (self.element("butlerLastRun").value as? String ?? "").contains("suggestions=1") }, "Combined suggestion")
-            try root("now"); try require("savingsTopupCard")
+            try root("ledger"); try require("savingsTopupCard")
         }
         func rejected(_ fixture: String) throws {
             try load(fixture); try settings("openIntelligencePrivacy")
             try reveal(element("butlerLastRun"))
             try wait({ (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=0") }, "Rejected suggestion")
         }
-        stop("Changes", budget: 240) { try combined(); try require("openLetterInbox"); try require("openSaving") }
-        stop("Changes-Deck", budget: 240) { try combined(); try tap("openLetterInbox"); try require("savingsTopupCard"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
-        stop("Changes-Evidence", budget: 240) { try combined(); try tap("openLetterInbox"); try tap("butlerDeckNext"); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage") }
+        stop("Changes-AI-Saving", budget: 240) { try combined(); try require("savingsTopupCard"); try require("openSaving") }
+        stop("Changes-Next-Card", budget: 240) { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard") }
+        stop("Changes-Evidence", budget: 240) { try combined(); try tap("savingsTopupDecline"); try tap("butlerAIEvidence"); try require("butlerAIEvidencePage") }
         stop("Changes-Answered", budget: 240) { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard") }
         stop("Changes-Trial", budget: 240) { try combined(); try tap("savingsTopupDecline"); try require("butlerSuggestionCard"); try tap("butlerAIAccept"); try wait({ !self.element("butlerSuggestionCard").exists }, "Trial accepted"); try require("openSaving") }
         stop("Changes-Hard", budget: 240) { try combined("v47-ai-topup-hard"); try reveal(element("openSaving")) }
-        stop("Changes-Hard-Deck", budget: 240) { try combined("v47-ai-topup-hard"); try tap("openLetterInbox"); try tap("butlerDeckNext"); try require("butlerSuggestionCard") }
-        stop("Home-AI-Many") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try require("openLetterInbox") }
+        stop("Changes-Hard-Next-Card", budget: 240) { try combined("v47-ai-topup-hard"); try tap("savingsTopupDecline"); try require("butlerSuggestionCard") }
+        stop("Home-AI-Many") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12) }
         stop("Home-AI-Many-Next") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try require("butlerSuggestionCard") }
-        stop("Home-AI-Never") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try tap("butlerAINever"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestion muted") }
+        stop("Home-AI-Never") { try load("v47-ai-many"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIAccept"); try tap("butlerAIEvidence"); try tap("butlerAINever"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestion muted") }
         stop("Home-AI-Wrong-Sum") { try rejected("v47-ai-wrong-sum") }
         stop("Home-AI-Unknown-ID") { try rejected("v47-ai-unknown-id") }
         stop("Home-AI-Unknown-Action") { try rejected("v47-ai-unknown-action") }
         stop("Home-AI-Malformed") { try rejected("v47-ai-malformed") }
         stop("Home-AI-Empty-Reply") { try rejected("v47-ai-none") }
-        stop("Home-AI-Disabled") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try tap("aiFeature_butlerSuggestions"); try wait({ self.element("aiFeature_butlerSuggestions").value as? String == "0" }, "Suggestion switch did not turn off"); try root("now"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestions disabled") }
+        stop("Home-AI-Disabled") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try settings("openIntelligencePrivacy"); try tap("aiFeature_butlerSuggestions"); try wait({ self.element("aiFeature_butlerSuggestions").value as? String == "0" }, "Suggestion switch did not turn off"); try root("ledger"); try wait({ !self.element("butlerSuggestionCard").exists }, "Suggestions disabled") }
         stop("AI-Why-Correction-Empty") { try load("v47-ai-valid"); try require("butlerSuggestionCard", timeout: 12); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave") }
         stop("AI-Why-Corrected") {
             try load("v47-ai-valid")
-            // A real due-bill question can outrank this suggestion (the run-4
-            // tree shows dueBills + "还有 1 件"). Follow the owner's deck route.
-            try wait({ self.element("butlerSuggestionCard").exists || self.element("openLetterInbox").exists }, "Suggestion or task deck", timeout: 12)
-            if !element("butlerSuggestionCard").exists { try tap("openLetterInbox"); try deckAction("butlerAIEvidence") }
+            try deckAction("butlerAIEvidence")
             try require("butlerSuggestionCard"); try tap("butlerAIEvidence"); try tap("butlerAIIncorrect"); try tap("butlerAICorrectionSave")
             try wait({ !self.element("butlerAIEvidencePage").exists }, "Correction saved")
         }
         stop("Home-AI-Review-Done") { try load("v47-ai-review"); try require("butlerAIReviewCard"); try tap("butlerAIReviewDone"); try wait({ !self.element("butlerAIReviewCard").exists }, "Review answered") }
     }
-    private func round47BatchA(dark: Bool, large: Bool) {
-        func load(_ fixture: String) throws { try launch(fixture, dark: dark, large: large) }
-        func add(_ amount: String) throws {
-            try tap("addEntry"); try keys(amount); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("cancelManualSheet")
-        }
-        func revealUndo() throws -> String {
-            let originals = ["ledgerEntry_" + galleryID(470101), "ledgerEntry_" + galleryID(470102)]
-            let added = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_' AND NOT identifier IN %@", originals))
-            try wait({ added.count == 1 }, "Expected the one newly recorded receipt row")
-            let row = element(added.element(boundBy: 0).identifier)
+    private func round47BatchA(_ dark: Bool, _ large: Bool) {
+        func load(_ fixture: String = "v47r-ledger") throws { try launch(fixture, dark: dark, large: large) }
+        stop("Ledger-Home") { try load(); try require("availableFunds"); try require("openSaving"); try require("ledgerWaterBar") }
+        stop("Ledger-Home-Butler") { try load("v47-ai-valid"); try require("butlerSuggestionCard") }
+        stop("Ledger-Find") { try load(); try tap("entriesMonth"); try require("ledgerJumpMonth_1") }
+        stop("Ledger-Find-Search") { try load(); try search("咖啡"); try require("entriesSearchTotal"); try require("entriesFilter_没分类") }
+        stop("Ledger-Find-Filters") { try load(); try tap("openLedgerFilters"); try tap("entriesFilter_收入"); try require("activeEntryCount") }
+        stop("Ledger-Find-End", budget: 180) {
+            try load("v47r-ledger-end")
+            let row = element("ledgerEntry_" + galleryID(479999))
             try reveal(row)
-            let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5))
-            let end = row.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
-            start.press(forDuration: 0.05, thenDragTo: end)
-            let undo = "undoReceipt_" + row.identifier.replacingOccurrences(of: "ledgerEntry_", with: "")
-            try require(undo)
-            return undo
+            for _ in 0..<2 { try drag(element("entriesScroll")) }
+            try require(row.identifier)
+            guard row.isHittable, row.frame.maxY < element("addEntry").frame.minY else { throw Miss(description: "Last entry is covered by the entry pill") }
         }
-        stop("Home") { try load("v47-home"); try require("openSaving"); try require("addEntry"); try reveal(element("receiptTotal")) }
-        stop("Book") { try load("v47-home"); try root("ledger"); try require("entriesScroll") }
-        stop("Save-Card") { try load("v47-saving-wish"); try reveal(element("openSaving")) }
-        // Run 8 reached the fresh fixture, but launch exhausted the 90s budget
-        // before require(mainNavigation), before any reveal or reset could run.
-        stop("Save-Card-Reached", budget: large ? 180 : 90) { try load("v47-saving-reached"); try reveal(element("openSaving")) }
-        stop("Save-Card-Monthly") { try load("v47-saving-monthly"); try reveal(element("openSaving")) }
-        stop("Save-Card-Empty") { try load("v47-saving-empty"); try reveal(element("openSaving")) }
-        stop("Save-Page") { try load("v47-home-hard"); try savingPage(); try require("reserveTotal") }
-        stop("Receipt-Empty") { try load("v47-receipt-empty"); try reveal(element("receiptFirstEntry")) }
-        stop("Receipt") { try load("v47-receipt-normal"); try reveal(element("receiptTotal")) }
-        stop("Receipt-Added") { try load("v47-receipt-normal"); try add("18"); try require("receiptTotal") }
-        stop("Receipt-Undo") {
-            try load("v47-receipt-normal"); try add("18"); _ = try revealUndo()
+        stop("Ledger-Modes") { try load(dark ? "v47r-carry-fast" : "v47r-ledger-hard"); try require("openSaving"); try require("ledgerWaterBar"); try reveal(element("ledgerEntry_" + galleryID(479101))) }
+        stop("Changes") { try load(); try require("ledgerWaterBar"); try root("insights"); try require("insightsTotals"); try root("yubai"); try require("openSettings") }
+        stop("Ledger-Return-To-Top") {
+            try load(); try search("咖啡"); try tap("tab_ledger"); try require("availableFunds")
+            guard !element("entriesSearch").exists else { throw Miss(description: "Ledger reselection kept search open") }
         }
-        stop("Receipt-Undone") {
-            try load("v47-receipt-normal"); try add("18"); let undo = try revealUndo()
-            try tap(undo); try require("receiptNumber")
-            try wait({ self.element("receiptNumber").label == "No.2" }, "Receipt count after undo")
-        }
-        stop("Receipt-Many") { try load("v47-receipt-many"); try reveal(element("receiptMoreEntries")) }
-        stop("Receipt-More-Book") { try load("v47-receipt-many"); try tap("receiptMoreEntries"); try require("entriesScroll") }
-        stop("Home-Hard") { try load("v47-home-hard"); try reveal(element("receiptTotal")) }
+        stop("Insights-Two") { try load("v47r-insights"); try root("insights"); try require("insightsTotals"); try reveal(element("cashMonthCard")) }
+        stop("Insights-Previous") { try load("v47r-insights"); try root("insights"); try tap("insightsPeriod_上一期"); try require("insightsTotals") }
+        stop("Insights-Year") { try load("v47r-insights"); try root("insights"); try tap("insightsPeriod_今年"); try require("insightsTotals") }
+        stop("Yubai") { try load("v47r-yubai"); try root("yubai"); try require("askYubai"); try reveal(element("openSettings")) }
+        stop("Yubai-Settings") { try load(); try settings(); try require("settingsScroll") }
+        stop("Empty-Restraint") { try load("v47r-restraint-empty"); try root("yubai"); try tap("openProfile"); try require("emptyState_restraint") }
         stop("First-A") { try load("v47-first"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
         stop("First-A-ReduceMotion") { try launch("v47-first", dark: dark, large: large, reduceMotion: true); try require("firstOpenScene") }
-        stop("First-After") { try load("v47-first"); try add("28"); try require("firstSalaryCard"); try require("receiptTotal") }
+        stop("First-After") { try load("v47-first"); try add("28"); try require("firstSalaryCard"); try require("entriesScroll") }
         stop("First-After-Setup") { try load("v47-after"); try tap("setupFirstSalary"); try require("paydaySetupSheet") }
-        stop("First-After-Deferred") { try load("v47-after"); try tap("deferFirstSalary"); try require("openSaving") }
+        stop("First-After-Deferred") { try load("v47-after"); try tap("deferFirstSalary"); try require("entriesScroll") }
         stop("First-After-Income") { try load("v47-after-income"); try require("firstSalaryCard") }
         stop("First-After-Deadline") { try load("v47-after-deadline"); try require("firstSalaryCard") }
     }
@@ -553,6 +552,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         func saving(_ fixture: String = "v47-savings") throws { try load(fixture); try savingPage() }
         func take(_ amount: String) throws { try saving(); try tap("takeSavings"); try keys(amount); try require("savingsTransferPreview") }
         func putBack(_ amount: String) throws { try saving(); try tap("putBackSavings"); try keys(amount); try require("savingsTransferPreview") }
+        stop("Save-Page") { try saving(); try require("reserveTotal") }
         stop("Spend", budget: 180) { try load("v47-spend"); try formula(); try require("formulaResult"); try reveal(element("formulaResult")) }
         stop("Spend-Over") { try load("v47-spend-over"); try formula(); try reveal(element("formulaResult")) }
         stop("Spend-Zero", budget: 180) { try load("v47-spend-zero"); try formula(); try require("formulaRow_spent") }
@@ -562,12 +562,58 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Spend-Yearly", budget: 180) { try load(); try settings("openFixedFlows"); try tap("yearlyBillsStrip"); try destination("yearlyBillsPage") }
         stop("Spend-States") { try load("v47r-less"); try formula(); try reveal(element("formulaResult")) }
         stop("Spend-States-Deficit") { try load("v47r-deficit"); try formula(); try reveal(element("formulaResult")) }
+        stop("Spend-Edit-Deficit") { try load("v47r-deficit"); try formula(); try tap("formulaRow_saving"); try require("formulaEditResult") }
         stop("Spend-States-Taken") { try load("v47r-taken"); try formula(); try reveal(element("formulaRow_withdrawal")) }
         stop("Spend-States-Carry") { try load("v47r-carry"); try tap("leftoverKeep"); try formula(); try require("formulaRow_carry") }
         stop("Spend-States-Floor") { try load("v47r-floor"); try formula(); try reveal(element("formulaRow_balanceGap")) }
         stop("Butler-Cards") { try load("v47r-carry"); try require("leftoverKeep"); try require("leftoverDismiss") }
         stop("Butler-Cards-Deficit") { try load("v47r-deficit"); try require("coverFromReserve") }
         stop("Entry-Recon") { try load("v47r-reconcile"); try tap("openReconcile"); try require("reconcileSheet") }
+        stop("Hero-States") { try load("v47-spend"); try require("ledgerWaterBar"); try require("availableFunds") }
+        stop("Hero-States-Fast") { try load("v47r-fast"); try require("ledgerWaterBar") }
+        stop("Hero-States-Less") { try load("v47r-less"); try require("ledgerStatus") }
+        stop("Hero-States-Deficit") { try load("v47r-deficit"); try require("ledgerGapBill"); try require("coverFromReserve") }
+        stop("Hero-States-No-Income") { try load("v47r-no-income"); try require("availableFunds") }
+        stop("Hero-States-Fallback") { try load("v47-after"); try require("firstSalaryCard") }
+        stop("Ledger-Over") { try load("v47r-less"); try require("ledgerStatus"); try require("entriesScroll") }
+        stop("Ledger-Over-Deficit") { try load("v47r-deficit"); try require("deficitRescueCard") }
+        stop("Ledger-Over-Rescued") { try load("v47r-deficit"); try tap("coverFromReserve"); try require("undoLastChange") }
+        stop("Ledger-Over-Undo") { try load("v47r-deficit"); try tap("coverFromReserve"); try tap("undoLastChange"); try require("deficitRescueCard") }
+        stop("Butler-Cards-Topup") { try load("v47-topup"); try require("savingsTopupAll"); try require("savingsTopupDecline") }
+        stop("Butler-Cards-Weekly-AI") { try load("v47r-weekly-ai"); try require("butlerAIAccept"); try require("butlerAIIncorrect") }
+        stop("Butler-Cards-Long") { try load("v47r-weekly-ai"); if element("expandButlerHeadline").exists { try tap("expandButlerHeadline") }; try require("butlerAIAccept") }
+        stop("Butler-Cards-Soft-Suggestion") { try load("v47r-suggestion"); try require("butlerAIAccept"); try require("butlerAIIncorrect") }
+        stop("Butler-Cards-Suggestion-Accepted") { try load("v47r-suggestion"); try tap("butlerAIAccept"); try formula(); try reveal(element("softLineWatches")) }
+        stop("Butler-Cards-Correction") { try load("v47r-weekly-ai"); try tap("butlerAIIncorrect"); try require("butlerAICorrectionSave") }
+        stop("Butler-Cards-Mismatch") { try load("v47r-mismatch"); try require("balanceMismatchCard"); try require("openReconcile") }
+        stop("Butler-Cards-Yearly") { try load("v47r-next-bill"); try require("billHeadsUpText"); try require("openBillHeadsUp") }
+        stop("Butler-Cards-Quarterly") { try load("v47r-next-quarterly"); try require("billHeadsUpText") }
+        stop("Butler-Cards-Carry-Dark") { try load("v47r-carry-fast"); try require("leftoverKeep"); try require("ledgerWaterBar") }
+        stop("Spend-Soft-Lines") { try load("v47r-soft-lines"); try formula(); try reveal(element("addSoftLine")) }
+        stop("Spend-Soft-Exceeded") { try load("v47r-soft-exceeded"); try formula(); try reveal(element("softLineWatches")) }
+        stop("Spend-Soft-Count") { try load("v47r-soft-count"); try formula(); try reveal(element("softLineWatches")) }
+        stop("Spend-Soft-Empty") { try load("v47-spend"); try formula(); try reveal(element("addSoftLine")) }
+        stop("Spend-Soft-Edit") { try load("v47r-soft-lines"); try formula(); try tap("softLine_" + galleryID(478201) + ":amount"); try require("saveSoftLine") }
+        stop("Entry-Recon-Soft-Live") { try load("v47r-soft-lines"); try tap("addEntry"); try type("外卖\n", into: "entryPurpose"); try keys("38"); try require("entrySavingHint") }
+        stop("Entry-Recon-Soft-Exceeded") { try load("v47r-soft-lines"); try tap("addEntry"); try type("外卖\n", into: "entryPurpose"); try keys("338"); try require("entrySavingHint") }
+        stop("Entry-Recon-Soft-Count") { try load("v47r-soft-count"); try tap("addEntry"); try type("咖啡\n", into: "entryPurpose"); try keys("18"); try require("entrySavingHint") }
+        stop("Entry-Recon-Covered") {
+            try load("v47r-reconcile-covered"); try root("yubai"); try tap("openAccounts"); try tap("reconcileAll")
+            try tap("reconcileField_招行储蓄卡"); try keys("11762"); try tap("reconcileField_招行储蓄卡Done"); try require("reconcileApply")
+        }
+        stop("Entry-Recon-Floor") {
+            try load("v47r-reconcile-floor"); try root("yubai"); try tap("openAccounts"); try tap("reconcileAll")
+            try tap("reconcileField_招行储蓄卡"); try keys("9774"); try tap("reconcileField_招行储蓄卡Done"); try require("reconcileSpendableAfter")
+        }
+        stop("Entry-Recon-Floor-Applied") {
+            try load("v47r-reconcile-floor"); try root("yubai"); try tap("openAccounts"); try tap("reconcileAll")
+            try tap("reconcileField_招行储蓄卡"); try keys("9774"); try tap("reconcileField_招行储蓄卡Done"); try tap("reconcileApply")
+            try root("ledger"); try formula(); try reveal(element("formulaRow_balanceGap"))
+        }
+        stop("Insights-Soft-Lines") { try load("v47r-soft-lines"); try root("insights"); try require("insightSoftLine_" + galleryID(478201) + ":amount") }
+        stop("Insights-Soft-Detail") { try load("v47r-soft-lines"); try root("insights"); try tap("insightCategory_0"); try reveal(element("addSoftLine")) }
+        stop("Insights-Soft-Count-Edit") { try load("v47r-soft-lines"); try root("insights"); try tap("insightCategory_0"); try tap("modeSoftLine_" + galleryID(478201) + ":amount"); try require("saveSoftLine") }
+        stop("Insights-Soft-Whole-Category") { try load("v47-spend"); try root("insights"); try tap("insightCategory_0"); try tap("addSoftLine"); try require("saveSoftLine") }
         stop("Spend-Entries", budget: 180) { try load(); try formula(); try tap("formulaRow_spent"); try destination("entriesScroll") }
         stop("Save-Page-Flexible") { try saving(); try require("takeSavings"); try require("putBackSavings"); try reveal(element("editSavingsFloor")) }
         stop("Save-Page-No-Floor") { try saving("v47-savings-no-floor"); try require("editSavingsFloor") }
@@ -583,8 +629,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Floor-Cleared") { try saving(); try tap("editSavingsFloor"); try tap("clearSavingsFloor"); try require("editSavingsFloor") }
         stop("Records", budget: 180) { try saving("v47-records"); try tap("openReserve"); try require("reserveLine_0") }
         stop("Home-Topup") { try load("v47-topup"); try require("savingsTopupCard") }
-        stop("Home-Topup-Partial") { try load("v47-topup"); try tap("savingsTopupPartial"); try keys("200"); try require("savingsTransferPreview") }
-        stop("Home-Topup-Part-Saved") { try load("v47-topup"); try tap("savingsTopupPartial"); try keys("200"); try tap("confirmSavingsTransfer"); try require("openSaving"); try toast() }
+        stop("Home-Topup-Partial") { try load("v47-topup"); try longPress(element("savingsTopupCard")); try tap("savingsTopupPartial"); try keys("200"); try require("savingsTransferPreview") }
+        stop("Home-Topup-Part-Saved") { try load("v47-topup"); try longPress(element("savingsTopupCard")); try tap("savingsTopupPartial"); try keys("200"); try tap("confirmSavingsTransfer"); try require("openSaving"); try toast() }
         stop("Home-Topup-All") { try load("v47-topup"); try tap("savingsTopupAll"); try require("openSaving"); try toast() }
         stop("Home-Topup-Declined") { try load("v47-topup-queue"); try tap("savingsTopupDecline"); try require("renewalCard") }
         stop("Toast-Short") { try load("v47-toast-short"); try require("toastMessage"); try require("undoLastChange") }
@@ -613,10 +659,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
         func load(_ fixture: String) throws { try launch(fixture, dark: dark, large: large) }
         stop("DS-Nav") { try load("v46-hard"); try tap("fundsFormula"); try require("formulaPage") }
         stop("Quick") { try load("v46-home"); try longPress(element("addEntry")); try require("quickRepeatMenu"); try require("manageQuickRepeats") }
-        stop("Home-C") { try load("v46-home"); try require("renewalCard"); try require("openLetterInbox") }
+        stop("Home-C") { try load("v46-home"); try require("renewalCard") }
         stop("Home-A") { try tap("stopRenewal"); try require("butlerReceipt"); try require("undoButlerReceipt") }
-        stop("Home-B") { try load("v46-quiet"); try require("todayEntries") }
-        stop("Deck") { try load("v46-deck"); try tap("openLetterInbox"); try require("butlerDeckNext"); try require("pendingImportsCard") }
+        stop("Home-B") { try load("v46-quiet"); try require("entriesScroll") }
+        stop("Single-Card") { try load("v47-topup-queue"); try require("savingsTopupCard"); try tap("savingsTopupDecline"); try require("renewalCard") }
         stop("Home-Payday") { try load("v46-leftover"); try require("leftoverKeep") }
         stop("Payday-Amount") { try load("v46-payday"); try tap("paydayArrived"); try keys("8510"); try require("paydayExtraToSavings") }
         stop("First") { try load("v46-empty"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
@@ -631,19 +677,19 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try keys(String(format: "%.2f", amount - 412)); try tap("reconcileField_招行储蓄卡Done")
             try require("reconcileResult")
         }
-        stop("Recon-Done") { try tap("reconcileApply"); try require("toastMessage"); try require("todayEntries") }
+        stop("Recon-Done") { try tap("reconcileApply"); try require("toastMessage"); try require("entriesScroll") }
         stop("Home-Over") { try load("v46-over"); try require("coverFromReserve") }
         stop("Over-Cover") { try tap("fundsFormula"); try reveal(element("formulaResult")) }
         stop("Over-Done") { try tap("BackButton"); try tap("coverFromReserve"); try require("availableFunds"); try toast() }
         stop("Home-Busy") { try load("v46-busy"); try require("importBusyRow"); try require("organizeProgress") }
         stop("Home-Hidden") { try load("v46-home"); try hideAmounts(); try require("stopRenewal") }
         stop("Home-Hard") { try load("v46-hard"); try require("renewalCard") }
-        stop("Big-Home") { try launch("v46-big", dark: dark, large: true); try require("todayEntries") }
+        stop("Big-Home") { try launch("v46-big", dark: dark, large: true); try require("entriesScroll") }
         stop("Spend", budget: 180) { try load("v46-spend"); try tap("fundsFormula"); try require("formulaRow_income"); try require("formulaRow_spent") }
         stop("Saved") { try load("v46-saved"); try savingPage(); try tap("openButlerSaved"); try require("butlerSavedTotal") }
         // These three boards specify behavior, rather than another phone page.
         stop("Goal") { try load("v46-home"); try require("stopRenewal") }
-        stop("Butler-Kinds") { try load("v46-deck"); try tap("openLetterInbox"); try require("butlerDeckNext"); try tap("butlerDeckNext") }
+        stop("Butler-Kinds") { try load("v46-deck"); try require("pendingImportsCard") }
         stop("Words") { try load("v46-home"); try settings(); try tap("openNoticeSettings"); try reveal(element("butlerNoticeSettings")); try require("butlerNotice_ordinary") }
     }
 
@@ -653,11 +699,11 @@ final class ScreenGalleryTests: YubaiUITestCase {
 
     private func rootsAndLedger() {
         stop("01-now-01-top") { try launch(); try require("fundsFormula") }
-        stop("01-now-02-middle") { try drag(element("nowScroll")) }
-        stop("01-now-03-bottom") { for _ in 0..<6 { try drag(element("nowScroll")) } }
-        stop("01-now-04-hidden-amounts") { try root("now"); try tap("toggleAmountVisibility"); try require("fundsFormula") }
-        stop("01-now-05-todo") { try launch(); try tap("openLetterInbox"); try require("letterInbox") }
-        stop("01-now-06-weekly-review") { try root("ledger"); try tap("ledgerMode_where"); try tap("openWeekly"); try require("weeklyNumbers") }
+        stop("01-now-02-middle") { try drag(element("entriesScroll")) }
+        stop("01-now-03-bottom") { for _ in 0..<6 { try drag(element("entriesScroll")) } }
+        stop("01-now-04-hidden-amounts") { try root("ledger"); try tap("toggleAmountVisibility"); try require("fundsFormula") }
+        stop("01-ledger-05-butler") { try launch("v47-ai-valid"); try require("butlerSuggestionCard") }
+        stop("01-now-06-weekly-review") { try root("yubai"); try tap("openWeekly"); try require("weeklyNumbers") }
         stop("01-now-07-weekly-review-bottom") { try drag(app.scrollViews.firstMatch) }
         stop("01-now-08-hidden-ledger") { try launch(); try tap("toggleAmountVisibility"); try root("ledger"); try require("entriesScroll") }
         stop("01-now-09-hidden-saving") { try savingPage(); try require("savingTabScroll") }
@@ -667,24 +713,24 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("03-ledger-02-detail-middle") { for _ in 0..<3 { try drag(element("entriesScroll")) } }
         stop("03-ledger-03-detail-bottom") { for _ in 0..<18 { try drag(element("entriesScroll")) } }
         stop("03-ledger-04-search") { try launch(); try search(longName); try reveal(buttonPrefix("ledgerEntry_")) }
-        stop("03-ledger-05-filter-unclassified") { try tap("entriesSearchCancel"); try tap("entriesFilter_没分类"); try require("activeEntryCount") }
+        stop("03-ledger-05-filter-unclassified") { try tap("entriesSearchCancel"); try tap("openLedgerFilters"); try tap("entriesFilter_没分类"); try require("activeEntryCount") }
         stop("03-ledger-06-filter-income") { try tap("entriesFilter_收入"); try require("activeEntryCount") }
         stop("03-ledger-07-future-entry") { try launch(); try search("合成未来账目"); try reveal(element("ledgerEntry_" + galleryID(201))); try wait({ self.element("ledgerEntry_" + self.galleryID(201)).value as? String == "未来" }, "Future row state") }
         stop("03-ledger-08-entry-detail") { try launch(); try detail() }
         stop("03-ledger-09-entry-edit") { try tap("entryDetailEdit"); try require("editEntryAmount") }
         stop("03-ledger-10-entry-edit-keyboard") { try tap("entryPurpose"); try requireKeyboard() }
-        stop("03-ledger-11-split-unitemized") { try launch(); try search("没细记"); try tap("ledgerEntry_" + galleryID(200)); try tap("entryDetailSplit"); try require("splitUnitemizedScroll") }
+        stop("03-ledger-11-split-unitemized") { try launch(); try search("没细记"); try tap("ledgerEntry_" + galleryID(200)); try tap("entryProvenance"); try tap("entryDetailSplit"); try require("splitUnitemizedScroll") }
         stop("03-ledger-12-split-filled") { try keys("100"); try tap("entryCategory_餐饮"); try tap("splitUnitemizedAdd"); try keys("312"); try tap("entryCategory_交通"); try tap("splitUnitemizedAdd"); try require("splitUnitemizedParts") }
         stop("03-ledger-13-split-toast") { try tap("splitUnitemizedDone"); try toast() }
         stop("03-ledger-14-split-undone") { try tap("undoLastChange"); try require("ledgerEntry_" + galleryID(200)) }
-        stop("03-ledger-15-where-top") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try require("whereMonthlyCharges") }
+        stop("03-ledger-15-where-top") { try launch(); try root("ledger"); try tap("tab_insights"); try require("insightsTotals") }
         stop("03-ledger-16-where-middle") { try drag(element("insightsScroll")) }
         stop("03-ledger-19-where-bottom") { for _ in 0..<5 { try drag(element("insightsScroll")) } }
-        stop("03-ledger-20-where-category") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try tap("whereAllCategories"); try tap("insightCategory_0"); try require("whereCategoryPage") }
+        stop("03-ledger-20-where-category") { try launch(); try root("ledger"); try tap("tab_insights"); try tap("insightCategory_0"); try require("whereCategoryPage") }
         stop("03-ledger-21-where-category-bottom") { try reveal(element("whereCategoryEntries")) }
         stop("03-ledger-22-category-records") { try tap("whereCategoryEntries"); try require("clearLedgerCategory") }
-        stop("03-ledger-23-all-categories") { try launch(); try root("ledger"); try tap("ledgerMode_where"); try tap("whereAllCategories"); try require("allCategoriesPage") }
-        stop("03-ledger-24-month-picker") { try launch(); try root("ledger"); try tap("entriesMonth"); try wait({ self.app.pickerWheels.count > 0 }, "Month wheel") }
+        stop("03-ledger-23-all-categories") { try launch(); try root("ledger"); try tap("tab_insights"); try tap("insightCategory_0"); try require("whereCategoryPage") }
+        stop("03-ledger-24-month-picker") { try launch(); try root("ledger"); try tap("entriesMonth"); try require("ledgerJumpMonth_1") }
         stop("03-ledger-25-search-empty") { try launch(); try search("合成绝对不存在的账目编号999"); try wait({ self.element("activeEntryCount").label.contains("0") }, "Search empty state") }
     }
 
@@ -714,16 +760,16 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("06-bills-02-list-bottom") { for _ in 0..<12 { try drag(element("fixedFlowsScroll")) } }
         stop("06-bills-03-editor") { try launch(); try settings("openFixedFlows"); try tap("addFixedFlow"); try require("fixedFlowTitle") }
         stop("06-bills-04-editor-schedule") { try tap("fixedFlowDate"); try require("fixedFlowCalendar") }
-        stop("06-bills-05-detail") { try launch("v46-bill"); try tap("billDueNotYet"); try tap(buttonPrefix("formulaBill_")); try require("billDetailPage") }
+        stop("06-bills-05-detail") { try launch("v46-bill"); try formula(); try tap("formulaRow_bills"); try tap(buttonPrefix("editFixedFlow_")); try require("billDetailPage") }
         stop("06-bills-06-detail-history") { try reveal(element("billDetailHistory")) }
         stop("06-bills-07-long-press-menu") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try require("billMenu_move") }
         stop("06-bills-08-move-occurrence") { try tap("billMenu_move"); try require("billMoveSheet") }
         stop("06-bills-09-move-future") { try calendarDay(Calendar.current.date(byAdding: .day, value: 2, to: Date())!, id: "billMoveCalendar") }
         stop("06-bills-10-move-toast") { try tap("billMoveDone"); try toast() }
-        stop("06-bills-11-variable-pay") { try launch("v45-bill"); let row = bill("电费"); try reveal(row); try tap(row); try require("amountSheetAmount") }
+        stop("06-bills-11-variable-pay") { try launch("v45-bill"); let row = try bill("电费"); try longPress(row); try tap("billMenu_pay"); try require("amountSheetAmount") }
         stop("06-bills-12-paid-toast") { try keys("163.40"); try tap("amountSheetDone"); try toast() }
         stop("06-bills-13-link-existing") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_linked"); try require("billLinkSheet") }
-        stop("06-bills-14-match-existing") { try launch("v45-bill-match"); let row = bill("话费和宽带"); try reveal(row); try tap(row); try require("billMatchConfirm") }
+        stop("06-bills-14-match-existing") { try launch("v45-bill-match"); let row = try bill("话费和宽带"); try longPress(row); try tap("billMenu_pay"); try require("billMatchConfirm") }
         stop("06-bills-15-skip-toast") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_skip"); try toast() }
         stop("06-bills-16-stop-confirmation") { try launch("v45-bill"); try longPress(bill("话费和宽带")); try tap("billMenu_stop"); try require("fixedFlowStopConfirm") }
         stop("06-bills-17-stop-toast") { try tap("fixedFlowStopConfirm"); try toast() }
@@ -768,7 +814,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("07-entry-14-saved-in-sheet") { try launch(); try tap("addEntry"); try tap("entryDate_yesterday"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("entrySessionSummary"); try require("entryAddedList") }
         stop("07-entry-15-saved-receipt") { try launch(); try tap("addEntry"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try require("entrySessionSummary") }
         stop("07-entry-16-quick-repeat-menu") { try launch(); try longPress(element("addEntry")); try require("quickRepeatMenu") }
-        stop("07-entry-17-long-repeat-receipt") { try tap("quickRepeat_0"); try require("receiptTotal"); try reveal(element("receiptTotal")) }
+        stop("07-entry-17-long-repeat-receipt") { try tap("quickRepeat_0"); try require("availableFunds"); try reveal(element("availableFunds")) }
         stop("07-entry-18-undone-receipt") { try tap("undoLastChange"); try require("toastMessage") }
         stop("07-entry-19-delete-toast") { try launch(); try detail(); try tap("deleteEntryDetail"); try toast() }
         stop("07-entry-20-short-repeat-toast") { try launch("v45-repeats"); try longPress(element("addEntry")); try tap("quickRepeat_0"); try toast() }
@@ -807,7 +853,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("09-yubai-10-ask-conversation") { try launch("v45-ask"); try ask("咖啡共花了多少钱？"); try require("askAnswer", timeout: 15) }
         stop("09-yubai-11-ask-evidence") { try tap("answerEvidence"); try wait({ self.app.navigationBars["依据"].exists || self.buttonPrefix("evidenceEntry_").exists }, "Answer evidence page") }
         stop("09-yubai-12-ask-disabled") { try launch(); try detail(); try tap("entryDetailAsk"); try require("askPage"); try require("enableAskAI") }
-        stop("09-yubai-13-recent-question") { try launch("v45-ask"); try ask("咖啡共花了多少钱？"); try require("askAnswer", timeout: 15); try root("yubai"); try require("recentQuestion_0") }
+        stop("09-yubai-13-recent-question") { try launch("v45-ask"); try ask("咖啡共花了多少钱？"); try require("askAnswer", timeout: 15); try root("yubai"); try require("askYubai") }
         stop("09-yubai-14-profile-conversation") { try launch("profile-revisit"); try root("yubai"); try tap("openProfile"); try tap("profileChatEntry"); try require("profileInput") }
         stop("09-yubai-15-purchase-questions") { try launch("judge-ask"); try ask("想买双徒步鞋 899，该不该买？"); try require("purchaseQuestions", timeout: 15) }
         stop("09-yubai-16-purchase-verdict") { try tap(app.buttons["直接给结论"]); try require("purchaseVerdict", timeout: 15) }
@@ -884,7 +930,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("12-states-13-cover-reserve-toast") { try tap("coverFromReserve"); try toast() }
         stop("12-states-15-reconcile-gap") { try launch("v45-gap"); try tap("openReconcile"); try require("reconcileSheet") }
         stop("12-states-16-reconcile-keyboard") { try tap("reconcileField_合成银行卡"); try require("keypad_1") }
-        stop("12-states-19-salary-candidate") { try launch("salary"); try tap("openLetterInbox"); try deckAction("confirmSalary") }
+        stop("12-states-19-salary-candidate") { try launch("salary"); try require("confirmSalary") }
         stop("12-states-20-salary-confirmed-toast") { try tap("confirmSalary"); try toast() }
         stop("12-states-21-locked") { try launch("gallery-locked"); try require("lockedPage") }
         stop("12-states-22-bill-due-card") { try launch("v45-bill"); try require("billDuePaid") }
@@ -902,10 +948,10 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
 
     private func emptyStates() {
-        stop("13-empty-01-now") { try launch("gallery-empty"); try require("receiptFirstEntry") }
+        stop("13-empty-01-ledger") { try launch("gallery-empty"); try require("emptyState_ledger") }
         stop("13-empty-02-saving") { try savingPage(); try require("savingTabScroll") }
         stop("13-empty-03-ledger") { try root("ledger"); try require("emptyLedgerAdd") }
-        stop("13-empty-04-where") { try tap("ledgerMode_where"); try require("whereInsufficientData") }
+        stop("13-empty-04-insights") { try tap("tab_insights"); try require("emptyState_ledger") }
         stop("13-empty-05-yubai") { try root("yubai"); try require("openProfile") }
         stop("13-empty-06-saving-target") { try savingPage(); try tap("setFirstSavingTarget"); try require("saveSavingsAmount") }
         stop("13-empty-07-memories") { try close("amountSheetCancel"); try root("yubai"); try tap("openMemories"); try require("emptyMemories") }
@@ -916,7 +962,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("13-empty-12-privacy") { try launch("empty"); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
         stop("13-empty-13-fixed-bills") { try launch("manual"); try settings("openFixedFlows"); try require("fixedFlowsScroll") }
         stop("13-empty-14-frequent-entries") { try launch("gallery-empty"); try longPress(element("addEntry")); try tap("manageQuickRepeats"); try require("frequentEntriesPage") }
-        stop("13-empty-15-budget") { try launch("manual"); try settings("openSpendingParts"); try require("emptyState_budget") }
+        stop("13-empty-15-budget") { try launch("manual"); try settings("openSpendingParts"); try require("emptyState_restraint") }
     }
 
     private func hideAmounts() throws {
@@ -1039,16 +1085,16 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Book") { try book(); try require("addEntryOnDay_" + self.todayISO) }
         stop("Book-Empty") { try book("v46-b3-empty"); try require("emptyLedgerAdd"); try require("emptyLedgerImport") }
         stop("Book-Search") { try book("v46-b3-book"); try type("山姆", into: "entriesSearch"); try require("entriesSearchTotal") }
-        stop("Book-Filter") { try book(); try tap("entriesFilter_没分类"); try require("quickSortFromLedger") }
-        stop("Entry") { try book(); try tap("ledgerEntry_" + galleryID(460310)); try require("entryDetailSource") }
-        stop("Edit") { try book(); try tap("ledgerEntry_" + galleryID(460314)); try tap("entryDetailEdit"); try require("editEntryAmount"); try require("saveEditedEntry") }
-        stop("Book-Save") { try book(); try tap("ledgerMode_where"); try require("whereMonthlyCharges"); try reveal(element("whereAllCategories")) }
-        stop("Book-Save-Empty") { try book("v46-b3-where-empty"); try tap("ledgerMode_where"); try require("whereInsufficientData") }
-        stop("Where-Cat") { try book(); try tap("ledgerMode_where"); try tap("whereAllCategories"); try tap("insightCategory_0"); try require("whereCategoryCycles"); try require("whereCategoryEntries") }
-        stop("Weekly") { try book(); try tap("ledgerMode_where"); try tap("openWeekly"); try require("weeklyNumbers"); try require("letterSubscriptions") }
-        stop("Sort") { try book(); try tap("entriesFilter_没分类"); try tap("quickSortFromLedger"); try tap("skipLetterEntry"); try require("sortGuess_会员订阅"); try require("sortRememberParty"); try require("saveLetterEntry") }
+        stop("Book-Filter") { try book(); try tap("openLedgerFilters"); try tap("entriesFilter_没分类"); try require("quickSortFromLedger") }
+        stop("Entry") { try book(); try tap("ledgerEntry_" + galleryID(460310)); try require("editEntryAmount") }
+        stop("Edit") { try book(); try tap("ledgerEntry_" + galleryID(460314)); try require("editEntryAmount"); try require("saveEditedEntry") }
+        stop("Book-Save") { try book(); try tap("tab_insights"); try require("insightsTotals"); try reveal(element("insightsCategories")) }
+        stop("Book-Save-Empty") { try book("v46-b3-where-empty"); try tap("tab_insights"); try require("insightsTotals") }
+        stop("Where-Cat") { try book(); try tap("tab_insights"); try tap("insightCategory_0"); try require("whereCategoryCycles"); try require("whereCategoryEntries") }
+        stop("Weekly") { try book(); try root("yubai"); try tap("openWeekly"); try require("weeklyNumbers"); try require("letterSubscriptions") }
+        stop("Sort") { try book(); try tap("openLedgerFilters"); try tap("entriesFilter_没分类"); try tap("quickSortFromLedger"); try tap("skipLetterEntry"); try require("sortGuess_会员订阅"); try require("sortRememberParty"); try require("saveLetterEntry") }
         stop("Budget") { try load(); try settings("openSpendingParts"); try require("budgetTotal") }
-        stop("Budget-Empty") { try load("v46-b3-budget-empty"); try settings("openSpendingParts"); try require("emptyState_budget") }
+        stop("Budget-Empty") { try load("v46-b3-budget-empty"); try settings("openSpendingParts"); try require("emptyState_restraint") }
         stop("Save") { try saving(); try require("reserveTotal"); try require("savingWishFunding_" + galleryID(460400)); try require("openWishlist") }
         stop("Save-Empty") { try saving("v46-b3-save-empty"); try require("setFirstSavingTarget"); try require("openReserve") }
         stop("Saved-From-Save") { try saving(); try tap("openButlerSaved"); try require("butlerSavedTotal") }
@@ -1098,7 +1144,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try load(); try calendar(); try select(27); try tap("editFixedFlow_" + galleryID(46425)); try require("billDetailHistory")
         }
         stop("Bill-Menu") { try load("v46-bills-match"); try longPress(bill("话费和宽带")); try require("billMenu_move") }
-        stop("Bill-Match") { try load("v46-bills-match"); try tap(bill("话费和宽带")); try require("billMatchConfirm") }
+        stop("Bill-Match") { try load("v46-bills-match"); try longPress(bill("话费和宽带")); try tap("billMenu_pay"); try require("billMatchConfirm") }
         stop("Accounts") { try load(); try settings("openAccounts"); try require("accountsTotal") }
         stop("Bills-Rate") { try load(); try calendar(); try select(28); try tap("billsRate_USD"); try require("billRateValue") }
         stop("Bills-Yearly-Switch") { try load(); try calendar(); try tap("yearlyBillsStrip"); try require("yearlyBillsPage") }
@@ -1421,7 +1467,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             }
         }
         }
-        for id in ["availableFunds", "dailyPace", "butlerSavedTotal", "entryKeypadAmount", "amountSheetAmount", "reserveTotal", "fixedFlowRemaining"] {
+        for id in ["availableFunds", "ledgerWaterBar", "butlerSavedTotal", "entryKeypadAmount", "amountSheetAmount", "reserveTotal", "fixedFlowRemaining"] {
             let target = element(id)
             if target.exists, onScreen(target), target.label.contains("…") { issues.append("Truncated amount: " + describe(target)) }
         }
@@ -1459,7 +1505,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("01-now") { try launch(dark: dark, large: large); try require("fundsFormula") }
         stop("02-saving") { try savingPage(); try require("savingTabScroll") }
         stop("03-ledger") { try root("ledger"); try require("entriesScroll") }
-        stop("04-where") { try tap("ledgerMode_where"); try require("whereMonthlyCharges") }
+        stop("04-where") { try tap("tab_insights"); try require("insightsTotals") }
         stop("06-yubai") { try root("yubai"); try require("openProfile") }
         stop("07-profile") { try tap("openProfile"); try require("profilePage") }
         stop("08-principle-keyboard") { try tap("addPrinciple"); try requireKeyboard() }
@@ -1476,6 +1522,6 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("19-entry-keyboard") { try type(longName + latinName, into: "entryPurpose"); try requireKeyboard() }
         stop("20-entry-income") { try launch(dark: dark, large: large); try tap("addEntry"); try tap("entryNature_income"); try keys("1234567.89"); try require("entryIncomeCategories") }
         stop("21-entry-transfer") { try tap("entryNature_transfer"); try require("transferDestinationAccount") }
-        stop("22-long-repeat-receipt") { try launch(dark: dark, large: large); try longPress(element("addEntry")); try tap("quickRepeat_0"); try require("receiptTotal"); try reveal(element("receiptTotal")) }
+        stop("22-long-repeat-receipt") { try launch(dark: dark, large: large); try longPress(element("addEntry")); try tap("quickRepeat_0"); try require("availableFunds"); try reveal(element("availableFunds")) }
     }
 }

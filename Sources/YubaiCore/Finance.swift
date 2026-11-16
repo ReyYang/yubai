@@ -240,7 +240,9 @@ public enum Finance {
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
         let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
         let reserved = self.occurrences(in: ledger, now: now, days: horizonDays + 1)
-        let commitments = reserved.filter { !$0.inflow && Dates.day($0.date) >= Dates.day(now) && Dates.day($0.date) <= horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
+        // Every unpaid occurrence through period end is still owed, including
+        // overdue bills from this period and earlier periods.
+        let commitments = reserved.filter { !$0.inflow && Dates.day($0.date) <= horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
         let daily = estimatedDailyLiving(ledger, now: now)

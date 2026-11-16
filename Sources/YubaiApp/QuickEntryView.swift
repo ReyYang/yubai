@@ -201,18 +201,17 @@ struct QuickEntryView: View {
                       identifier: "entrySavingHint")
         } else if useReserve {
             let after = Dates.day(date) > Dates.day(store.financialNow) ? reserveTotal : reserveTotal - amountCents
-            ResultBar(label: "存着的钱", value: compact ? amount2(after, hide: hide) : ResultBar.change(reserveTotal, after, hide: hide),
+            ResultBar(label: "存下的钱", value: compact ? amount2(after, hide: hide) : ResultBar.change(reserveTotal, after, hide: hide),
                       amber: after < 0, identifier: "entrySavingHint")
         } else if let line = previewSoftLine {
-            let number = line.mode == .count ? "\(line.isExceeded ? line.exceeded : line.remaining) 次" : amount2(line.isExceeded ? line.exceeded : line.remaining, hide: hide)
+            let number = SoftLineText.number(line, value: line.isExceeded ? line.exceeded : line.remaining, hide: hide)
             ResultBar(label: line.title + (line.isExceeded ? "超出" : "还剩"), value: number,
                       amber: line.isExceeded, identifier: "entrySavingHint")
         } else if isBig, let big {
             let value = amount2(big.availableAfter, hide: hide)
-            ResultBar(label: "记下后还能花", value: value, amber: big.tight, identifier: "entrySavingHint")
+            ResultBar(label: "还能花", value: value, amber: big.tight, identifier: "entrySavingHint")
         } else {
-            let before = store.funds.available
-            ResultBar(label: session.receiptVisible ? "还能花" : "记下后还能花", value: compact || session.receiptVisible ? amount2(previewAvailable, hide: hide) : ResultBar.change(before, previewAvailable, hide: hide),
+            ResultBar(label: "还能花", value: amount2(previewAvailable, hide: hide),
                       identifier: "entrySavingHint")
         }
     }

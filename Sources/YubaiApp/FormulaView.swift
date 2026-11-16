@@ -48,15 +48,13 @@ private struct FormulaAmountEditor: View {
             selected = true
         })
     }
-    /// 改完以后的还能花；输入无效时不给结果。
-    private var resultText: String? {
+    /// The preview keeps the same headline state as the resulting formula.
+    private var result: SpendableBreakdown? {
         guard valid else { return nil }
-        let now = Dates.now
+        let now = store.financialNow
         var projected = store.current
         projected.savingRule = sharing ? .share(percent) : .fixed(value)
-        let hide = store.preferences.hideAmounts
-        let available = amount2(Finance.funds(projected, now: now).available, hide: hide)
-        return available
+        return Finance.spendableBreakdown(projected, now: now)
     }
 
     var body: some View {
@@ -65,8 +63,10 @@ private struct FormulaAmountEditor: View {
                 header
                 modePicker
                 amountDisplay
-                if let resultText {
-                    ResultBar(label: "改完还能花", value: resultText, identifier: "formulaEditResult")
+                if let result {
+                    ResultBar(label: "改完" + result.headlineTitle,
+                              value: amount2(result.headlineAmount, hide: store.preferences.hideAmounts),
+                              amber: result.deficit > 0, identifier: "formulaEditResult")
                 }
             }
         } footer: {

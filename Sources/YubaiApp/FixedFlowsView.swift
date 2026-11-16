@@ -580,7 +580,7 @@ struct BillDetailView: View {
     }
     private func amountRow(_ plan: Plan) -> some View {
         let value = amount2(expected(plan), hide: store.preferences.hideAmounts)
-        let text = plan.currency != .cny ? plan.currency.amountText(plan.amount, hidden: store.preferences.hideAmounts) + " · 约 ¥" + value : (plan.estimated ? "每月不一样 · 约 " + value : value)
+        let text = plan.currency != .cny ? plan.currency.amountText(plan.amount, hidden: store.preferences.hideAmounts) + " · 约 " + value : (plan.estimated ? "每月不一样 · 约 " + value : value)
         return Button {
             store.sheetSource = nil; store.sheet = .editPlan(plan.id)
         } label: {

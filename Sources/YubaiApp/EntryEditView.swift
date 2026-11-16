@@ -160,7 +160,10 @@ struct EntryEditForm: View {
     /// 记录信息一行，「删掉」在右边，看得见，离确认远。
     private var provenanceRow: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
-            Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+            TabNavigationLink(.entryDetail(original.id)) { EntryDetailView(entryID: original.id) } label: {
+                Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                    .yubaiHitTarget(alignment: .leading)
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryProvenance").accessibilityHint("查看原始记录")
             Spacer(minLength: YubaiSpace.space8)
             Button(action: deleteEntry) {
                 Text("删掉").yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.amberInk)

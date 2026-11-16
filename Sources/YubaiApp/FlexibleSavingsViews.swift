@@ -83,19 +83,16 @@ struct SavingsTopupCard: View {
     var more = 0
     @State private var partial = false
     var body: some View {
-        Card(style: .compact) {
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                ButlerKicker(title: "上个月从存的钱里拿了 " + amount2(offer.amount, hide: store.preferences.hideAmounts), more: more)
-                Text("这个月补回去吗").yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
-                ChipFlow {
-                    Button("全部补上") { answer(offer.amount) }.buttonStyle(NowCardButtonStyle(primary: true))
-                        .disabled(!Reserve.transferPreview(store.current, direction: .putBack, amount: offer.amount, now: store.financialNow).valid)
-                        .accessibilityIdentifier("savingsTopupAll")
-                    Button("补一部分") { partial = true }.buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("savingsTopupPartial")
-                    Button("不补了") { answer(0) }.buttonStyle(NowCardButtonStyle()).accessibilityIdentifier("savingsTopupDecline")
-                }
-            }
-        }.accessibilityElement(children: .contain).accessibilityIdentifier("savingsTopupCard")
+        QuestionCard(eyebrow: "今天发工资",
+                     title: "上个月拿出来用了 " + amount2(offer.amount, hide: store.preferences.hideAmounts) + "，补回去吗？", more: more,
+                     yesTitle: "补回 " + (store.preferences.hideAmounts ? "¥••••" : Money.text(offer.amount)), noTitle: "不补",
+                     yesIdentifier: "savingsTopupAll", noIdentifier: "savingsTopupDecline",
+                     yesEnabled: Reserve.transferPreview(store.current, direction: .putBack, amount: offer.amount, now: store.financialNow).valid,
+                     yes: { answer(offer.amount) }, no: { answer(0) })
+            .accessibilityElement(children: .contain).accessibilityIdentifier("savingsTopupCard")
+            .contextMenu {
+                Button("补一部分") { partial = true }.accessibilityIdentifier("savingsTopupPartial")
+            }.accessibilityAction(named: "补一部分") { partial = true }
             .sheet(isPresented: $partial) {
                 SavingsTransferSheet(direction: .putBack, offer: offer).environment(store).appErrors().yubaiSheetBackground().presentationDragIndicator(.visible)
             }

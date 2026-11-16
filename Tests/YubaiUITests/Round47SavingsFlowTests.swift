@@ -20,6 +20,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
+        if id == "savingsTopupPartial" { element("savingsTopupCard").press(forDuration: 0.8) }
         let target = element(id)
         tapControl(target, in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
     }
@@ -86,12 +87,12 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         tap("editFixedFlow_47000000-0000-0000-0000-000000471040"); tap("billDetailAmount")
         XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5))
         tap("cancelManualSheet"); gone("fixedFlowTitle"); back(); back()
-        tap("formulaRow_spent"); tap("ledgerEntry_47000000-0000-0000-0000-000000471100"); tap("entryDetailEdit")
+        tap("formulaRow_spent"); tap("ledgerEntry_47000000-0000-0000-0000-000000471100")
         XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
         XCTAssertEqual(element("editEntryAmount").value as? String, "24.00")
         tap("cancelManualSheet"); gone("editEntryAmount")
-        XCTAssertTrue(waitForStableFrame(element("entryDetailEdit")))
-        XCTAssertTrue(element("entryDetailEdit").isHittable)
+        XCTAssertTrue(waitForStableFrame(element("ledgerEntry_47000000-0000-0000-0000-000000471100")))
+        XCTAssertTrue(element("ledgerEntry_47000000-0000-0000-0000-000000471100").isHittable)
     }
     func testIncomeSourceWithoutSalaryOpensTheActualLedgerInterval() {
         launch("v47-spend-no-salary"); tap("fundsFormula"); tap("formulaRow_income")
@@ -225,49 +226,30 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     }
     func testToastUndoWinsOverReceiptLedgerAndScrollingRevealsTheLedgerAction() {
         launch("v47-toast-short")
-        let receipt = element("receiptOpenLedger"), undo = element("undoLastChange")
-        let scroll = app.scrollViews["nowScroll"]
+        let undo = element("undoLastChange"), scroll = element("entriesScroll")
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'")).firstMatch
         XCTAssertTrue(undo.waitForExistence(timeout: 5))
-        XCTAssertTrue(placeControl(receipt, across: undo, in: scroll, atTop: false))
+        XCTAssertTrue(placeControl(row, across: undo, in: scroll, atTop: false))
         XCTAssertTrue(undo.isHittable)
         tap("undoLastChange")
         XCTAssertEqual(element("toastMessage").label, "已撤销")
-        XCTAssertTrue(element("tab_now").isSelected)
-        XCTAssertFalse(element("entriesScroll").exists)
-
-        // Repeat the same covered state with its original undo toast retained.
-        // This keeps the scroll/tap proof independent of the four-second
-        // non-undo receipt, even when the runner takes slow AX snapshots.
-        launch("v47-toast-short")
-        let coveredReceipt = element("receiptOpenLedger"), toast = element("toastMessage")
-        XCTAssertTrue(toast.waitForExistence(timeout: 5))
-        XCTAssertTrue(placeControl(coveredReceipt, across: element("undoLastChange"), in: app.scrollViews["nowScroll"], atTop: false))
-        XCTAssertTrue(revealControl(coveredReceipt, in: app, deadline: Date().addingTimeInterval(180)))
-        XCTAssertTrue(toast.exists)
-        XCTAssertLessThanOrEqual(coveredReceipt.frame.maxY, toast.frame.minY - 12 + 0.5)
-        tapControl(coveredReceipt, in: app, reveals: false)
-        XCTAssertTrue(element("entriesScroll").waitForExistence(timeout: 5))
         XCTAssertTrue(element("tab_ledger").isSelected)
+        XCTAssertFalse(element("editEntryAmount").exists)
 
-        // Last ledger row and the last action on a pushed Page must also be
-        // reachable above the same global toast, including at scroll's end.
-        // The receipt opens today's interval. Leaving search clears that
-        // interval through the existing UI before looking for the old salary.
-        tap("entriesSearch")
-        XCTAssertTrue(element("entriesSearchCancel").waitForExistence(timeout: 5))
-        tap("entriesSearchCancel")
-        XCTAssertTrue(waitForDisappearance(app.keyboards.firstMatch))
-        let lastEntry = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
-        // List has not materialized this offscreen salary row in AX yet.
-        // Search its known container before checking full toast clearance.
-        XCTAssertTrue(revealControl(lastEntry, in: app, deadline: Date().addingTimeInterval(180), searching: element("entriesScroll")))
-        XCTAssertTrue(toast.exists)
-        XCTAssertLessThanOrEqual(lastEntry.frame.maxY, toast.frame.minY - 12 + 0.5)
-        tap("tab_now"); tap("openSaving")
-        XCTAssertTrue(element("savingTabScroll").waitForExistence(timeout: 5))
+        launch("v47-toast-short")
+        let toast = element("toastMessage")
+        let last = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
+        XCTAssertTrue(revealControl(last, in: app, deadline: Date().addingTimeInterval(180), searching: element("entriesScroll")))
+        XCTAssertTrue(toast.exists); XCTAssertTrue(last.isHittable)
+        XCTAssertLessThanOrEqual(last.frame.maxY, toast.frame.minY - 12 + 0.5)
+        XCTAssertLessThan(last.frame.maxY, element("addEntry").frame.minY)
+        tapControl(last, in: app, reveals: false)
+        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
+        tap("cancelManualSheet")
+        tap("tab_ledger"); saved()
         let records = element("openReserve")
         XCTAssertTrue(revealControl(records, in: app, deadline: Date().addingTimeInterval(180)))
-        XCTAssertTrue(toast.exists)
+        XCTAssertTrue(toast.exists); XCTAssertTrue(records.isHittable)
         XCTAssertLessThanOrEqual(records.frame.maxY, toast.frame.minY - 12 + 0.5)
         tapControl(records, in: app, reveals: false)
         XCTAssertTrue(element("reserveLine_0").waitForExistence(timeout: 5))

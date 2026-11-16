@@ -155,7 +155,9 @@ public enum ButlerSuggestionVerifier {
     static func actionIsCurrent(_ action: ButlerSuggestionAction, ledger: Ledger, now: Date) -> Bool {
         switch action {
         case .stopSubscription(let id): return ledger.plans.contains { $0.id == id && $0.active && $0.stoppedAt == nil && !$0.inflow && $0.nature == .expense && $0.frequency != .once && ($0.category.contains("订阅") || $0.title.contains("会员") || BrandIcons.match($0.title) != nil) }
-        case .setBudget(let category, let cents): return cents > 0 && cents <= Money.limit && ledger.categories.contains { $0.name == category && !$0.income && !$0.system } && (ledger.profile.restrain.contains { $0.match.categories == [category] } || ledger.profile.restrain.filter { $0.softLimit != nil }.count < 3)
+        case .setBudget(let category, let cents):
+            guard cents > 0, cents <= Money.limit, let area = SoftLines.area(named: category, in: ledger) else { return false }
+            return ledger.profile.restrain.contains { $0.id == area.id } || ledger.profile.restrain.filter { $0.softLimit != nil }.count < 3
         case .saveLeftover(let start): return Savings.pendingLeftover(in: ledger).map { Dates.text($0.cycleStart) == start } == true
         case .addWish(let title, let cents): return validText(title, limit: 100) && cents > 0 && cents <= Money.limit
         case .tryTwoWeeks(let text): return validText(text)
@@ -165,7 +167,29 @@ public enum ButlerSuggestionVerifier {
 }
 
 public enum ButlerSuggestionAnswer: Equatable, Sendable { case accept, never, incorrect(String) }
+public struct ButlerWatchFact: Equatable, Sendable {
+    public var category: String
+    public var amount: Int64
+    public var twiceUsual: Bool
+}
 public enum ButlerSuggestions {
+    /// The comparison in a watch card is a ledger fact, not a number supplied
+    /// in AI prose. Match the digest's preceding twelve-week baseline.
+    public static func watchFact(_ value: ButlerSuggestion, in ledger: Ledger, now: Date) -> ButlerWatchFact? {
+        guard case .setBudget(let category, _) = value.action,
+              ButlerSuggestionVerifier.verify(value, in: ledger, now: now),
+              let area = SoftLines.area(named: category, in: ledger) else { return nil }
+        let start = Dates.addDays(-27, to: Dates.day(value.createdAt)), baseline = Dates.addDays(-111, to: Dates.day(value.createdAt))
+        let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        let total = ledger.activeEntries.filter { entry in
+            guard entry.kind != .adjustment, entry.date >= baseline, entry.date < start,
+                  entry.nature == .expense || entry.nature == .refund else { return false }
+            let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
+            return ButlerCards.matches(area, entry: source, ledger: ledger)
+        }.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ledger) }
+        let usual = max(0, total / 3)
+        return ButlerWatchFact(category: category, amount: value.sumCents, twiceUsual: usual > 0 && Decimal(usual) * 2 == Decimal(value.sumCents))
+    }
     public static func queued(_ ledger: Ledger, now: Date) -> [ButlerSuggestion] {
         guard ledger.preferences.butlerSuggestionsEnabled == true, ledger.preferences.cloudAIEnabled else { return [] }
         return (ledger.butlerAI?.suggestions ?? []).filter { $0.answeredAt == nil && ButlerSuggestionVerifier.verify($0, in: ledger, now: now) }
@@ -185,7 +209,7 @@ public enum ButlerSuggestions {
                 var change = ChangeSet(source: "用户操作", reason: "停掉", items: [.endPlan(id, now)]); change.createdAt = now
                 try change.apply(to: &next); ButlerSavings.synchronize(&next, now: now)
             case .setBudget(let category, let cents):
-                var area = next.profile.restrain.first { $0.match.categories == [category] } ?? ProfileArea(title: category, match: AreaMatch(categories: [category]))
+                guard var area = SoftLines.area(named: category, in: next) else { throw YubaiError.invalid("找不到这个分类。") }
                 area.softLimit = SoftLimit(perPeriodAmount: cents)
                 try SoftLines.set(area, in: &next, now: now)
             case .tryTwoWeeks:

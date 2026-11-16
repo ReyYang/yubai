@@ -28,7 +28,7 @@ final class Round46Batch3FlowTests: YubaiUITestCase {
         launch()
         let capsule = capsuleFrame(in: app)
         XCTAssertTrue(element("addEntry").exists)
-        for tab in ["ledger", "yubai"] {
+        for tab in ["insights", "yubai"] {
             tap("tab_" + tab)
             XCTAssertFalse(element("addEntry").exists)
             XCTAssertEqual(capsuleFrame(in: app), capsule)
@@ -40,34 +40,32 @@ final class Round46Batch3FlowTests: YubaiUITestCase {
         XCTAssertTrue(element("entryDate_today").isSelected)
     }
     func testLedgerTapOpensOriginalSourceThenEditAndDeleteCanBeUndone() {
-        launch(); tap("tab_ledger"); tap("ledgerEntry_" + id(460310))
-        XCTAssertTrue(element("entryDetailSource").waitForExistence(timeout: 5))
-        XCTAssertFalse(element("editEntryAmount").exists)
-        tap("entryDetailEdit"); XCTAssertTrue(element("saveEditedEntry").waitForExistence(timeout: 5))
-        tap("cancelManualSheet"); tap("deleteEntryDetail")
+        launch(); tap("ledgerEntry_" + id(460310))
+        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("saveEditedEntry").exists)
+        tap("deleteEntry")
         XCTAssertTrue(element("toastMessage").waitForExistence(timeout: 5)); tap("undoLastChange")
         XCTAssertTrue(element("ledgerEntry_" + id(460310)).waitForExistence(timeout: 5))
     }
     func testLargestEditorKeepsTheWholeAmountAndACompactCategoryStrip() {
-        launch("v46-b3-hard", large: true); tap("tab_ledger"); tap("ledgerEntry_" + id(460310)); tap("entryDetailEdit")
+        launch("v46-b3-hard", large: true); tap("tab_ledger"); tap("ledgerEntry_" + id(460310))
         let amount = element("editEntryAmount")
         XCTAssertTrue(amount.waitForExistence(timeout: 5)); XCTAssertEqual(amount.value as? String, "1,234,567.89")
         XCTAssertGreaterThanOrEqual(amount.frame.minX, app.frame.minX); XCTAssertLessThanOrEqual(amount.frame.maxX, app.frame.maxX)
         XCTAssertTrue(element("entryCategoryStrip").exists); XCTAssertLessThanOrEqual(element("entryCategoryStrip").frame.height, 60)
     }
     func testFirstCycleStillExposesCategoriesWithoutInventingComparison() {
-        launch("v46-b3-where-empty"); tap("tab_ledger"); tap("ledgerMode_where")
-        XCTAssertTrue(element("whereInsufficientData").waitForExistence(timeout: 5))
+        launch("v46-b3-where-empty"); tap("tab_ledger"); tap("tab_insights")
+        XCTAssertTrue(element("insightsTotals").waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["比平时多"].exists); XCTAssertFalse(app.staticTexts["比平时少"].exists)
-        tap("whereAllCategories"); XCTAssertTrue(element("allCategoriesPage").waitForExistence(timeout: 5))
         tap("insightCategory_0"); XCTAssertTrue(element("whereCategoryEntries").waitForExistence(timeout: 5))
         tap("whereCategoryEntries"); XCTAssertTrue(element("clearLedgerCategory").waitForExistence(timeout: 5))
     }
     func testSaveEmptyUsesSharedStateAndSettingTargetRemovesPrompt() {
-        launch("v46-b3-save-empty"); tap("openSaving")
+        launch("v46-b3-save-empty"); XCTAssertFalse(element("openSaving").exists)
+        app.open(URL(string: "yubai://saving")!)
         XCTAssertTrue(element("emptyState_saving").waitForExistence(timeout: 5))
         XCTAssertFalse(element("reserveTotal").exists)
-        XCTAssertFalse(element("openWishlist").exists)
         tap("setFirstSavingTarget"); tap("keypad_2"); tap("keypad_0"); tap("keypad_0"); tap("saveSavingsAmount")
         XCTAssertTrue(element("openSavings").waitForExistence(timeout: 5)); XCTAssertFalse(element("savingFirstRule").exists)
         XCTAssertTrue(element("openWishlist").exists)
@@ -92,7 +90,7 @@ final class Round46Batch3FlowTests: YubaiUITestCase {
         launch(); question("这个月钱去哪了")
         XCTAssertTrue(element("whereAnswerCard").waitForExistence(timeout: 15))
         XCTAssertTrue(element("askCategoryBudget").exists)
-        tap("askShowWhere"); XCTAssertTrue(element("whereMonthlyCharges").waitForExistence(timeout: 5))
+        tap("askShowWhere"); XCTAssertTrue(element("insightsTotals").waitForExistence(timeout: 5))
         XCTAssertTrue(element("tab_ledger").isSelected)
     }
     func testSentenceDraftsWaitForConfirmationAndSaveTogetherWithUndo() {

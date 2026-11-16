@@ -136,7 +136,8 @@ final class Round47SavingsTests: XCTestCase {
         var value = ledger(); try Reserve.transfer(.take, amount: 450_000, in: &value, now: now)
         Savings.closeCycles(&value, now: d("2026-12-10 12:00"))
         XCTAssertEqual(value.savingHistory.last?.saved, 50_000)
-        XCTAssertEqual(value.fixedSavingsTotal(now: d("2026-12-10 12:00")), 1_017_400)
+        // The 3,310.00 bill is still unpaid when this period closes.
+        XCTAssertEqual(value.fixedSavingsTotal(now: d("2026-12-10 12:00")), 686_400)
         let once = value; Savings.closeCycles(&value, now: d("2026-12-11")); XCTAssertEqual(value, once)
         assertIdentity(value, at: d("2026-12-11"))
     }
@@ -291,7 +292,7 @@ final class Round47SavingsTests: XCTestCase {
         Savings.closeCycles(&value, now: end)
         let oldLines = Reserve.overview(value, now: end).lines.filter { $0.date < d("2026-12-10") }
         XCTAssertEqual(oldLines.reduce(0) { $0 + $1.amount }, -250_000)
-        XCTAssertEqual(value.fixedSavingsTotal(now: end), 1_017_400)
+        XCTAssertEqual(value.fixedSavingsTotal(now: end), 686_400)
     }
     func testNewAnswerAlsoSuppressesLegacyPaybackOffers() throws {
         var value = ledger(); try Reserve.transfer(.take, amount: 50_000, in: &value, now: now)
