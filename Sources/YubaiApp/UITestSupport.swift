@@ -390,8 +390,10 @@ struct UITestWindowMetrics: UIViewRepresentable {
             // UIKit subviews are ordered back to front. Descend the frontmost
             // visible branch first, respecting native clipping and hidden tabs.
             // The modal's own PaperCanvas wins over the presenter's background.
+            // Traversal starts at the window and only follows its subviews;
+            // checking UIView.window here can reject the UIWindow root itself.
             UITestPaperSurfaceSelection.sample(in: window as UIView, viewport: window.bounds,
-                children: { $0.subviews }, visible: { !$0.isHidden && $0.alpha > 0 && $0.window === window },
+                children: { $0.subviews }, visible: { !$0.isHidden && $0.alpha > 0 },
                 frame: { $0.convert($0.bounds, to: window) }, clips: { $0.clipsToBounds }, surface: { view in
                 if let surface = view as? UITestPaperSurface.Probe {
                     return ["required": surface.bambooKey != nil, "key": surface.bambooKey.map { $0 as Any } ?? NSNull()]
