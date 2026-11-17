@@ -186,7 +186,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             let message = element("toastMessage"), undo = element("undoLastChange")
             XCTAssertTrue(message.waitForExistence(timeout: 5))
             XCTAssertTrue(waitForStableFrame(message))
-            XCTAssertEqual(message.label, mode.hidden ? "已记调整 −••••" : "已记调整 −2,400.00")
+            XCTAssertEqual(message.label, mode.hidden ? "已记调整 ••••" : "已记调整 −2,400.00")
             if mode.large { XCTAssertGreaterThanOrEqual(undo.frame.minY, message.frame.maxY) }
             else {
                 XCTAssertGreaterThanOrEqual(undo.frame.minX, message.frame.maxX)
