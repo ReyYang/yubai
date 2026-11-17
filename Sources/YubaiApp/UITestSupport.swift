@@ -78,29 +78,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
         private var values: [ObjectIdentifier: (at: TimeInterval, json: String)] = [:]
         private var pending: Set<ObjectIdentifier> = []
         private weak var focusedResponder: UIResponder?
-        private final class TransitionObservation {
-            weak var coordinator: AnyObject?
-            var completed = false
-            init(_ coordinator: AnyObject) { self.coordinator = coordinator }
-        }
-        private var transitions: [ObjectIdentifier: TransitionObservation] = [:]
-
-        private func transitionIsActive(_ coordinator: UIViewControllerTransitionCoordinator) -> Bool {
-            let object = coordinator as AnyObject
-            let key = ObjectIdentifier(object)
-            if let observation = transitions[key], observation.coordinator === object, !observation.completed { return true }
-            let observation = TransitionObservation(object)
-            transitions[key] = observation
-            // UIKit can retain a coordinator after it has finished (notably
-            // through the keyboard handoff). Its existence is not activity.
-            // Observe actual completion; rejected registration is already over.
-            // Recheck completed objects in case UIKit reuses one for a new transition.
-            let registered = coordinator.animate(alongsideTransition: nil) { [weak observation] _ in
-                observation?.completed = true
-            }
-            if !registered { observation.completed = true }
-            return !observation.completed
-        }
+        private var focusedAfterAppearance: Bool?
         override init() {
             super.init()
             for name in [UITextField.textDidBeginEditingNotification, UITextField.textDidEndEditingNotification,
@@ -112,7 +90,8 @@ struct UITestWindowMetrics: UIViewRepresentable {
             guard let responder = note.object as? UIResponder else { return }
             if note.name == UITextField.textDidBeginEditingNotification || note.name == UITextView.textDidBeginEditingNotification {
                 focusedResponder = responder
-            } else if focusedResponder === responder { focusedResponder = nil }
+                focusedAfterAppearance = ((responder as? UIView)?.superview as? NativeInputAppearance)?.hasAppeared
+            } else if focusedResponder === responder { focusedResponder = nil; focusedAfterAppearance = nil }
         }
 
         func value(in window: UIWindow) -> String? {
@@ -159,11 +138,11 @@ struct UITestWindowMetrics: UIViewRepresentable {
                     let maximum = max(minimum, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height)
                     scrolls.append(["identifier": scroll.accessibilityIdentifier ?? "", "frame": rect(frame),
                                     "remainingDown": max(0, maximum - scroll.contentOffset.y) * scale,
-                                    "remainingUp": max(0, scroll.contentOffset.y - minimum) * scale])
+                                    "remainingUp": max(0, scroll.contentOffset.y - minimum) * scale,
+                                    "panPoints": panPoints(in: scroll, window: scroll.window ?? window)])
                 }
                 pending.append(contentsOf: view.subviews.prefix(max(0, remaining - pending.count)))
             }
-            transitions = transitions.filter { $0.value.coordinator != nil }
             var controllers = windows.compactMap(\.rootViewController)
             var activeTransitions: [String] = []
             var visited: Set<ObjectIdentifier> = []
@@ -171,7 +150,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
             while remaining > 0, let controller = controllers.popLast() {
                 remaining -= 1
                 guard visited.insert(ObjectIdentifier(controller)).inserted else { continue }
-                let active = controller.transitionCoordinator.map { transitionIsActive($0) } ?? false
+                let active = controller.transitionCoordinator.map { NativePresentationTransitions.shared.isActive($0) } ?? false
                 if active || controller.isBeingPresented || controller.isBeingDismissed {
                     activeTransitions.append(String(describing: type(of: controller)) +
                         ":coordinator=\(active),presenting=\(controller.isBeingPresented),dismissing=\(controller.isBeingDismissed)")
@@ -185,10 +164,38 @@ struct UITestWindowMetrics: UIViewRepresentable {
                                       "activeTransitions": activeTransitions,
                                       "focused": focused, "scrolls": scrolls,
                                       "bamboo": BambooRasterCache.shared.diagnostics]
+            if !focused.isEmpty, let focusedAfterAppearance { value["focusedAfterAppearance"] = focusedAfterAppearance }
             if let surface = paperSurface(in: window) { value["bambooSurface"] = surface }
             if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
                let json = String(data: data, encoding: .utf8) { return json }
             return nil
+        }
+        private func panPoints(in scroll: UIScrollView, window: UIWindow) -> [[CGFloat]] {
+            var viewport = scroll.convert(scroll.bounds, to: window).intersection(window.bounds)
+            var ancestor = scroll.superview
+            while let view = ancestor {
+                if view.clipsToBounds { viewport = viewport.intersection(view.convert(view.bounds, to: window)) }
+                ancestor = view.superview
+            }
+            guard !viewport.isEmpty, !viewport.isNull else { return [] }
+            var points: [[CGFloat]] = []
+            for y in [CGFloat(0.78), 0.22, 0.5] {
+                // Inset List gutters avoid a card's own buttons/recognizers.
+                // Keep center candidates for full-width and nested scrolls.
+                for x in [CGFloat(0.03), 0.97, 0.5] {
+                    let point = CGPoint(x: viewport.minX + viewport.width * x, y: viewport.minY + viewport.height * y)
+                    // The closest native scroll to the hit view owns this pan.
+                    // A floating control, modal or nested editor is not a lane
+                    // through which the underlying page can be scrolled.
+                    var hit = window.hitTest(point, with: nil)
+                    while let view = hit, !(view is UIScrollView) { hit = view.superview }
+                    if hit === scroll {
+                        let screen = window.convert(point, to: nil)
+                        points.append([screen.x, screen.y])
+                    }
+                }
+            }
+            return points
         }
         private func paperSurface(in window: UIWindow) -> [String: Any]? {
             // UIKit subviews are ordered back to front. Descend the frontmost

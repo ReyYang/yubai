@@ -3038,7 +3038,43 @@ private struct RowTextInput: View {
 }
 
 #if os(iOS)
-private struct NativeRowInput: UIViewRepresentable {
+/// A coordinator can remain on several controllers after completion. Keep its
+/// terminal observation for as long as that exact object is alive; registering
+/// again can wait for a completion that UIKit has already delivered.
+@MainActor final class NativePresentationTransitions {
+    static let shared = NativePresentationTransitions()
+    private final class Observation {
+        weak var coordinator: AnyObject?
+        var completed = false
+        var callbacks: [(Bool) -> Void] = []
+        init(_ coordinator: AnyObject) { self.coordinator = coordinator }
+    }
+    private var observations: [ObjectIdentifier: Observation] = [:]
+
+    func isActive(_ coordinator: UIViewControllerTransitionCoordinator, completion: ((Bool) -> Void)? = nil) -> Bool {
+        observations = observations.filter { $0.value.coordinator != nil }
+        let object = coordinator as AnyObject, key = ObjectIdentifier(object)
+        if let observation = observations[key], observation.coordinator === object {
+            if !observation.completed, let completion { observation.callbacks.append(completion) }
+            return !observation.completed
+        }
+        let observation = Observation(object)
+        observations[key] = observation
+        if let completion { observation.callbacks.append(completion) }
+        let registered = coordinator.animate(alongsideTransition: nil) { [observation] context in
+            observation.completed = true
+            let callbacks = observation.callbacks
+            observation.callbacks = []
+            callbacks.forEach { $0(context.isCancelled) }
+        }
+        if !registered { observation.completed = true; observation.callbacks = [] }
+        return !observation.completed
+    }
+}
+
+@MainActor protocol NativeInputAppearance: AnyObject { var hasAppeared: Bool { get } }
+
+private struct NativeRowInput: UIViewControllerRepresentable {
     @Binding var text: String
     let placeholder: String
     let label: String
@@ -3058,14 +3094,16 @@ private struct NativeRowInput: UIViewRepresentable {
     let autofocus: Bool
     var submit: (() -> Void)?
     func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeUIView(context: Context) -> FieldHost {
-        let host = FieldHost(multiline: multiline)
+    func makeUIViewController(context: Context) -> Controller {
+        let controller = Controller(multiline: multiline)
+        let host = controller.host
         host.field.delegate = context.coordinator
         host.editor.delegate = context.coordinator
         host.field.addTarget(context.coordinator, action: #selector(Coordinator.changed(_:)), for: .editingChanged)
-        return host
+        return controller
     }
-    func updateUIView(_ host: FieldHost, context: Context) {
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        let host = controller.host
         context.coordinator.parent = self
         let coordinator = context.coordinator
         host.focusChanged = { [weak coordinator] in coordinator?.parent.focus.wrappedValue = $0 }
@@ -3109,15 +3147,32 @@ private struct NativeRowInput: UIViewRepresentable {
         } else { host.desiredFocus = enabled && (host.reconcileFocus(focus.wrappedValue) || host.pendingAutofocus) }
         if host.desiredFocus != input.isFirstResponder { host.scheduleFocusUpdate() }
     }
-    static func dismantleUIView(_ host: FieldHost, coordinator: Coordinator) {
+    static func dismantleUIViewController(_ controller: Controller, coordinator: Coordinator) {
+        let host = controller.host
         host.dismantle()
         host.field.delegate = nil; host.editor.delegate = nil
     }
-    func sizeThatFits(_ proposal: ProposedViewSize, uiView: FieldHost, context: Context) -> CGSize? {
+    func sizeThatFits(_ proposal: ProposedViewSize, uiViewController: Controller, context: Context) -> CGSize? {
         let width = proposal.width ?? YubaiSize.fieldMinimum
-        return CGSize(width: width, height: uiView.height(for: width))
+        return CGSize(width: width, height: uiViewController.host.height(for: width))
     }
-    final class FieldHost: UIView {
+    final class Controller: UIViewController {
+        let host: FieldHost
+        init(multiline: Bool) { host = FieldHost(multiline: multiline); super.init(nibName: nil, bundle: nil) }
+        required init?(coder: NSCoder) { fatalError() }
+        override func loadView() { view = host }
+        override func viewWillAppear(_ animated: Bool) {
+            super.viewWillAppear(animated); host.hasAppeared = false
+        }
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            host.hasAppeared = true; host.scheduleFocusUpdate()
+        }
+        override func viewWillDisappear(_ animated: Bool) {
+            host.hasAppeared = false; super.viewWillDisappear(animated)
+        }
+    }
+    final class FieldHost: UIView, NativeInputAppearance {
         let field = UITextField()
         let editor = UITextView()
         let placeholder = UILabel()
@@ -3127,6 +3182,7 @@ private struct NativeRowInput: UIViewRepresentable {
         }
         var focusChanged: ((Bool) -> Void)?
         var editingChanged: ((Bool) -> Void)?
+        var hasAppeared = false
         private var awaitingPresentation = false
         private var dismantled = false
         private var focusRevision = 0
@@ -3211,16 +3267,31 @@ private struct NativeRowInput: UIViewRepresentable {
                 focusUpdateScheduled = false; updateFocus()
             }
         }
-        private func presentationTransition(excluding completed: UIViewControllerTransitionCoordinator?) -> UIViewControllerTransitionCoordinator? {
+        private func waitForPresentation(in attachedWindow: UIWindow) -> Bool {
             var responder: UIResponder? = self
             while let next = responder?.next {
-                if let controller = next as? UIViewController, let transition = controller.transitionCoordinator,
-                   completed.map({ (transition as AnyObject) !== ($0 as AnyObject) }) ?? true { return transition }
+                if let controller = next as? UIViewController, let transition = controller.transitionCoordinator {
+                    awaitingPresentation = true
+                    let active = NativePresentationTransitions.shared.isActive(transition) { [weak self, weak attachedWindow] cancelled in
+                        guard let self, !dismantled else { return }
+                        awaitingPresentation = false
+                        if cancelled {
+                            pendingAutofocus = false; desiredFocus = false; publishFocus(false)
+                            return
+                        }
+                        // Finish UIKit's completion transaction before asking
+                        // for a responder. All completed ancestors stay known.
+                        guard let attachedWindow, window === attachedWindow else { return }
+                        scheduleFocusUpdate()
+                    }
+                    if active { return true }
+                    awaitingPresentation = false
+                }
                 responder = next
             }
-            return nil
+            return false
         }
-        func updateFocus(completedTransition: UIViewControllerTransitionCoordinator? = nil) {
+        func updateFocus() {
             guard !dismantled else { return }
             let input: UIView = multiline ? editor : field
             // Ending editing must never acquire focus again, including during
@@ -3229,34 +3300,12 @@ private struct NativeRowInput: UIViewRepresentable {
                 if input.isFirstResponder { input.resignFirstResponder() }
                 return
             }
-            guard let attachedWindow = window, !bounds.isEmpty,
+            // Attachment/layout can precede the hosted sheet's presentation
+            // (and even creation of its coordinator). Only UIKit appearance
+            // completion grants the initial focus request.
+            guard hasAppeared, let attachedWindow = window, !bounds.isEmpty,
                   !input.isFirstResponder, !awaitingPresentation else { return }
-            if let transition = presentationTransition(excluding: completedTransition) {
-                // Nested sheets can attach their fields before UIKit allows a
-                // new first responder. Retry at actual transition completion.
-                awaitingPresentation = true
-                let registered = transition.animate(alongsideTransition: nil) { [weak self, weak attachedWindow] context in
-                    guard let self, !dismantled else { return }
-                    awaitingPresentation = false
-                    if context.isCancelled {
-                        pendingAutofocus = false; desiredFocus = false; publishFocus(false)
-                        return
-                    }
-                    // UIKit is still unwinding the presentation's completion
-                    // and keyboard transaction here. Acquire on the next turn,
-                    // reconcile the current request in the same attached window.
-                    // Dropping an old revision here stranded newer requests
-                    // that had already waited behind awaitingPresentation.
-                    DispatchQueue.main.async { [weak self, weak attachedWindow] in
-                        guard let self, let attachedWindow,
-                              !dismantled, desiredFocus,
-                              window === attachedWindow else { return }
-                        updateFocus(completedTransition: transition)
-                    }
-                }
-                if registered { return }
-                awaitingPresentation = false
-            }
+            if waitForPresentation(in: attachedWindow) { return }
             input.becomeFirstResponder()
         }
         func editingEnded() {
@@ -3277,7 +3326,7 @@ private struct NativeRowInput: UIViewRepresentable {
             }
         }
         func dismantle() {
-            dismantled = true; pendingAutofocus = false; pendingFocusPublication = nil; desiredFocus = false
+            dismantled = true; hasAppeared = false; pendingAutofocus = false; pendingFocusPublication = nil; desiredFocus = false
             focusChanged = nil; editingChanged = nil
             // Resign even if a presentation callback is pending. The callback
             // cannot revive this editor after SwiftUI has removed its sheet.

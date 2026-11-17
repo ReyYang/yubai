@@ -116,6 +116,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
                 XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
                 XCTAssertTrue(dismissKeyboardIntroduction(in: app))
                 XCTAssertTrue(waitForKeyboardEditing("butlerAICorrectionText", in: app))
+                assertFocusedAppearance("butlerAICorrectionText")
                 let field = element("butlerAICorrectionText")
                 field.typeText("周四是和同事拼单")
                 XCTAssertEqual(field.value as? String, "周四是和同事拼单")
@@ -142,6 +143,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
                 XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
                 XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
                 XCTAssertTrue(waitForKeyboardEditing("butlerAICorrectionText", in: app))
+                assertFocusedAppearance("butlerAICorrectionText")
                 XCTAssertEqual(element("butlerAICorrectionText").value as? String, "")
                 element("butlerAICorrectionText").typeText("周五也是")
                 XCTAssertEqual(element("butlerAICorrectionText").value as? String, "周五也是")
@@ -156,11 +158,23 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             }
         }
     }
+    private func assertFocusedAppearance(_ identifier: String) {
+        // Repeated reads must not turn a retained completed coordinator back
+        // into an active transition or lose the modal's diagnostic probe.
+        for _ in 0..<3 {
+            let metrics = windowMetrics(in: app)
+            XCTAssertNotNil(metrics)
+            XCTAssertEqual(metrics?.transitioning, false)
+            XCTAssertEqual(metrics?.focused, identifier)
+            XCTAssertEqual(metrics?.focusedAfterAppearance, true, "Native focus began before its host appeared: \(identifier)")
+        }
+    }
     private func auditFocusedSheet(_ identifier: String) throws {
         XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(dismissKeyboardIntroduction(in: app))
         XCTAssertTrue(waitForKeyboardEditing(identifier, in: app))
+        assertFocusedAppearance(identifier)
         XCTAssertEqual(app.state, .runningForeground)
         // This is the same native audit that crashed the correction stop.
         // Its Dynamic Type pass changes content size while the editor stays up.
@@ -170,6 +184,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         }
         XCTAssertEqual(app.state, .runningForeground)
         XCTAssertTrue(waitForKeyboardEditing(identifier, in: app))
+        assertFocusedAppearance(identifier)
         XCTAssertEqual(app.textViews.matching(identifier: identifier).count, 1)
         assertBambooReadyForCapture(in: app)
         XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)

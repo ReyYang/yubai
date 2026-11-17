@@ -68,6 +68,7 @@ class YubaiUITestCase: XCTestCase {
     private var revealedKeyboards: [CGRect] = []
     private var revealedOcclusions: [CGRect] = []
     private(set) var revealFailure = ""
+    private(set) var transitionWaitReport = ""
     private let scriptedNow = Date().timeIntervalSince1970
     private var diagnosticApp: XCUIApplication?
     private var collectingStalls = false
@@ -229,17 +230,17 @@ class YubaiUITestCase: XCTestCase {
     }
 
     func windowMetrics(in app: XCUIApplication) -> UIWindowMetrics? {
-        if let tree = try? app.snapshot(), let metrics = windowMetrics(in: tree) { return metrics }
-        // A keyboard handoff can leave the app snapshot without the modal's
-        // background probe even after the keyboard has gone. Ask for the actual
-        // native probes before declaring telemetry absent. Bind by AX identity:
-        // sheet dismissal can change both the count and order of these nodes.
+        // Read the small typed probe first. A full app snapshot also resolves
+        // every virtualized row and the Chinese keyboard (run 11 search spent
+        // its stop budget in keyboard/system and snapshot work). All probes in
+        // a window return the same cached native sample. Prefer the modal's;
+        // never reuse an element index across presentation/dismissal.
         let probes = app.otherElements.matching(identifier: UIWindowMetrics.probeIdentifier)
             .allElementsBoundByAccessibilityElement
         for probe in probes.reversed() {
             if let snapshot = try? probe.snapshot(), let metrics = UIWindowMetrics.decode(snapshot.value) { return metrics }
         }
-        return nil
+        return (try? app.snapshot()).flatMap { windowMetrics(in: $0) }
     }
 
     func waitForBambooRasters(in app: XCUIApplication, deadline: Date? = nil) -> UIBambooWait.Result {
@@ -267,15 +268,15 @@ class YubaiUITestCase: XCTestCase {
 
     func waitForNativeTransition(in app: XCUIApplication, deadline: Date) -> Bool {
         let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
-        let settled = UIConditionWait.run(timeout: 15, deadline: end, read: {
-            guard let value = self.windowMetrics(in: app) else { return false }
-            return !value.transitioning
-        })
-        if !settled {
-            let metrics = windowMetrics(in: app)
-            print("UI-TRANSITION-WAIT active=\(metrics?.activeTransitions ?? []) focused=\(metrics?.focused ?? "<metrics absent>") remaining=\(deadline.timeIntervalSinceNow)")
+        let result = UITransitionWait.run(deadline: end, read: { self.windowMetrics(in: app) })
+        transitionWaitReport = result.description
+        if !result.settled {
+            let report = "UI-TRANSITION-WAIT \(result) remaining=\(deadline.timeIntervalSinceNow)"
+            print(report)
+            let attachment = XCTAttachment(string: report)
+            attachment.name = "transition-wait"; attachment.lifetime = .keepAlways; add(attachment)
         }
-        return settled
+        return result.settled
     }
 
     /// Save identity before a gesture that can hide its source behind a modal.
@@ -310,6 +311,10 @@ class YubaiUITestCase: XCTestCase {
         rememberTap(target, in: app)
         var progress = UIRevealProgress()
         var trace: [String] = []
+        func attachTrace() {
+            let attachment = XCTAttachment(string: trace.joined(separator: "\n"))
+            attachment.name = "reveal-" + identifier; attachment.lifetime = .keepAlways; add(attachment)
+        }
         var pendingTree: XCUIElementSnapshot?
         var waitedForDiscovery = false
         var searchIdentifier = scroll?.identifier
@@ -475,20 +480,18 @@ class YubaiUITestCase: XCTestCase {
                 return false
             case .stalled:
                 revealFailure = "Scroll made no progress: " + identifier
+                attachTrace()
                 print("Reveal made no progress: \(identifier)\n" + trace.joined(separator: "\n"))
                 return false
-            case let .drag(up, distance):
-                // Start well inside the viewport, away from edge effects and
-                // fixed chrome. A drag from the last 16pt can hit a clipped row.
-                let start = CGPoint(x: viewport.midX, y: viewport.minY + viewport.height * (up ? 0.78 : 0.22))
-                let end = CGPoint(x: start.x, y: min(viewport.maxY - 12, max(viewport.minY + 12, start.y + (up ? -distance : distance))))
-                let origin = app.coordinate(withNormalizedOffset: .zero)
-                origin.withOffset(CGVector(dx: start.x - tree.frame.minX, dy: start.y - tree.frame.minY))
-                    .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - tree.frame.minX, dy: end.y - tree.frame.minY)),
-                           withVelocity: .slow, thenHoldForDuration: 0.1)
-            case let .dragHorizontally(left, distance):
-                let start = CGPoint(x: viewport.minX + viewport.width * (left ? 0.78 : 0.22), y: viewport.midY)
-                let end = CGPoint(x: min(viewport.maxX - 12, max(viewport.minX + 12, start.x + (left ? -distance : distance))), y: start.y)
+            case .drag, .dragHorizontally:
+                guard let gesture = UIRevealPan.plan(step, viewport: viewport, nativeOrigins: travel?.panOrigins) else {
+                    revealFailure = "No native pan lane in scroll viewport: " + identifier
+                    attachTrace()
+                    print("Reveal has no pan lane: \(identifier)\n" + trace.joined(separator: "\n"))
+                    return false
+                }
+                let start = gesture.start, end = gesture.end
+                trace.append("pan start=\(start) end=\(end) nativeOrigins=\(String(describing: travel?.panOrigins))")
                 let origin = app.coordinate(withNormalizedOffset: .zero)
                 origin.withOffset(CGVector(dx: start.x - tree.frame.minX, dy: start.y - tree.frame.minY))
                     .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - tree.frame.minX, dy: end.y - tree.frame.minY)),
@@ -501,6 +504,7 @@ class YubaiUITestCase: XCTestCase {
                 return motionSample(in: next, container: container, viewport: viewport)
             }) else {
                 revealFailure = "Scroll made no progress after gesture: " + identifier
+                attachTrace()
                 print("Reveal made no progress: \(identifier)\n" + trace.joined(separator: "\n"))
                 return false
             }
@@ -533,8 +537,10 @@ class YubaiUITestCase: XCTestCase {
             // Center the answers so neither label rests in the bottom fade.
             // A single bounded drag is enough after revealing the last answer.
             let distance = min(viewport.height * 0.5, max(bottomClearance, group.midY - viewport.midY))
-            let start = CGPoint(x: viewport.midX, y: viewport.minY + viewport.height * 0.78)
-            let end = CGPoint(x: start.x, y: max(viewport.minY + 12, start.y - distance))
+            let travel = windowMetrics(in: app)?.scroll(matching: inner)
+            guard let gesture = UIRevealPan.plan(.drag(up: true, distance: distance), viewport: viewport,
+                                                nativeOrigins: travel?.panOrigins) else { return false }
+            let start = gesture.start, end = gesture.end
             let origin = app.coordinate(withNormalizedOffset: .zero)
             origin.withOffset(CGVector(dx: start.x - app.frame.minX, dy: start.y - app.frame.minY))
                 .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - app.frame.minX, dy: end.y - app.frame.minY)),

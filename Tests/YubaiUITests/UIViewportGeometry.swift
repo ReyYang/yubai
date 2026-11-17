@@ -86,7 +86,9 @@ struct UIWindowMetrics: Decodable {
         let frame: [CGFloat]
         let remainingDown: CGFloat
         let remainingUp: CGFloat
+        var panPoints: [[CGFloat]]? = nil
         var rectangle: CGRect { UIWindowMetrics.rectangle(frame) }
+        var panOrigins: [CGPoint]? { panPoints.map { $0.filter { $0.count == 2 }.map { CGPoint(x: $0[0], y: $0[1]) } } }
     }
     struct Bamboo: Decodable, CustomStringConvertible {
         struct Failure: Decodable {
@@ -123,6 +125,7 @@ struct UIWindowMetrics: Decodable {
     let safeArea: [CGFloat]
     let transitioning: Bool
     let focused: String
+    var focusedAfterAppearance: Bool? = nil
     let scrolls: [Scroll]
     var bamboo: Bamboo? = nil
     var bambooSurface: BambooSurface? = nil

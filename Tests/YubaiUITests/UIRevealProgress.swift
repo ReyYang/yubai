@@ -1,5 +1,48 @@
 import Foundation
 
+/// Plan inside both the AX-visible viewport and a natively hit-tested lane of
+/// the owning UIScrollView. Subtracting chrome alone cannot prove pan ownership:
+/// the center of a large card can belong to its own gesture recognizers.
+enum UIRevealPan {
+    struct Gesture: Equatable {
+        let start: CGPoint
+        let end: CGPoint
+    }
+    static func plan(_ step: UIRevealProgress.Step, viewport: CGRect, nativeOrigins: [CGPoint]?) -> Gesture? {
+        guard viewport.width > 24, viewport.height > 24 else { return nil }
+        let inner = viewport.insetBy(dx: 12, dy: 12)
+        let vertical: Bool, forward: Bool, distance: CGFloat
+        switch step {
+        case let .drag(up, amount): vertical = true; forward = up; distance = amount
+        case let .dragHorizontally(left, amount): vertical = false; forward = left; distance = amount
+        case .reached, .stalled: return nil
+        }
+        guard distance.isFinite, distance > 0 else { return nil }
+        let preferred = CGPoint(x: vertical ? viewport.midX : viewport.minX + viewport.width * (forward ? 0.78 : 0.22),
+                                y: vertical ? viewport.minY + viewport.height * (forward ? 0.78 : 0.22) : viewport.midY)
+        let candidates = nativeOrigins ?? [preferred]
+        // Native order favors the List gutter over a card. Select the nearest
+        // usable ordinate, keeping that order for points at the same height.
+        let ranked = candidates.enumerated().filter { _, point in
+            point.x.isFinite && point.y.isFinite && inner.contains(point)
+        }.sorted { a, b in
+            let first = abs(vertical ? a.element.y - preferred.y : a.element.x - preferred.x)
+            let second = abs(vertical ? b.element.y - preferred.y : b.element.x - preferred.x)
+            return first != second ? first < second : a.offset < b.offset
+        }
+        for (_, start) in ranked {
+            let sign: CGFloat = forward ? -1 : 1
+            let end = vertical
+                ? CGPoint(x: start.x, y: min(inner.maxY, max(inner.minY, start.y + sign * distance)))
+                : CGPoint(x: min(inner.maxX, max(inner.minX, start.x + sign * distance)), y: start.y)
+            if (vertical ? abs(end.y - start.y) : abs(end.x - start.x)) >= 24 {
+                return Gesture(start: start, end: end)
+            }
+        }
+        return nil
+    }
+}
+
 /// Decisions depend on observed motion, never on the number of drags. The
 /// caller owns the absolute deadline and obtains one coherent tree per sample.
 struct UIRevealProgress {

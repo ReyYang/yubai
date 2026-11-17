@@ -3,6 +3,72 @@ import XCTest
 /// These use a virtual clock: even the slow-query and timeout cases take no
 /// wall-clock sleeps and make no automation session or application requests.
 final class Round47FrameWaitTests: XCTestCase {
+    private func transition(_ active: Bool, focused: String = "") -> UIWindowMetrics {
+        UIWindowMetrics(safeArea: [0, 62, 440, 860], transitioning: active, focused: focused, scrolls: [],
+                        activeTransitions: active ? ["Sheet:coordinator=true,presenting=true,dismissing=false"] : [])
+    }
+    func testTransitionWaitRetriesAnUnreadableProbeAndRequiresActualCompletion() {
+        var now: TimeInterval = 0, reads = 0
+        let result = UITransitionWait.run(read: {
+            reads += 1
+            return reads == 1 ? nil : self.transition(reads < 4, focused: "butlerAICorrectionText")
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertTrue(result.settled, result.description)
+        XCTAssertEqual(result.reads, 4, result.description)
+        XCTAssertEqual(result.unreadableReads, 1, result.description)
+        XCTAssertEqual(result.observed?.focused, "butlerAICorrectionText")
+    }
+    func testUnreadableTransitionTelemetryIsNeitherCompletionNorAnActiveController() {
+        var now: TimeInterval = 0
+        let result = UITransitionWait.run(timeout: 1, read: { nil }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.settled, result.description)
+        XCTAssertEqual(result.reads, result.unreadableReads)
+        XCTAssertNil(result.observed)
+        XCTAssertNil(result.lastReadable)
+        XCTAssertTrue(result.description.contains("observed={unreadable}"))
+    }
+    func testActiveTransitionFailureRetainsTheControllerAndFocusedField() {
+        var now: TimeInterval = 0
+        let result = UITransitionWait.run(timeout: 1, read: { self.transition(true, focused: "entriesSearch") },
+                                          clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.settled, result.description)
+        XCTAssertEqual(result.unreadableReads, 0)
+        XCTAssertTrue(result.description.contains("Sheet:coordinator=true"))
+        XCTAssertTrue(result.description.contains("focused=entriesSearch"))
+    }
+    func testTransitionFailureDistinguishesACoveredProbeFromItsLastReadableState() {
+        var now: TimeInterval = 0, reads = 0
+        let result = UITransitionWait.run(timeout: 1, read: {
+            reads += 1
+            return reads == 1 ? self.transition(true) : nil
+        }, clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.settled, result.description)
+        XCTAssertNil(result.observed)
+        XCTAssertEqual(result.lastReadable?.transitioning, true)
+        XCTAssertGreaterThan(result.unreadableReads, 0)
+    }
+    func testExpiredTransitionDeadlineDoesNotReadOrClaimAnObservedTransition() {
+        let result = UITransitionWait.run(deadline: 5, read: { XCTFail("Expired gate must not query"); return nil }, clock: { 5 })
+        XCTAssertFalse(result.settled, result.description)
+        XCTAssertEqual(result.reads, 0)
+        XCTAssertEqual(result.unreadableReads, 0)
+        XCTAssertEqual(result.elapsed, 0)
+        XCTAssertNil(result.lastReadable)
+    }
+    func testTransitionCompletionAfterTheHardDeadlineStillFails() {
+        var now: TimeInterval = 0
+        let result = UITransitionWait.run(deadline: 1, read: { now += 2; return self.transition(false) },
+                                          clock: { now }, poll: { now += $0 })
+        XCTAssertFalse(result.settled, result.description)
+        XCTAssertEqual(result.observed?.transitioning, false)
+        XCTAssertEqual(result.reads, 1)
+    }
+    func testNativeProbeDecodesAppearanceAtFocusAcquisitionAndPanOrigins() throws {
+        let json = #"{"safeArea":[0,62,440,860],"transitioning":false,"focused":"butlerAICorrectionText","focusedAfterAppearance":true,"scrolls":[{"identifier":"entriesScroll","frame":[0,130,440,668],"remainingDown":423,"remainingUp":0,"panPoints":[[13.2,651.04],[426.8,651.04],[1]]}]}"#
+        let metrics = try XCTUnwrap(UIWindowMetrics.decode(json))
+        XCTAssertEqual(metrics.focusedAfterAppearance, true)
+        XCTAssertEqual(metrics.scrolls.first?.panOrigins, [CGPoint(x: 13.2, y: 651.04), CGPoint(x: 426.8, y: 651.04)])
+    }
     private func bamboo(ready: [String] = [], pending: [String] = [], failed: [String] = [],
                         renders: Int = 2, mainRenders: Int = 0, activeRenders: Int = 0, maxConcurrentRenders: Int = 1,
                         lastFailure: UIWindowMetrics.Bamboo.Failure? = nil) -> UIWindowMetrics.Bamboo {

@@ -21,6 +21,43 @@ enum UIConditionWait {
     }
 }
 
+/// Missing telemetry is unknown, not an active transition. Keep the actual
+/// observation used by the gate so failure reporting never performs another
+/// potentially slow query after a stop has expired.
+enum UITransitionWait {
+    struct Result: CustomStringConvertible {
+        let settled: Bool
+        let reads: Int
+        let unreadableReads: Int
+        let elapsed: TimeInterval
+        let observed: UIWindowMetrics?
+        let lastReadable: UIWindowMetrics?
+        var description: String {
+            func describe(_ value: UIWindowMetrics?) -> String {
+                guard let value else { return "unreadable" }
+                return "transitioning=\(value.transitioning) active=\(String(describing: value.activeTransitions)) focused=\(value.focused)"
+            }
+            return "settled=\(settled) reads=\(reads) unreadableReads=\(unreadableReads) elapsed=\(elapsed) " +
+                "observed={\(describe(observed))} lastReadable={\(describe(lastReadable))}"
+        }
+    }
+    static func run(timeout: TimeInterval = 15, deadline: TimeInterval? = nil, read: () -> UIWindowMetrics?,
+                    clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+                    poll: (TimeInterval) -> Void = { RunLoop.current.run(until: Date().addingTimeInterval($0)) }) -> Result {
+        let start = clock()
+        var observed: UIWindowMetrics?, lastReadable: UIWindowMetrics?
+        var reads = 0, unreadable = 0
+        let settled = UIConditionWait.run(timeout: timeout, deadline: deadline, read: {
+            reads += 1; observed = read()
+            guard let observed else { unreadable += 1; return false }
+            lastReadable = observed
+            return !observed.transitioning
+        }, clock: clock, poll: poll)
+        return Result(settled: settled, reads: reads, unreadableReads: unreadable, elapsed: clock() - start,
+                      observed: observed, lastReadable: lastReadable)
+    }
+}
+
 /// The same real completion state gates the raster proof and pixel captures.
 enum UIBambooWait {
     // Run 7's first launch took ~39s and recorded a 7.7s system/dyld stall;

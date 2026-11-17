@@ -182,7 +182,8 @@ struct EntriesView: View {
             Text(left).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                 .accessibilityIdentifier("activeEntryCount")
             Spacer(minLength: YubaiSpace.space8)
-            HStack(spacing: YubaiSpace.space4) { Text("共").yubaiFont(YubaiFont.callout); AmountLabel(cents: abs(net), hide: hide, role: .small) }.fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("entriesSearchTotal")
+            HStack(spacing: YubaiSpace.space4) { Text("共").yubaiFont(YubaiFont.callout); AmountLabel(cents: abs(net), hide: hide, role: .small) }
+                .fixedSize(horizontal: false, vertical: true).accessibilityElement(children: .combine).accessibilityIdentifier("entriesSearchTotal")
         }.padding(.horizontal, YubaiSpace.space4)
     }
     @ViewBuilder private var emptyRow: some View {

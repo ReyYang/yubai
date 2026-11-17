@@ -140,7 +140,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         // Audit even an unreached stop. Every finding belongs to these same pixels.
         if captureProcessIsRunning(phase: "after walk") {
             if !dismissKeyboardIntroduction(in: app) { issues.append("System keyboard introduction could not be dismissed") }
-            if !waitForNativeTransition(in: app, deadline: stopDeadline) { issues.append("Presentation transition did not settle") }
+            if !waitForNativeTransition(in: app, deadline: stopDeadline) {
+                issues.append("Presentation transition did not settle; " + transitionWaitReport)
+            }
             let scroll = app.scrollViews.firstMatch
             if scroll.exists, !waitForStableFrame(scroll, deadline: stopDeadline) { issues.append("Scroll/presentation frame did not settle") }
         }
@@ -357,9 +359,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
         try tap(element(id), searching: scroll)
     }
     private func type(_ value: String, into id: String) throws {
-        if id == "entriesSearch" && !element(id).exists { try tap("openLedgerSearch") }
-        let field = element(id); try tap(field)
-        if !app.keyboards.firstMatch.exists { press(field) }
+        let opensSearch = id == "entriesSearch" && !element(id).exists
+        if opensSearch { try tap("openLedgerSearch") }
+        let field = element(id)
+        // Opening search already requests focus. Let that request complete;
+        // a second tap/reveal needlessly snapshots the cold Chinese keyboard.
+        if !opensSearch { try tap(field) }
+        if !opensSearch && !app.keyboards.firstMatch.exists { press(field) }
         try wait({ self.app.keyboards.firstMatch.exists }, "Keyboard did not open for " + id)
         guard dismissKeyboardIntroduction(in: app) else { throw Miss(description: "System keyboard introduction could not be dismissed") }
         guard waitForKeyboardEditing(id, in: app, deadline: stopDeadline) else { throw Miss(description: "Keyboard/focus/frame did not settle: " + id) }
@@ -1136,7 +1142,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
     private func requireCorrectionKeyboard() throws {
         guard waitForNativeTransition(in: app, deadline: stopDeadline) else {
-            throw Miss(description: "Correction presentation did not finish before autofocus")
+            throw Miss(description: "Correction presentation did not finish before autofocus; " + transitionWaitReport)
         }
         try requireKeyboard()
         guard dismissKeyboardIntroduction(in: app),

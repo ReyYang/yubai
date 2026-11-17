@@ -96,7 +96,15 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             if needsScroll {
                 XCTAssertGreaterThan(initial?.remainingDown ?? 0, before.maxY - scroll.frame.maxY,
                                      "A rescue below the viewport must have enough native scroll travel")
+                XCTAssertTrue(initial?.panOrigins?.contains(where: {
+                    $0.x < 20 && $0.y > scroll.frame.minY + 12 && $0.y < scroll.frame.maxY - 12
+                }) == true, "The native List gutter must accept a pan above the floating chrome")
             }
+            // First reveal the same single action the Rescued gallery stop
+            // taps, then keep the stricter simultaneous-answer/fade proof.
+            XCTAssertTrue(revealControl(rescue, in: app, deadline: Date().addingTimeInterval(60), searching: scroll))
+            XCTAssertTrue(rescue.isHittable)
+            XCTAssertLessThanOrEqual(rescue.frame.maxY, element("mainNavigation").frame.minY + 0.5)
             XCTAssertTrue(revealControlsTogether([rescue, keep], in: app, deadline: Date().addingTimeInterval(60),
                                                 searching: scroll, bottomClearance: 40))
             for button in [rescue, keep] {

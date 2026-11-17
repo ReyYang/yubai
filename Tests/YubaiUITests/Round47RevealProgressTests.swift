@@ -1,6 +1,53 @@
 import XCTest
 
 final class Round47RevealProgressTests: XCTestCase {
+    func testRunElevenRescueUsesAHitTestedListGutterAndStillRequiresFullChromeClearance() throws {
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 668)
+        let rescue = CGRect(x: 36, y: 798.7, width: 348, height: 72.3)
+        let chrome = CGRect(x: 0, y: 798, width: 440, height: 124)
+        var progress = UIRevealProgress()
+        let step = progress.next(.init(target: rescue, viewport: viewport))
+        let gutter = CGPoint(x: 13.2, y: 651.04)
+        let gesture = try XCTUnwrap(UIRevealPan.plan(step, viewport: viewport,
+            nativeOrigins: [gutter, CGPoint(x: 426.8, y: 651.04), CGPoint(x: 220, y: 651.04)]))
+        XCTAssertEqual(gesture.start, gutter)
+        XCTAssertLessThan(gesture.start.x, 20, "Start on the native List, outside its inset card")
+        XCTAssertEqual(gesture.start.y - gesture.end.y, 81, accuracy: 0.01)
+        XCTAssertTrue(viewport.contains(gesture.start) && viewport.contains(gesture.end))
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: rescue, scrollAncestors: [viewport], occlusions: [chrome]))
+        let revealed = rescue.offsetBy(dx: 0, dy: gesture.end.y - gesture.start.y)
+        XCTAssertEqual(progress.next(.init(target: revealed, viewport: viewport)), .reached)
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: revealed, scrollAncestors: [viewport], occlusions: [chrome]))
+    }
+    func testNativePanOriginsOutsideTheUnobscuredViewportCannotBeUsed() {
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 420)
+        XCTAssertNil(UIRevealPan.plan(.drag(up: true, distance: 100), viewport: viewport,
+            nativeOrigins: [CGPoint(x: 220, y: 600), CGPoint(x: 220, y: 100)]))
+        XCTAssertNil(UIRevealPan.plan(.drag(up: true, distance: 100), viewport: viewport, nativeOrigins: []),
+                     "A known blocked scroll must not fall back to the card center")
+    }
+    func testPanChoosesAnotherObservedLaneWhenChromeCoversTheFirst() throws {
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 420)
+        let gesture = try XCTUnwrap(UIRevealPan.plan(.drag(up: true, distance: 100), viewport: viewport,
+            nativeOrigins: [CGPoint(x: 13.2, y: 651), CGPoint(x: 13.2, y: 464), CGPoint(x: 13.2, y: 277)]))
+        XCTAssertEqual(gesture.start, CGPoint(x: 13.2, y: 464))
+        XCTAssertEqual(gesture.end, CGPoint(x: 13.2, y: 364))
+    }
+    func testPanRequiresEnoughRoomToMoveInTheRequestedDirection() {
+        XCTAssertNil(UIRevealPan.plan(.drag(up: true, distance: 100), viewport: viewport,
+            nativeOrigins: [CGPoint(x: 220, y: viewport.minY + 12)]))
+        XCTAssertNil(UIRevealPan.plan(.drag(up: false, distance: 100), viewport: viewport,
+            nativeOrigins: [CGPoint(x: 220, y: viewport.maxY - 13)]))
+    }
+    func testHorizontalPanStillUsesItsOwnShortScrollAndClipsItsEnd() throws {
+        let viewport = CGRect(x: 20, y: 400, width: 400, height: 44)
+        let gesture = try XCTUnwrap(UIRevealPan.plan(.dragHorizontally(left: true, distance: 900), viewport: viewport,
+            nativeOrigins: [CGPoint(x: 320, y: 422)]))
+        XCTAssertEqual(gesture.start, CGPoint(x: 320, y: 422))
+        XCTAssertEqual(gesture.end, CGPoint(x: 32, y: 422))
+    }
     private let viewport = CGRect(x: 0, y: 130, width: 440, height: 650)
     private func sample(_ y: CGFloat, height: CGFloat = 60) -> UIRevealProgress.Sample {
         .init(target: CGRect(x: 20, y: y, width: 400, height: height), viewport: viewport)

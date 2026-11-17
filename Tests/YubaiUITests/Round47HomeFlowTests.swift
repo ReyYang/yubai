@@ -229,6 +229,39 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         reveal(old); XCTAssertTrue(element(old).isHittable)
         tap("entriesSearchCancel"); XCTAssertFalse(element("entriesSearch").exists)
     }
+    func testSearchAutofocusAndSummaryRemainQueryableAcrossAllGalleryModes() {
+        for large in [false, true] {
+            for dark in [false, true] {
+                for hidden in [false, true] {
+                    let deadline = Date().addingTimeInterval(90)
+                    launch("v47r-ledger-hard", large: large, hidden: hidden, dark: dark)
+                    tap("openLedgerSearch")
+                    // Use the same in-place autofocus route as the gallery;
+                    // do not tap the field again to rescue a lost request.
+                    XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+                    XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+                    XCTAssertTrue(waitForKeyboardEditing("entriesSearch", in: app, deadline: deadline))
+                    let metrics = windowMetrics(in: app)
+                    XCTAssertEqual(metrics?.focusedAfterAppearance, true)
+                    XCTAssertEqual(metrics?.transitioning, false)
+                    element("entriesSearch").typeText("咖啡")
+                    let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
+                    XCTAssertTrue(UIConditionWait.run(deadline: end, read: { self.element("entriesSearchTotal").exists }))
+                    XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entriesSearchTotal").count, 1)
+                    XCTAssertTrue(element("entriesFilter_没分类").exists)
+                    XCTAssertTrue(element("entriesSearchTotal").label.contains(hidden ? "金额已隐藏" : "共"))
+                    XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline))
+                    XCTAssertLessThan(Date(), deadline)
+                    tap("entriesSearchCancel")
+                    XCTAssertTrue(waitForDisappearance(element("entriesSearch")))
+                    XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline))
+                    XCTAssertTrue(element("availableFunds").exists)
+                    XCTAssertEqual(app.state, .runningForeground)
+                    app.terminate()
+                }
+            }
+        }
+    }
     func testFilterButtonUsesTheSameInPlaceFilterRow() {
         launch(); tap("openLedgerFilters"); tap("entriesFilter_收入")
         XCTAssertTrue(element("entriesFilter_收入").isSelected)
