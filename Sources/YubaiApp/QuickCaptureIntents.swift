@@ -24,7 +24,9 @@ struct CaptureSnippetIntent: SnippetIntent {
     init() {}
     init(ids: [UUID]) { entryIDs = ids.map(\.uuidString) }
     @MainActor func perform() async throws -> some IntentResult & ShowsSnippetView {
-        let store = AppStore.shared; let ids = Set(entryIDs.compactMap(UUID.init(uuidString:)))
+        let store = AppStore.shared
+        await store.waitForLedger()
+        let ids = Set(entryIDs.compactMap(UUID.init(uuidString:)))
         let entries = store.current.activeEntries.filter { ids.contains($0.id) }
         let privateResult = store.preferences.lockEnabled || store.preferences.hideAmounts
         return .result(view: CaptureSnippetView(entries: entries, ledger: store.current, privateResult: privateResult))
@@ -38,20 +40,22 @@ private struct CaptureSnippetView: View {
             ForEach(entries) { entry in
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
-                        if !privateResult { Text(entry.displayTitle).yubaiFont(YubaiFont.cardTitle) }
+                        if !privateResult { Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.cardTitle) }
                         Spacer()
                         AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow)
                     }
                     if !privateResult {
-                        Text(Classification.displayCategory(entry.category) + " · " + ledger.accountName(entry.accountID) + " · " + ManualBookkeeping.dayLabel(entry.date) + " " + entry.date.formatted(.dateTime.hour().minute()))
+                        let time: String = entry.date.formatted(.dateTime.hour().minute())
+                        let parts: [String] = [Classification.displayCategory(entry.category), ledger.accountName(entry.accountID), ManualBookkeeping.dayLabel(entry.date) + " " + time]
+                        Text(parts.joined(separator: " · "))
                             .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     }
                 }
             }
             Divider()
             HStack(spacing: YubaiSpace.gapGroup) {
-                Text("还能花").foregroundStyle(YubaiColor.labelSecondary)
-                Spacer(); AmountLabel(cents: QuickCapture.available(in: ledger), hide: ledger.preferences.hideAmounts, currency: true)
+                Text(Finance.spendableBreakdown(ledger).headlineTitle).foregroundStyle(YubaiColor.labelSecondary)
+                Spacer(); AmountLabel(cents: Finance.spendableBreakdown(ledger).headlineAmount, hide: ledger.preferences.hideAmounts, currency: true)
             }.yubaiFont(YubaiFont.caption)
             ForEach(entries) { entry in
                 HStack(spacing: YubaiSpace.gapGroup) {
@@ -83,6 +87,7 @@ struct UndoCapturedEntryIntent: AppIntent {
     init(id: UUID) { entryID = id.uuidString }
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         guard let id = UUID(uuidString: entryID) else { throw YubaiError.invalid("记录已不存在。") }
+        await AppStore.shared.waitForLedger()
         try AppStore.shared.captureUpdate("撤销这笔") { QuickCapture.undo(entryID: id, in: &$0) }
         CaptureNotifications.remove(id: id)
         return .result(dialog: "已撤销")
@@ -99,7 +104,7 @@ struct ApplePayCaptureIntent: AppIntent {
     @MainActor func perform() async throws -> some IntentResult & ProvidesDialog {
         let store = AppStore.shared; await store.configureSync()
         let result = try store.captureUpdate("Apple Pay 记一笔") {
-            try QuickCapture.applePay(merchant: merchant, amount: amount, card: card, date: transactionDate ?? Date(), in: &$0)
+            try QuickCapture.applePay(merchant: merchant, amount: amount, card: card, date: transactionDate ?? Dates.now, in: &$0)
         }
         if result.inserted { await CaptureNotifications.post(entry: result.entry, ledger: store.current) }
         return .result(dialog: "已记下")

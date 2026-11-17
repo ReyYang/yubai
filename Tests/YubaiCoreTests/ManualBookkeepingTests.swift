@@ -117,17 +117,19 @@ final class ManualBookkeepingTests: XCTestCase {
     func testSavePreviewUsesActualChangeSetWithoutMutatingAndStampsTime() throws {
         var ledger = fixture(); let original = ledger
         let change = try ManualBookkeeping.change(amount: 3200, nature: .expense, accountID: ledger.accounts[0].id, day: now, purpose: "午饭", category: "餐饮", now: now)
-        let available = Finance.funds(ledger, now: now).available
-        XCTAssertEqual(try ManualBookkeeping.available(after: change, in: ledger, now: now), available - 3200)
+        let before = Finance.spendableBreakdown(ledger, now: now)
+        XCTAssertEqual(try ManualBookkeeping.available(after: change, in: ledger, now: now), max(0, before.rawR - 3200))
         XCTAssertEqual(ledger, original)
         try change.apply(to: &ledger)
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).rawR, before.rawR - 3200)
         let entry = try XCTUnwrap(ledger.entries.last)
         XCTAssertEqual(entry.date, now); XCTAssertEqual(entry.recordedAt, now); XCTAssertEqual(entry.source, "手动")
         XCTAssertEqual(entry.displayTitle, "午饭"); XCTAssertTrue(entry.userEdited)
         let yesterday = Dates.addDays(-1, to: now)
         XCTAssertEqual(Dates.calendar.component(.hour, from: ManualBookkeeping.entryDate(for: yesterday, now: now)), 12)
         XCTAssertThrowsError(try ManualBookkeeping.change(amount: 0, nature: .expense, accountID: entry.accountID, day: now, purpose: "", category: "餐饮", now: now))
-        XCTAssertThrowsError(try ManualBookkeeping.change(amount: 100, nature: .expense, accountID: entry.accountID, day: Dates.addDays(1, to: now), purpose: "", category: "餐饮", now: now))
+        let future = try ManualBookkeeping.change(amount: 100, nature: .expense, accountID: entry.accountID, day: Dates.addDays(1, to: now), purpose: "", category: "餐饮", now: now)
+        XCTAssertEqual(try ManualBookkeeping.available(after: future, in: ledger, now: now), Finance.funds(ledger, now: now).available)
     }
     func testTransferPreviewAndBlankPurposeFallback() throws {
         var ledger = fixture(); let before = Finance.funds(ledger, now: now).available

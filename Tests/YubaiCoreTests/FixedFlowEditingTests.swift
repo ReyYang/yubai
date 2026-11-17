@@ -65,10 +65,10 @@ final class FixedFlowEditingTests: XCTestCase {
         XCTAssertEqual(FixedFlows.edit(planID: ledger.plans[0].id, in: ledger, now: now)?.date, day("2026-12-01"))
     }
 
-    func testEditPrepaidFutureInstallmentsUsesPeriodAfterLastPaid() throws {
+    func testFutureDatedInstallmentRemainsPendingUntilItsDate() throws {
         var ledger = fixture(); ledger.plans[0].dueDate = day("2026-11-01"); ledger.plans[0].installments = 2
         pay("2026-11-01", in: &ledger); pay("2026-12-01", in: &ledger)
-        XCTAssertEqual(FixedFlows.edit(planID: ledger.plans[0].id, in: ledger, now: now)?.date, day("2027-01-01"))
+        XCTAssertEqual(FixedFlows.edit(planID: ledger.plans[0].id, in: ledger, now: now)?.date, day("2026-12-01"))
     }
 
     func testNoChangesIsRecognizableIncludingEstimatedAmountAndClampedMonthlyDay() throws {

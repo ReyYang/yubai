@@ -8,47 +8,48 @@ import AppKit
 
 struct CloudAISettingsSection: View {
     @State private var key = ""
-    @State private var configured = APIKeyStore.shared.isConfigured
-    @State private var hasKey = APIKeyStore.shared.hasKeychainKey
+    private var configured: Bool { IntelligenceRuntime.isConfigured }
+    private var hasKey: Bool { IntelligenceRuntime.cloud.hasKeychainKey }
+    @State private var savingKey = false
     @State private var status = ""
     @State private var testing = false
     var body: some View {
-        Page(spacing: 16, topPadding: 8) {
+        Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
             Card(style: .list) {
-                VStack(spacing: 0) {
+                VStack(spacing: YubaiSpace.none) {
                     HStack {
                         Text("DeepSeek").yubaiFont(YubaiFont.row)
-                        Spacer(minLength: 8)
-                        HStack(spacing: 4) {
+                        Spacer(minLength: YubaiSpace.space8)
+                        HStack(spacing: YubaiSpace.space4) {
                             if configured { Image(systemName: "lock") }
                             Text(configured ? "已配好" : "未配好")
                         }.yubaiFont(YubaiFont.caption).foregroundStyle(configured ? YubaiColor.brandInk : YubaiColor.amberInk)
-                            .padding(.horizontal, 12).frame(minHeight: 28).background(configured ? YubaiColor.brandTint : YubaiColor.amberTint, in: Capsule()).fixedSize()
-                    }.frame(minHeight: 48).accessibilityIdentifier("cloudKeyStatus")
+                            .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.pillHeight).background(configured ? YubaiColor.brandTint : YubaiColor.amberTint, in: Capsule()).fixedSize()
+                    }.frame(minHeight: YubaiSize.headerHeight).accessibilityIdentifier("cloudKeyStatus")
                     if configured {
                         EntryFormDivider()
                         HStack {
                             Text("存在").yubaiFont(YubaiFont.row)
-                            Spacer(minLength: 8)
+                            Spacer(minLength: YubaiSpace.space8)
                             Text(hasKey ? "本机钥匙串" : "环境变量").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                        }.frame(minHeight: 48)
+                        }.frame(minHeight: YubaiSize.headerHeight)
                     }
                 }
             }
             if configured {
-                VStack(spacing: 8) {
+                VStack(spacing: YubaiSpace.space8) {
                     Button(testing ? "正在连接…" : "测试连接") { testConnection() }.buttonStyle(SecondaryButtonStyle()).disabled(testing)
                         .accessibilityIdentifier("testCloudKey")
                     if !status.isEmpty { statusText }
                 }
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("换一个").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, 16)
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    Text("换一个").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space16)
                     keyInput
                     saveButton
-                }.padding(.top, 8)
+                }.padding(.top, YubaiSpace.space8)
                 if hasKey {
-                    Button("删掉密钥") { deleteKey() }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
-                        .frame(maxWidth: .infinity, minHeight: 44).buttonStyle(PressButtonStyle()).padding(.top, 24)
+                    Button("删掉密钥") { deleteKey() }.disabled(savingKey).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
+                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space24)
                         .accessibilityIdentifier("deleteCloudKey")
                 }
             } else {
@@ -56,25 +57,18 @@ struct CloudAISettingsSection: View {
                 saveButton
                 if !status.isEmpty { statusText }
             }
-        }.safeAreaInset(edge: .top, spacing: 0) { LedgerPageHeader(title: "密钥", backTitle: "智能与隐私").padding(.horizontal, 20) }
+        }
             .navigationTitle("密钥").yubaiNavigation().accessibilityIdentifier("cloudKeyPage")
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
-            .onAppear { configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey }
+            .onAppear { IntelligenceRuntime.cloud.refresh() }
             .onDisappear { key = "" }
     }
     private var keyInput: some View {
-        SecureField(configured ? "新的密钥" : "sk-••••••••••••", text: $key).autocorrectionDisabled().privacySensitive()
-            .yubaiFont(YubaiFont.row).padding(.horizontal, 16).frame(minHeight: 52)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-            .accessibilityLabel("DeepSeek 密钥").accessibilityIdentifier("cloudKeyInput")
-            #if os(iOS)
-            .textInputAutocapitalization(.never)
-            #endif
+        Card(style: .list) {
+            CardTextFieldRow(title: "密钥", text: $key, identifier: "cloudKeyInput", hidesValue: true, autofocus: !configured)
+        }
     }
     private var saveButton: some View {
-        Button("保存密钥") { saveKey() }.buttonStyle(PrimaryButtonStyle()).disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        Button("保存密钥") { saveKey() }.buttonStyle(PrimaryButtonStyle()).disabled(savingKey || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             .accessibilityIdentifier("saveCloudKey")
     }
     private var statusText: some View {
@@ -82,15 +76,31 @@ struct CloudAISettingsSection: View {
             .frame(maxWidth: .infinity, alignment: .center).accessibilityIdentifier("cloudKeyConnectionStatus")
     }
     @MainActor private func saveKey() {
-        do { try APIKeyStore.shared.save(key); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已保存" }
-        catch { status = error.localizedDescription }
+        guard !savingKey else { return }
+        savingKey = true
+        let value = key
+        Task {
+            defer { savingKey = false }
+            do {
+                try await Task.detached(priority: .userInitiated) { try APIKeyStore.shared.save(value) }.value
+                key = ""; IntelligenceRuntime.cloud.refresh(); await IntelligenceRuntime.cloud.waitForRefresh(); status = "密钥已保存"
+            } catch { status = error.localizedDescription }
+        }
     }
     @MainActor private func deleteKey() {
-        do { try APIKeyStore.shared.delete(); key = ""; configured = APIKeyStore.shared.isConfigured; hasKey = APIKeyStore.shared.hasKeychainKey; IntelligenceRuntime.cloud.refresh(); status = "密钥已删掉" }
-        catch { status = error.localizedDescription }
+        guard !savingKey else { return }
+        savingKey = true
+        Task {
+            defer { savingKey = false }
+            do {
+                try await Task.detached(priority: .userInitiated) { try APIKeyStore.shared.delete() }.value
+                key = ""; IntelligenceRuntime.cloud.refresh(); await IntelligenceRuntime.cloud.waitForRefresh(); status = "密钥已删掉"
+            } catch { status = error.localizedDescription }
+        }
     }
     @MainActor private func testConnection() {
-        guard let client = DeepSeekClient.configured() else { configured = false; return }
+        guard let configuration = IntelligenceRuntime.cloud.configuration else { return }
+        let client = DeepSeekClient(configuration: configuration)
         testing = true; status = ""
         Task {
             defer { testing = false }
@@ -105,9 +115,9 @@ struct CloudAISettingsSection: View {
 
 struct CloudModelMenu: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.surfaceNavigation) private var navigation
     @State private var models = DeepSeekClient.fallbackModels
     @State private var fetchedAt: Date?
-    @State private var editing = false
     var body: some View {
         Menu {
             ForEach(models, id: \.self) { model in
@@ -124,7 +134,7 @@ struct CloudModelMenu: View {
             if let fetchedAt {
                 Text("刚从 DeepSeek 取到 · " + fetchedAt.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(Locale(identifier: "zh_CN"))))
             } else { Text("内置模型") }
-            Button("自己填…") { editing = true }.accessibilityIdentifier("customCloudModel")
+            Button("自己填…") { navigation.push { CloudModelEditor() } }.accessibilityIdentifier("customCloudModel")
         } label: {
             HStack(spacing: YubaiSpace.space8) {
                 Text("模型").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
@@ -132,7 +142,6 @@ struct CloudModelMenu: View {
                 Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
             }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
         }.accessibilityIdentifier("editCloudModel")
-            .navigationDestination(isPresented: $editing) { CloudModelEditor() }
             .task { await fetchModels() }
     }
     private func fetchModels() async {
@@ -140,9 +149,12 @@ struct CloudModelMenu: View {
         if UITestSupport.script != nil { return }
         #endif
         // Opening settings during setup or before organizing an import is local.
-        guard store.preferences.onboardingComplete, store.preferences.cloudAIEnabled,
+        guard store.preferences.cloudAIEnabled,
               store.pendingOrganization.batchIDs.isEmpty else { return }
-        guard let client = DeepSeekClient.configured() else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
+        await IntelligenceRuntime.cloud.waitForRefresh()
+        guard !Task.isCancelled else { return }
+        guard let configuration = IntelligenceRuntime.cloud.configuration else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
+        let client = DeepSeekClient(configuration: configuration)
         do {
             let result = try await client.listModels()
             guard !Task.isCancelled else { return }
@@ -161,7 +173,7 @@ struct CloudModelEditor: View {
     var body: some View {
         Form {
             Section("模型") {
-                TextField("模型名字", text: $name).autocorrectionDisabled().accessibilityIdentifier("cloudModelName")
+                CardTextFieldRow(title: "模型", text: $name, identifier: "cloudModelName", autofocus: true).autocorrectionDisabled()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     #endif
@@ -282,7 +294,7 @@ struct CloudSendLogView: View {
 private struct CloudRedactionChips: View {
     let summary: [String: Int]
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 100), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: YubaiSize.chipMinimum), alignment: .leading)], alignment: .leading, spacing: YubaiSpace.space8) {
             ForEach(CloudLogText.redaction(summary), id: \.key) { row in Pill(text: row.title, showsDot: false) }
         }
     }
@@ -329,7 +341,7 @@ private struct CloudSendLogDetailView: View {
                     InlineNote(text: hidden ? "这次没有成功" : group.failureReasons.joined(separator: "；"), style: .attention)
                 }
             }
-        }.safeAreaInset(edge: .bottom) {
+        }.fixedBottomBar() {
             if !removed {
                 HStack(spacing: YubaiSpace.gapGroup) {
                     Button("看原文") { rawFocus = nil; raw = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewCloudLogRaw")
@@ -390,7 +402,7 @@ private struct CloudSendLogDetailView: View {
                 }
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.insetPage)
                 .padding(.bottom, YubaiSpace.gapSection)
-                .frame(maxWidth: 1080).frame(maxWidth: .infinity)
+                .frame(maxWidth: YubaiSize.contentMaximum).frame(maxWidth: .infinity)
             }.scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body)
                 .foregroundStyle(YubaiColor.label).paperBackground()
                 .task(id: rawFocus) {
@@ -543,7 +555,7 @@ private struct CloudLogRawGroups: View {
                     }
                 }
                 if visibleCount < groups.count {
-                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
+                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(TextLinkStyle(alignment: .leading))
                 }
             }
         }
@@ -562,7 +574,7 @@ private struct CloudLogRawTree: View {
                 CloudLogRawFieldRow(field: field).padding(.vertical, YubaiSpace.space4)
             }
             if visibleCount < fields.count {
-                Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
+                Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(TextLinkStyle(alignment: .leading))
             }
         }
     }
@@ -587,7 +599,7 @@ private struct CloudLogRawFieldRow: View {
         }
     }
     private func key(_ name: String) -> some View {
-        Text(name).yubaiFont(YubaiFont.code).foregroundStyle(YubaiColor.labelSecondary).textSelection(.enabled)
+        Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.code).foregroundStyle(YubaiColor.labelSecondary).textSelection(.enabled)
     }
     private func row(name: String, values: [JSONValue]) -> some View {
         HStack(alignment: .top, spacing: YubaiSpace.gapGroup) {
@@ -625,7 +637,7 @@ private struct CloudLogRawArray: View {
                     }
                 }
                 if visibleCount < values.count {
-                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(.plain)
+                    Button("展开") { visibleCount += SendLogRawPresentation.renderPageSize }.buttonStyle(TextLinkStyle(alignment: .leading))
                 }
             }
         }

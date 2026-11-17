@@ -138,7 +138,7 @@ public enum UnsortedGroups {
             return items
         }
         guard !items.isEmpty else { return nil }
-        return ChangeSet(source: "按对方分", reason: "\(entries.count) 笔记为 \(category ?? use.title)", items: items)
+        return ChangeSet(source: "按商户整理", reason: "\(entries.count) 笔记为 \(category ?? use.title)", items: items)
     }
     fileprivate static func changeSet(groups: [UnsortedPartyGroup], use: UnsortedUse,
                                       category: String?, otherAccount: UUID?, in ledger: Ledger) -> ChangeSet? {
@@ -152,7 +152,7 @@ public enum UnsortedGroups {
             items += change.items
         }
         let count = groups.reduce(0) { $0 + $1.entries.count }
-        return ChangeSet(source: "按对方分", reason: "\(groups.count) 组 · \(count) 笔记为\(category ?? use.title)", items: items)
+        return ChangeSet(source: "按商户整理", reason: "\(groups.count) 组 · \(count) 笔记为\(category ?? use.title)", items: items)
     }
 }
 
@@ -306,7 +306,7 @@ public enum UnsortedEntryPresentation {
         [UnsortedEntryField(key: "时间", value: Dates.text(entry.date, time: true)),
          UnsortedEntryField(key: "金额", value: hideAmounts ? "••••" : Money.text(entry.nature.inflow ? entry.amount : -entry.amount)),
          UnsortedEntryField(key: "账户", value: account),
-         UnsortedEntryField(key: "明细", value: entry.title),
+         UnsortedEntryField(key: "账目", value: entry.title),
          UnsortedEntryField(key: "备注", value: entry.note)]
     }
 

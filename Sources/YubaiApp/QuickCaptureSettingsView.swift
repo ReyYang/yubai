@@ -7,6 +7,7 @@ struct QuickCaptureSettingsView: View {
     private var recent: [Entry] { store.recentCaptures }
     var body: some View {
         Page {
+            repeatsSection
             HStack(alignment: .top, spacing: YubaiSpace.gapSection) {
                 statistic("近 7 天", count: recent.count)
                 Spacer()
@@ -34,11 +35,11 @@ struct QuickCaptureSettingsView: View {
                 VStack(spacing: YubaiSpace.none) {
                     NavigationLink { CaptureRulesView(kind: .card) } label: {
                         line("卡对应的账户", detail: "\(store.preferences.quickCapture.cardAccounts.count) 张", navigates: true)
-                    }
+                    }.accessibilityIdentifier("openCaptureCardRules")
                     EntryFormDivider()
                     NavigationLink { CaptureRulesView(kind: .merchant) } label: {
                         line("商户记到哪个分类", detail: "\(store.current.classificationMemory.count) 条", navigates: true)
-                    }
+                    }.accessibilityIdentifier("openCaptureMerchantRules")
                 }
             }
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
@@ -64,6 +65,25 @@ struct QuickCaptureSettingsView: View {
                 NavigationLink { ImportView() } label: { line("支付宝、微信付款", detail: "截图记", navigates: true) }
             }
         }.buttonStyle(PressButtonStyle()).navigationTitle("快速记账").yubaiNavigation()
+    }
+    @ViewBuilder private var repeatsSection: some View {
+        let rows = EntryHistory.repeats(in: store.current, now: Dates.now)
+        if !rows.isEmpty {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                SectionHeading(title: "常用")
+                Card(style: .list) {
+                    VStack(spacing: YubaiSpace.none) {
+                        ForEach(rows) { row in
+                            HStack(spacing: YubaiSpace.gapGroup) {
+                                Text(row.purpose).yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
+                                AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, role: .amount)
+                            }.frame(minHeight: YubaiSize.rowSingle).accessibilityElement(children: .combine)
+                            if row.id != rows.last?.id { EntryFormDivider() }
+                        }
+                    }
+                }.accessibilityIdentifier("commonRepeats")
+            }
+        }
     }
     private func statistic(_ title: String, count: Int) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -138,9 +158,9 @@ private struct CaptureRulesView: View {
                     }
                 }
             }
-        }.navigationTitle(kind.title).yubaiNavigation()
+        }.navigationTitle(kind.title).yubaiNavigation().accessibilityIdentifier("captureRulesPage")
             .overlay { if names.isEmpty { EmptyState(kind == .card ? "creditcard" : "tag", "还没有映射", action: "添加", onAction: { editing = CaptureRuleSelection(name: nil) }) } }
-            .toolbar { ToolbarItem(placement: .primaryAction) { Button("添加", systemImage: "plus") { editing = CaptureRuleSelection(name: nil) } } }
+            .toolbar { ToolbarItem(placement: .primaryAction) { Button("添加", systemImage: "plus") { editing = CaptureRuleSelection(name: nil) }.accessibilityIdentifier("addCaptureRule") } }
             .sheet(item: $editing) { selected in NavigationStack { CaptureRuleEditor(kind: kind, original: selected.name) }.environment(store).appErrors().yubaiSheetBackground() }
     }
     private func value(_ name: String) -> String {
@@ -162,7 +182,7 @@ private struct CaptureRuleEditor: View {
     private var accounts: [Account] { store.accounts.filter { !$0.archived } }
     var body: some View {
         Form {
-            TextField(kind == .card ? "卡名" : "商户", text: $name)
+            CardTextFieldRow(title: kind == .card ? "卡名" : "商户", text: $name, identifier: "captureRuleName", autofocus: true)
             if kind == .card {
                 Picker("账户", selection: $account) { ForEach(accounts) { Text($0.name).tag(Optional($0.id)) } }
             } else {

@@ -77,7 +77,7 @@ private enum ReferenceFinance {
     }
     static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
         let start = Dates.day(now); let end = Dates.addDays(days ?? 90, to: start)
-        let entries = ledger.activeEntries
+        let entries = ledger.activeEntries.filter { $0.date <= now }
         var result: [Occurrence] = []
         for p in ledger.plans where p.active {
             // Always derive from the original day (Jan 31 → Feb 28 → Mar 31), never chained dates.
@@ -134,7 +134,11 @@ private enum ReferenceFinance {
         let uncertain = ledger.activeEntries.filter { e in
             e.nature == .unknownIn && e.date <= now && accounts.contains { $0.id == e.accountID && $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) }
         }.reduce(Int64(0)) { $0 + $1.amount }
-        let available = cash - debt - committed - goals - living - uncertain
+        let cycleStart = Finance.cycle(in: ledger, now: now).start
+        let rows = ledger.entries.filter { $0.deletedAt == nil && $0.date >= cycleStart && $0.date <= now }
+        let income = rows.filter { $0.nature == .income && !$0.intoFixedSavings }.reduce(Int64(0)) { $0 + $1.amount }
+        let spent = rows.reduce(Int64(0)) { $0 + Finance.spendingAmount($1, ledger: ledger) }
+        let available = max(0, income - (ledger.savingRule?.target(income: income) ?? 0) - spent - committed)
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }

@@ -7,10 +7,15 @@ final class CaptureNotificationDelegate: NSObject, UNUserNotificationCenterDeleg
     static let shared = CaptureNotificationDelegate()
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification, withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) { completionHandler([.banner, .sound]) }
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse, withCompletionHandler completionHandler: @escaping () -> Void) {
+        if let taskID = response.notification.request.content.userInfo["butlerTaskID"] as? String {
+            Task { @MainActor in await AppStore.shared.waitForLedger(); AppStore.shared.openButlerNotice(taskID); completionHandler() }
+            return
+        }
         guard let raw = response.notification.request.content.userInfo["entryID"] as? String, let id = UUID(uuidString: raw) else { completionHandler(); return }
         Task { @MainActor in
             defer { completionHandler() }
             let store = AppStore.shared
+            await store.waitForLedger()
             if response.actionIdentifier == "capture.undo" {
                 do { try store.captureUpdate("撤销这笔") { QuickCapture.undo(entryID: id, in: &$0) }; CaptureNotifications.remove(id: id) }
                 catch { store.error = error.localizedDescription }
@@ -38,7 +43,8 @@ enum CaptureNotifications {
             let category = entry.hasNoCaptureCategory ? "没分类" : Classification.displayCategory(entry.category)
             content.body = "已记下 " + entry.displayTitle + " " + Money.text(entry.amount) + " · " + category + " · " + ledger.accountName(entry.accountID)
         }
-        content.body += "\n还能花 " + (ledger.preferences.hideAmounts ? "••••" : Money.text(QuickCapture.available(in: ledger))) + " · 轻点改一下"
+        let value = Finance.spendableBreakdown(ledger)
+        content.body += "\n" + value.headlineTitle + " " + (ledger.preferences.hideAmounts ? "••••" : Money.text(value.headlineAmount)) + " · 轻点改一下"
         content.categoryIdentifier = "quick-capture"; content.userInfo = ["entryID": entry.id.uuidString]
         try? await center.add(UNNotificationRequest(identifier: entry.id.uuidString, content: content, trigger: nil))
     }

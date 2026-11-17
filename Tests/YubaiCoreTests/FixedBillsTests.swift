@@ -118,7 +118,7 @@ final class FixedBillsTests: XCTestCase {
         ledger.plans = [salary]
         ledger.entries = [payment(salary, on: salary.dueDate, amount: 810_000, in: ledger)]
         let row = try XCTUnwrap(FixedFlows.month(containing: now, in: ledger).later.first)
-        XCTAssertEqual(row.date, date("2026-12-10")); XCTAssertEqual(row.amount, 810_000)
+        XCTAssertEqual(row.date, date("2026-12-10")); XCTAssertEqual(row.amount, 800_000)
         ledger.plans[0].installments = 1
         XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).later.isEmpty)
         ledger.plans[0].installments = nil; ledger.plans[0].endDate = date("2026-11-30")
@@ -134,7 +134,7 @@ final class FixedBillsTests: XCTestCase {
                         Plan(title: "房租", amount: 2000, dueDate: date("2026-11-09")),
                         Plan(title: "订阅", amount: 3000, dueDate: date("2026-11-10 23:00:00")),
                         Plan(title: "之后付款", amount: 9_000_000, dueDate: date("2026-11-11"))]
-        // Receiving the next salary early cannot move the schedule's next payday.
+        // A future-dated salary is pending and cannot move the scheduled next payday.
         ledger.entries.append(payment(salary, on: date("2026-11-10"), in: ledger))
         let next = try XCTUnwrap(Finance.nextPayday(in: ledger, now: now))
         XCTAssertEqual(next.date, date("2026-11-10")); XCTAssertEqual(next.title, "工资")
@@ -142,9 +142,9 @@ final class FixedBillsTests: XCTestCase {
         XCTAssertEqual(funds.horizonEnd, date("2026-11-09")); XCTAssertEqual(funds.horizonDays, 18)
         XCTAssertEqual(funds.paydayTitle, "工资"); XCTAssertEqual(funds.payday, next.date)
         XCTAssertEqual(funds.committed, 3000); XCTAssertEqual(funds.living, 0)
-        XCTAssertEqual(funds.available, funds.cash - 3000)
+        XCTAssertEqual(funds.available, 0)
         XCTAssertEqual(funds.occurrences.filter { !$0.inflow }.count, 4)
-        XCTAssertEqual(funds.points.count, 91); XCTAssertEqual(funds.expectedIncome, 2_400_000)
+        XCTAssertEqual(funds.points.count, 91); XCTAssertEqual(funds.expectedIncome, 3_200_000)
         XCTAssertLessThan(funds.points.last!.conservative, 0)
         XCTAssertFalse(ButlerCards.detect(ledger, now: now).contains { $0.kind == .shortfall && $0.facts.contains(CardFact("付款", "之后付款")) })
         let tool = try ReadOnlyTool.getFunds.run(.object([:]), ToolContext(ledger: ledger, now: now))
@@ -162,7 +162,7 @@ final class FixedBillsTests: XCTestCase {
             XCTAssertNil(funds.payday); XCTAssertNil(funds.paydayTitle)
             XCTAssertEqual(funds.horizonDays, 9); XCTAssertEqual(funds.horizonEnd, date("2026-10-31"))
             XCTAssertEqual(funds.committed, 100_000); XCTAssertEqual(funds.living, 0)
-            XCTAssertEqual(funds.available, funds.cash - funds.debt - 100_000 - funds.goals - 50_000 - funds.uncertainInflow)
+            XCTAssertEqual(funds.available, 0)
             XCTAssertNil(funds.floorRoom); XCTAssertEqual(funds.points.count, days + 1)
         }
         let tool = try ReadOnlyTool.getFunds.run(.object([:]), ToolContext(ledger: ledger, now: now))
@@ -685,8 +685,8 @@ final class FixedBillsTests: XCTestCase {
                 XCTAssertEqual(month.overdueInflow, month.remainingInflow)
                 let before = Finance.funds(ledger, now: now)
                 XCTAssertEqual(before.committed, month.remainingOutflow); XCTAssertEqual(before.expectedIncome, month.remainingInflow)
-                XCTAssertEqual(before.available, before.cash - month.remainingOutflow)
-                XCTAssertEqual(before.points.first?.expected, before.available + month.remainingInflow)
+                XCTAssertEqual(before.available, 0)
+                XCTAssertEqual(before.points.first?.expected, before.cash - month.remainingOutflow + month.remainingInflow)
                 XCTAssertNil(before.payday)
                 let change = try FixedFlows.resolveStopped(planID: plan.id, resolution: resolution, in: ledger, now: now)
                 XCTAssertTrue(try change.apply(to: &ledger).isEmpty)
@@ -701,7 +701,7 @@ final class FixedBillsTests: XCTestCase {
                 XCTAssertEqual(after.overdueInflow, 0)
                 let funds = Finance.funds(ledger, now: now)
                 XCTAssertTrue(funds.occurrences.isEmpty); XCTAssertEqual(funds.committed, 0); XCTAssertEqual(funds.expectedIncome, 0)
-                XCTAssertEqual(funds.available, before.available + (inflow ? (resolution == .settle ? plan.amount : 0) : (resolution == .skip ? plan.amount : 0)))
+                XCTAssertEqual(funds.available, inflow && resolution == .settle ? plan.amount : 0)
                 XCTAssertEqual(ledger.entries.count, resolution == .settle ? 1 : 0)
                 if resolution == .settle {
                     XCTAssertEqual(ledger.entries.first?.planID, plan.id); XCTAssertEqual(ledger.entries.first?.occurrence, plan.dueDate)
@@ -747,7 +747,7 @@ final class FixedBillsTests: XCTestCase {
                 XCTAssertEqual(after.overdueInflow, 0)
                 let funds = Finance.funds(ledger, now: now)
                 XCTAssertEqual(funds.cash, before.cash + (resolution == .settle ? (inflow ? 3600 : -3600) : 0))
-                XCTAssertEqual(funds.available, before.available + (inflow ? (resolution == .settle ? 3600 : 0) : (resolution == .skip ? 3600 : 0)))
+                XCTAssertEqual(funds.available, inflow ? before.available + (resolution == .settle ? 2600 : 0) : 0)
                 XCTAssertTrue(funds.occurrences.isEmpty)
                 try FixedFlows.resume(id: plan.id, in: ledger, now: now).apply(to: &ledger)
                 XCTAssertEqual(Finance.occurrences(in: ledger, now: now).map(\.date), [date("2026-10-29")])
@@ -802,7 +802,7 @@ final class FixedBillsTests: XCTestCase {
                 let after = Finance.funds(ledger, now: now)
                 XCTAssertEqual(after.cash, funds.cash + (settled ? (inflow ? plan.amount : -plan.amount) : 0))
                 XCTAssertEqual(after.committed, 0); XCTAssertEqual(after.expectedIncome, 0)
-                XCTAssertEqual(after.available, funds.available + (inflow ? (settled ? plan.amount : 0) : (settled ? 0 : plan.amount)))
+                XCTAssertEqual(after.available, inflow && settled ? plan.amount : 0)
                 let month = FixedFlows.month(containing: now, in: ledger)
                 XCTAssertTrue(month.occurrences.isEmpty); XCTAssertEqual(month.remainingOutflow, 0); XCTAssertEqual(month.remainingInflow, 0)
                 XCTAssertEqual(month.overdueOutflow, 0); XCTAssertTrue(Finance.occurrences(in: ledger, now: now).isEmpty)
@@ -829,7 +829,7 @@ final class FixedBillsTests: XCTestCase {
             XCTAssertEqual(ledger.entries.count, resolution == .settle ? 6 : 2)
             let after = Finance.funds(ledger, now: now)
             XCTAssertEqual(after.cash, before.cash - (resolution == .settle ? 3600 : 0))
-            XCTAssertEqual(after.available, before.available + (resolution == .settle ? 1000 : 4600))
+            XCTAssertEqual(after.available, 0)
             XCTAssertTrue(FixedFlows.month(containing: now, in: ledger).occurrences.isEmpty)
             XCTAssertNil(FixedFlows.autoSettle(in: ledger, now: now))
             try FixedFlows.resume(id: plan.id, in: ledger, now: now).apply(to: &ledger)

@@ -27,6 +27,10 @@ final class LedgerCalculations: @unchecked Sendable {
             if entry.date > now { expires = min(expires, entry.date) }
             if let date = entry.otherDate, date > now { expires = min(expires, date) }
         }
+        for cover in ledger.cycleCovers where cover.date > now { expires = min(expires, cover.date) }
+        for transfer in ledger.savingsTransfers where transfer.date > now { expires = min(expires, transfer.date) }
+        for carry in ledger.carryReleases where carry.date > now { expires = min(expires, carry.date) }
+        for reconciliation in ledger.periodReconciliations where reconciliation.date > now { expires = min(expires, reconciliation.date) }
         for account in ledger.accounts {
             // The warning uses strict >, so equality must not reuse a cache.
             let stale = account.anchorDate.addingTimeInterval(14 * 86400)

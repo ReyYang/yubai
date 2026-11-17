@@ -80,6 +80,35 @@ final class AssistantPrivacyTests: XCTestCase {
         XCTAssertNil(CloudBackend.configured(enabled: false, keyStore: store, environment: [:]))
         try store.delete(); XCTAssertNil(try memory.read()); XCTAssertNil(store.configuration(environment: [:]))
     }
+    func testAsyncKeyStatusKeepsPrecedenceAndRefreshesAfterReplacementAndDeletion() async throws {
+        let memory = MemoryAPIKeyStorage(), store = APIKeyStore(storage: MemoryAPIKeyStorage())
+        let keyed = APIKeyStore(storage: memory)
+        let environment = ["DEEPSEEK_API_KEY": "environment-key", "DEEPSEEK_MODEL": "synthetic-model"]
+        let empty = await store.status(environment: [:])
+        XCTAssertNil(empty.configuration); XCTAssertFalse(empty.hasKeychainKey)
+        try keyed.save("  private-key \n")
+        let first = await keyed.status(environment: environment)
+        XCTAssertTrue(first.hasKeychainKey); XCTAssertEqual(first.configuration?.apiKey, "private-key")
+        XCTAssertEqual(first.configuration?.model, "synthetic-model")
+        try keyed.save("replacement")
+        let replacement = await keyed.status(environment: environment)
+        XCTAssertEqual(replacement.configuration?.apiKey, "replacement")
+        try keyed.delete()
+        let deleted = await keyed.status(environment: environment)
+        XCTAssertFalse(deleted.hasKeychainKey); XCTAssertEqual(deleted.configuration?.apiKey, "environment-key")
+    }
+    @MainActor func testSlowKeychainReadSuspendsRatherThanBlocksTheUIActor() async {
+        let entered = expectation(description: "worker entered Keychain")
+        let storage = GatedAPIKeyStorage(entered: entered)
+        let task = Task { await APIKeyStore(storage: storage).status(environment: [:]) }
+        await fulfillment(of: [entered], timeout: 5)
+        // This must run on the same actor while read() is still waiting.
+        storage.release.signal()
+        let result = await task.value
+        XCTAssertEqual(result.configuration?.apiKey, "synthetic-key")
+        XCTAssertFalse(storage.timedOut)
+        XCTAssertEqual(storage.reads, 1)
+    }
     func testSendLogPreservesFullRequestsAndKeyHygiene() {
         let log = SendLog()
         for index in 0..<55 {
@@ -105,4 +134,24 @@ final class AssistantPrivacyTests: XCTestCase {
         }
     }
 
+}
+
+private final class GatedAPIKeyStorage: APIKeyStorage, @unchecked Sendable {
+    let entered: XCTestExpectation
+    let release = DispatchSemaphore(value: 0)
+    private let lock = NSLock()
+    private var timeout = false
+    private var count = 0
+    init(entered: XCTestExpectation) { self.entered = entered }
+    var timedOut: Bool { lock.lock(); defer { lock.unlock() }; return timeout }
+    var reads: Int { lock.lock(); defer { lock.unlock() }; return count }
+    func read() throws -> String? {
+        lock.lock(); count += 1; lock.unlock()
+        entered.fulfill()
+        let failed = release.wait(timeout: .now() + 3) == .timedOut
+        lock.lock(); timeout = failed; lock.unlock()
+        return "synthetic-key"
+    }
+    func write(_ key: String) throws {}
+    func delete() throws {}
 }

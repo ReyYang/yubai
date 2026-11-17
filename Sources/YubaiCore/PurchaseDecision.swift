@@ -8,9 +8,9 @@ public enum PurchaseNeed: String, Codable, Sendable { case need, want, unclear }
 public struct PurchaseBounds: Equatable, Sendable {
     public let allowedVerdicts: Set<PurchaseVerdict>
     public let boundReason: String
-    public static func compute(ledger: Ledger, amount: Int64, title: String, category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseBounds {
+    public static func compute(ledger: Ledger, amount: Int64, title: String, category: String? = nil, subcategory: String? = nil, now: Date = Dates.now) -> PurchaseBounds {
         let funds = Finance.funds(ledger, now: now)
-        let after = funds.available - amount
+        let after = funds.spendable.rawR - amount
         var sample = Entry(date: now, amount: amount, accountID: UUID(), title: title, category: category ?? Classification.pendingCategory)
         sample.subcategory = subcategory
         let summary = ledger.spendingParts.isEmpty ? nil : SpendingParts.summary(ledger, now: now)
@@ -24,19 +24,18 @@ public struct PurchaseBounds: Equatable, Sendable {
                 (amount > value.remaining ? " 会用掉没分的 " + number(amount - value.remaining) : "") + "。"
         } ?? ""
 
-        if funds.liquidNow - funds.dueRest - amount < 0 {
-            return PurchaseBounds(allowedVerdicts: [.skip], boundReason: partReason + "买了以后，会回来的账单还差 \(Money.text(amount + funds.dueRest - funds.liquidNow))。")
+        if after + funds.spendable.plannedSaving < 0 {
+            return PurchaseBounds(allowedVerdicts: [.skip], boundReason: partReason + "买了以后，会回来的账单还差 \(Money.text(-after - funds.spendable.plannedSaving))。")
         }
         if after < 0 {
-            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "买了以后，这个月少攒 \(Money.text(min(funds.savingTarget, -after)))。")
+            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "买了以后，这个月少攒 \(Money.text(min(funds.spendable.plannedSaving, -after)))。")
         }
-        for area in ledger.profile.restrain where ButlerCards.matches(area, entry: sample, ledger: ledger) {
-            let usage = area.usage(in: ledger, now: now)
-            if let count = area.softLimit?.perWeekCount, usage.weekCount >= count {
-                return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "\(area.title)本周已有 \(usage.weekCount) 次，你写的每周最多 \(count) 次。")
-            }
-            if let limit = area.softLimit?.perMonthAmount, usage.monthAmount + amount > limit {
-                return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "\(area.title)本月已花 \(Money.text(usage.monthAmount))，加这笔会超过你写的 \(Money.text(limit))。")
+        let areas = Set(ledger.profile.restrain.filter { ButlerCards.matches($0, entry: sample, ledger: ledger) }.map(\.id))
+        for line in SoftLines.usage(ledger, now: now) where areas.contains(line.areaID) {
+            let used = line.used + (line.mode == .count ? (amount > 0 ? 1 : 0) : amount)
+            if used > line.limit {
+                let fact = line.mode == .count ? "\(line.used) 次，每期最多 \(line.limit) 次" : Money.text(line.used) + "，每期最多 " + Money.text(line.limit)
+                return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "\(line.title)这个周期已有 \(fact)。")
             }
         }
         if let balance, amount > balance.remaining {
@@ -105,8 +104,8 @@ public struct SubmitVerdictTool: AssistantTool {
             if case .number(let count) = value, let count = Int(exactly: count) { return String(count) }
             return nil
         } + context.ledger.profile.restrain.flatMap { area -> [String] in
-            let usage = area.usage(in: context.ledger, now: context.now)
-            return [String(usage.weekCount)] + (area.softLimit?.perWeekCount.map { [String($0)] } ?? [])
+            let usage = area.periodUsage(in: context.ledger, now: context.now)
+            return [String(usage.count)] + (area.softLimit?.periodCount.map { [String($0)] } ?? [])
         }
         let countPattern = try NSRegularExpression(pattern: #"(\d+)\s*(?:次|笔)"#)
         let countMatches = countPattern.matches(in: reason, range: NSRange(reason.startIndex..., in: reason))
@@ -165,15 +164,15 @@ public struct RestrainProgress: Equatable, Identifiable, Sendable {
     public let perMonthAmount: Int64?
     public let ratio: Double
     public let status: Status
-    public static func current(ledger: Ledger, now: Date = Date()) -> [RestrainProgress] {
+    public static func current(ledger: Ledger, now: Date = Dates.now) -> [RestrainProgress] {
         ledger.profile.restrain.compactMap { area in
-            guard let line = area.softLimit, line.perWeekCount != nil || line.perMonthAmount != nil else { return nil }
-            let usage = area.usage(in: ledger, now: now)
+            guard let line = area.softLimit, line.periodCount != nil || line.periodAmount != nil else { return nil }
+            let usage = area.periodUsage(in: ledger, now: now)
             func ratio(_ value: Double, _ limit: Double) -> Double { limit == 0 ? (value > 0 ? .infinity : 0) : value / limit }
-            let ratios = [line.perWeekCount.map { ratio(Double(usage.weekCount), Double($0)) }, line.perMonthAmount.map { ratio(Double(usage.monthAmount), Double($0)) }].compactMap { $0 }
+            let ratios = [line.periodCount.map { ratio(Double(usage.count), Double($0)) }, line.periodAmount.map { ratio(Double(usage.amount), Double($0)) }].compactMap { $0 }
             let value = ratios.max() ?? 0
-            return RestrainProgress(areaID: area.id, title: area.title, weekCount: usage.weekCount, perWeekCount: line.perWeekCount,
-                monthAmount: usage.monthAmount, perMonthAmount: line.perMonthAmount, ratio: value, status: value > 1 ? .over : value >= 0.8 ? .near : .normal)
+            return RestrainProgress(areaID: area.id, title: area.title, weekCount: usage.count, perWeekCount: line.periodCount,
+                monthAmount: usage.amount, perMonthAmount: line.periodAmount, ratio: value, status: value > 1 ? .over : value >= 0.8 ? .near : .normal)
         }
     }
 }

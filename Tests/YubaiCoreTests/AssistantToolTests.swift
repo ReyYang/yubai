@@ -21,7 +21,7 @@ final class AssistantToolTests: XCTestCase {
         }
         XCTAssertEqual(output["saving_target"], .money(f.savingTarget)); XCTAssertNil(output["emergency"])
         XCTAssertEqual(output["warnings"], .strings(f.warnings))
-        XCTAssertEqual(f.available, 80500)
+        XCTAssertEqual(f.available, 0)
     }
     func testForecastMatchesFinanceAndShortfall() throws {
         let output = try run(.forecast, #"{"days":5,"amount":"800"}"#)

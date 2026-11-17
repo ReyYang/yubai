@@ -11,7 +11,6 @@ public struct AssistantReply: Equatable, Sendable {
     public var usedMemoryIDs: [UUID] = []
     public var memoryLedgerID: UUID? = nil
     public var memoryLedgerUpdatedAt: Date? = nil
-    public var chart: AnswerChart? = nil
     public var purchaseVerdict: SubmittedPurchaseVerdict? = nil
     public var purchaseQuestions: [PurchaseQuestion]? = nil
     public var purchaseJudgment: PurchaseJudgment? = nil
@@ -39,7 +38,6 @@ public struct AssistantAgent: Sendable {
         let definitions = tools.map { ChatToolDefinition(name: $0.name, description: redactor.text($0.description), parameters: redactor.value($0.parameters)) }
         var results: [JSONValue] = []; var trace: [AssistantToolTrace] = []; var evidence: [UUID] = []
         var proposed: [ChangeSet] = []
-        var chart: AnswerChart?
         var judgment: PurchaseJudgment?
         var verdict: SubmittedPurchaseVerdict?
         var purchaseQuestions: [PurchaseQuestion]?
@@ -51,7 +49,7 @@ public struct AssistantAgent: Sendable {
         let ledgerIDs = Set(context.ledger.activeEntries.map(\.id))
         func makeReply(text: String, unverified: [String] = []) -> AssistantReply {
             var answer = AssistantReply(proposedChangeSets: proposed, text: text, evidenceEntryIDs: evidence, toolTrace: trace, unverifiedAmounts: unverified)
-            answer.chart = chart; answer.purchaseJudgment = judgment
+            answer.purchaseJudgment = judgment
             answer.purchaseVerdict = verdict; answer.purchaseQuestions = purchaseQuestions
             answer.memoryLedgerID = context.ledger.id; answer.memoryLedgerUpdatedAt = context.ledger.updatedAt
             let originals = Dictionary(uniqueKeysWithValues: context.ledger.memories.map { ($0.id, $0) })
@@ -97,7 +95,7 @@ public struct AssistantAgent: Sendable {
                     text = revised; unverified = AssistantAmountGuard.unverified(in: text, results: results)
                 }
                 if let judgment, !judgment.hasProfile, !text.contains("还不知道你在乎什么") {
-                    text += "\n还不知道你在乎什么，可以在『我的消费观』里补上"
+                    text += "\n还不知道你在乎什么，可以在『消费观』里补上"
                 }
                 return makeReply(text: text, unverified: unverified)
             }
@@ -117,10 +115,7 @@ public struct AssistantAgent: Sendable {
                     do {
                         guard let tool = tools.first(where: { $0.name == call.function.name }) else { throw YubaiError.invalid("没有这个工具，请使用已声明的工具。") }
                         guard let args, args.objectValue != nil else { throw YubaiError.invalid("参数不是有效JSON对象，请按工具结构重试。") }
-                        if let chartTool = tool as? ShowChartTool {
-                            guard chart == nil else { throw YubaiError.invalid("每个答复只能展示一张图。") }
-                            let built = try chartTool.build(args, context); chart = built.chart; result = built.result
-                        } else if let purchaseTool = tool as? JudgePurchaseTool {
+                        if let purchaseTool = tool as? JudgePurchaseTool {
                             let purchase = try purchaseTool.judge(args, current); judgment = purchase; verdict = nil; result = purchase.facts
                             usedMemoryIDs.formUnion(purchase.usedMemoryIDs)
                         } else if let submit = tool as? SubmitVerdictTool {

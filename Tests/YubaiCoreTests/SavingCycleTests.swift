@@ -41,9 +41,9 @@ final class SavingCycleTests: XCTestCase {
         for rule: SavingRule? in [nil, .fixed(100_000), .share(20)] {
             l.savingRule = rule
             let f = Finance.funds(l, now: now)
-            XCTAssertEqual(f.liquidStart + f.cycleIncome - f.savingTarget - f.cycleSpent - f.dueRest, f.available)
+            XCTAssertEqual(max(0, f.spendable.rawR), f.available)
             XCTAssertEqual(f.cycleIncome, 90_000); XCTAssertEqual(f.cycleSpent, 15_000); XCTAssertEqual(f.dueRest, 40_000)
-            XCTAssertEqual(f.living, 0); XCTAssertEqual(f.dailyAllowance, max(0, f.available) / 22)
+            XCTAssertEqual(f.living, 0); XCTAssertEqual(f.spendable.spent, 15_000)
         }
         var paid = Entry(date: date("2026-11-06"), amount: 40_000, accountID: account, title: "月末账单")
         paid.planID = l.plans[0].id; paid.occurrence = date("2026-11-30"); l.entries.append(paid)
@@ -57,13 +57,13 @@ final class SavingCycleTests: XCTestCase {
         XCTAssertEqual(Finance.funds(l, now: now).savingTarget, 201)
         let before = Finance.funds(l, now: now).available
         l.fixedSavings = 1000
-        XCTAssertEqual(Finance.funds(l, now: now).available, before - 1000)
+        XCTAssertEqual(Finance.funds(l, now: now).available, before)
     }
     func testShortfallAndPurchaseCaps() {
         var l = ledger(150_000); l.savingRule = .fixed(200_000)
         let f = Finance.funds(l, now: now)
-        XCTAssertEqual(f.available, -50_000); XCTAssertEqual(f.savingShortfall, 50_000); XCTAssertEqual(f.dailyAllowance, 0)
-        XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 1000, title: "耳机", now: now).allowedVerdicts, [.wait, .skip])
+        XCTAssertEqual(f.available, 0); XCTAssertEqual(f.savingShortfall, 200_000); XCTAssertEqual(f.spendable.available, 0)
+        XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 1000, title: "耳机", now: now).allowedVerdicts, [.skip])
         XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 150_001, title: "耳机", now: now).allowedVerdicts, [.skip])
         l.accounts[0].anchorBalance = -50_000
         XCTAssertEqual(Finance.funds(l, now: now).savingShortfall, 200_000)
@@ -73,12 +73,12 @@ final class SavingCycleTests: XCTestCase {
         l.entries = [Entry(date: date("2026-11-03"), amount: 50_000, nature: .income, accountID: l.accounts[0].id, title: "本月收入")]
         Savings.closeCycles(&l, now: now)
         XCTAssertEqual(l.savingHistory.count, 1); XCTAssertEqual(l.savingHistory[0].cycleStart, date("2026-10-01"))
-        XCTAssertEqual(l.savingHistory[0].saved, 130_000); XCTAssertEqual(l.fixedSavings, 150_000)
+        XCTAssertEqual(l.savingHistory[0].saved, 0); XCTAssertEqual(l.fixedSavings, 20_000)
         let closed = l; Savings.closeCycles(&l, now: now); XCTAssertEqual(l, closed)
         try l.validate()
         let encoded = try JSONEncoder().encode(l)
         var restored = try JSONDecoder().decode(Ledger.self, from: encoded)
-        Savings.closeCycles(&restored, now: now); XCTAssertEqual(restored.fixedSavings, 150_000)
+        Savings.closeCycles(&restored, now: now); XCTAssertEqual(restored.fixedSavings, 20_000)
     }
     func testHistoryFromAnotherTimeZoneRemainsValidAndDoesNotCloseTwice() throws {
         var l = ledger(); l.savingRule = .fixed(100_000)
@@ -96,7 +96,7 @@ final class SavingCycleTests: XCTestCase {
         l.entries = [Entry(date: date("2026-10-15"), amount: 100_000, nature: .income, accountID: l.accounts[0].id, title: "工资")]
         Savings.closeCycles(&l, now: date("2026-11-15 12:00"))
         XCTAssertEqual(l.savingHistory.last?.cycleStart, date("2026-10-15"))
-        XCTAssertEqual(l.savingHistory.last?.target, 20_000); XCTAssertEqual(l.fixedSavings, 20_000)
+        XCTAssertEqual(l.savingHistory.last?.target, 20_000); XCTAssertEqual(l.fixedSavings, 100_000)
         Savings.closeCycles(&l, now: date("2026-11-16")); XCTAssertEqual(l.savingHistory.count, 1)
     }
     func testLegacyFloorMigrationAndValidation() throws {
@@ -108,20 +108,6 @@ final class SavingCycleTests: XCTestCase {
         l.savingRule = .share(91); XCTAssertThrowsError(try l.validate())
         l.savingRule = .fixed(-1); XCTAssertThrowsError(try l.validate())
         l.savingRule = nil; l.fixedSavings = -1; XCTAssertThrowsError(try l.validate())
-    }
-    func testInsightsTimelineUsesExactlyTheFundsCycle() {
-        var l = ledger()
-        l.entries = ["2026-08-15", "2026-09-15", "2026-10-13"].map {
-            Entry(date: date($0), amount: 800_000, nature: .income, accountID: l.accounts[0].id, title: "公司工资")
-        }
-        for hasPlan in [false, true] {
-            if hasPlan { l.plans = [Plan(title: "工资", amount: 800_000, dueDate: date("2026-08-15"), frequency: .monthly, inflow: true, nature: .income)] }
-            let funds = Finance.funds(l, now: now)
-            let timeline = Finance.cashTimeline(l, funds: funds, now: now, alignToFundsCycle: true)
-            XCTAssertEqual(timeline.defaultStart, funds.cycleStart)
-            XCTAssertEqual(timeline.end, funds.cycleEnd)
-            XCTAssertNil(timeline.floor)
-        }
     }
     func testSharePreviewMatchesFullApplyAndEdit() throws {
         var l = ledger(); l.savingRule = .share(30)
@@ -137,11 +123,12 @@ final class SavingCycleTests: XCTestCase {
     }
     func testEntryHintNormalRestrainBigAndOver() {
         var l = ledger(100_000)
-        XCTAssertEqual(EntryHint.make(ledger: l, amount: 1000, category: "餐饮", isFixedBill: false, now: now), .normal(after: 99_000, daily: 4500, over: false))
-        XCTAssertEqual(EntryHint.make(ledger: l, amount: 30_000, category: "数码", isFixedBill: false, now: now), .big(after: 70_000, daily: 3181, over: false))
-        XCTAssertEqual(EntryHint.make(ledger: l, amount: 110_000, category: "数码", isFixedBill: true, now: now), .normal(after: -10_000, daily: 0, over: true))
-        XCTAssertEqual(EntryHint.make(ledger: l, amount: 110_000, category: "数码", isFixedBill: false, now: now), .big(after: -10_000, daily: 0, over: true))
-        XCTAssertEqual(EntryHint.make(ledger: l, amount: 110_000, category: "工资", isFixedBill: false, now: now, nature: .income), .normal(after: 210_000, daily: 9545, over: false))
+        l.entries = [Entry(date: now.addingTimeInterval(-1), amount: 100_000, nature: .income, accountID: l.accounts[0].id, title: "已到账收入")]
+        XCTAssertEqual(EntryHint.make(ledger: l, amount: 1000, category: "餐饮", isFixedBill: false, now: now), .normal(after: 99_000, over: false))
+        XCTAssertEqual(EntryHint.make(ledger: l, amount: 30_000, category: "数码", isFixedBill: false, now: now), .big(after: 70_000, over: false))
+        XCTAssertEqual(EntryHint.make(ledger: l, amount: 110_000, category: "数码", isFixedBill: true, now: now), .normal(after: 0, over: true))
+        XCTAssertEqual(EntryHint.make(ledger: l, amount: 110_000, category: "数码", isFixedBill: false, now: now), .big(after: 0, over: true))
+        XCTAssertEqual(EntryHint.make(ledger: l, amount: 110_000, category: "工资", isFixedBill: false, now: now, nature: .income), .normal(after: 210_000, over: false))
         l.profile.restrain = [ProfileArea(title: "外卖", match: .init(categories: ["餐饮"]), softLimit: .init(perWeekCount: 2))]
         XCTAssertEqual(EntryHint.make(ledger: l, amount: 3000, category: "餐饮", isFixedBill: false, now: now), .restrain(areaTitle: "外卖", countThisWeek: 1, limit: 2, weekSpent: 3000))
     }
@@ -155,11 +142,11 @@ final class SavingRuleLaterTests: XCTestCase {
         Savings.closeCycles(&ledger, now: now)
         XCTAssertEqual(ledger.savingHistory.count, 1)
         XCTAssertFalse(ledger.savingHistory[0].tracked)
-        XCTAssertNil(ledger.fixedSavings)
+        XCTAssertEqual(ledger.fixedSavings, 0)
         ledger.savingRule = .fixed(200_000)
         Savings.closeCycles(&ledger, now: now)
         XCTAssertEqual(ledger.savingHistory.count, 1)
-        XCTAssertNil(ledger.fixedSavings)
+        XCTAssertEqual(ledger.fixedSavings, 0)
         let data = try JSONEncoder().encode(ledger)
         let decoded = try JSONDecoder().decode(Ledger.self, from: data)
         XCTAssertFalse(decoded.savingHistory[0].tracked)

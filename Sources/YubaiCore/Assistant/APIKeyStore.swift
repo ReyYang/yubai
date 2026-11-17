@@ -11,11 +11,26 @@ public protocol APIKeyStorage: Sendable {
 }
 
 public struct APIKeyStore: Sendable {
+    public struct Status: Sendable {
+        public let configuration: DeepSeekConfiguration?
+        public let hasKeychainKey: Bool
+    }
     public static let shared = APIKeyStore()
     private let storage: any APIKeyStorage
     public init(storage: any APIKeyStorage = KeychainAPIKeyStorage()) { self.storage = storage }
     public var isConfigured: Bool { configuration() != nil }
     public var hasKeychainKey: Bool { (try? storage.read())?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false }
+    /// Security may perform synchronous IPC. UI callers await a worker and
+    /// publish this one-read snapshot instead of reading Keychain in a body.
+    public func status(environment: [String: String] = ProcessInfo.processInfo.environment) async -> Status {
+        await Task.detached(priority: .utility) {
+            let key = (try? storage.read())?.trimmingCharacters(in: .whitespacesAndNewlines)
+            var environment = environment
+            let hasKey = key?.isEmpty == false
+            if hasKey { environment["DEEPSEEK_API_KEY"] = key }
+            return Status(configuration: DeepSeekConfiguration.fromEnvironment(environment: environment), hasKeychainKey: hasKey)
+        }.value
+    }
     public func save(_ key: String) throws {
         let value = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { throw YubaiError.invalid("请输入 DeepSeek 密钥。") }

@@ -17,7 +17,7 @@ final class StorageCacheTests: XCTestCase {
     func testCachedWindowAnchorIsRecheckedWhenSnapshotOrPayloadChanges() throws {
         for damagePayload in [false, true] {
             let repo = repository(); var ledger = try repo.save(fixture())
-            ledger.accounts[0].note = "first"; ledger = try repo.save(ledger, reason: "按对方分", requiringUnchanged: true)
+            ledger.accounts[0].note = "first"; ledger = try repo.save(ledger, reason: "按商户整理", requiringUnchanged: true)
             let first = try XCTUnwrap(repo.recoveries().first)
             // Both metadata and payload readability have now been cached.
             if damagePayload {
@@ -27,7 +27,7 @@ final class StorageCacheTests: XCTestCase {
             // Lazy metadata saves retain their existing policy. A damaged anchor
             // must never suppress a new snapshot, including damaged payloads.
             ledger.accounts[0].note = "second"
-            _ = try repo.save(ledger, reason: "按对方分", requiringUnchanged: true)
+            _ = try repo.save(ledger, reason: "按商户整理", requiringUnchanged: true)
             let latest = try XCTUnwrap(repo.recoveries().first)
             XCTAssertNotEqual(latest.url, first.url)
             if damagePayload { XCTAssertThrowsError(try repo.readRecovery(latest)) }

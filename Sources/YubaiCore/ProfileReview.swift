@@ -16,7 +16,7 @@ public struct ProfileReviewCandidate: Codable, Equatable, Sendable {
 }
 
 public enum ProfileReview {
-    public static func candidate(ledger: Ledger, now: Date = Date()) -> ProfileReviewCandidate? {
+    public static func candidate(ledger: Ledger, now: Date = Dates.now) -> ProfileReviewCandidate? {
         let cutoff = Dates.addDays(-90, to: now)
         let monday = ButlerCards.calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? Dates.day(now)
         var candidates: [ProfileReviewCandidate] = ledger.profile.restrain.compactMap { area in
@@ -56,7 +56,7 @@ public enum ProfileReview {
     public static func isCurrent(_ candidate: ProfileReviewCandidate, in ledger: Ledger) -> Bool {
         (try? check(candidate, in: ledger)) != nil
     }
-    public static func summary(_ candidate: ProfileReviewCandidate, now: Date = Date()) -> String {
+    public static func summary(_ candidate: ProfileReviewCandidate, now: Date = Dates.now) -> String {
         let month = Dates.calendar.component(.month, from: candidate.confirmedAt)
         let months = max(0, Dates.calendar.dateComponents([.month], from: candidate.confirmedAt, to: now).month ?? 0)
         let age: String
@@ -72,7 +72,7 @@ public enum ProfileReview {
         }
         return "你 \(month) 月写下「\(candidate.text)」，\(age)没动过了。" + recent
     }
-    public static func keep(_ candidate: ProfileReviewCandidate, in ledger: inout Ledger, now: Date = Date()) throws {
+    public static func keep(_ candidate: ProfileReviewCandidate, in ledger: inout Ledger, now: Date = Dates.now) throws {
         try check(candidate, in: ledger)
         var next = ledger
         switch candidate.target {
@@ -84,7 +84,7 @@ public enum ProfileReview {
         try next.validate(); ledger = next
     }
     /// Returns a proposal; the caller presents and confirms it through ChangeSet.
-    public static func remove(_ candidate: ProfileReviewCandidate, in ledger: Ledger, now: Date = Date()) throws -> ChangeSet {
+    public static func remove(_ candidate: ProfileReviewCandidate, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
         try check(candidate, in: ledger)
         let change: ProfileChange
         switch candidate.target { case .area(let id): change = .removeArea(id); case .principle(let text): change = .removePrinciple(text) }

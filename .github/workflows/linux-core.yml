@@ -31,8 +31,14 @@ jobs:
         run: |
           set -o pipefail
           swift test 2>&1 | tee swift-test.log
+      - name: UI helper 与探针契约测试
+        run: |
+          set -o pipefail
+          python3 scripts/test-ui-helpers.py 2>&1 | tee ui-helper-test.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: linux-swift-test-log
-          path: swift-test.log
+          path: |
+            swift-test.log
+            ui-helper-test.log

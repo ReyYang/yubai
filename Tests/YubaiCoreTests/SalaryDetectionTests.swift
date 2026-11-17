@@ -144,7 +144,10 @@ final class SalaryDetectionTests: XCTestCase {
         XCTAssertEqual(plan.frequency, .monthly); XCTAssertTrue(plan.inflow); XCTAssertEqual(plan.nature, .income)
         let after = Finance.funds(ledger, now: now)
         XCTAssertEqual(after.payday, date("2026-11-10")); XCTAssertEqual(after.horizonDays, 12)
-        XCTAssertGreaterThan(after.horizonDays, original.horizonDays); XCTAssertEqual(after.available, original.available)
+        XCTAssertGreaterThan(after.horizonDays, original.horizonDays)
+        // The newly known payday starts October 10, excluding October 1–9.
+        XCTAssertEqual(after.spendable.income, 800_000); XCTAssertEqual(after.spendable.spent, 90_000)
+        XCTAssertEqual(after.available, original.available + 45_000)
         XCTAssertNil(SalaryDetection.candidate(in: ledger, now: now))
         XCTAssertNil(SalaryDetection.confirm(candidate, in: &ledger, now: now)); XCTAssertEqual(ledger.plans.count, 1)
         ledger = before

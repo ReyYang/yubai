@@ -66,6 +66,44 @@ final class LedgerWriteQueueTests: XCTestCase {
         writer.flushBlocking()
         XCTAssertEqual(try repo.load(), retry)
     }
+    @MainActor func testSlowDiskWriteAndFlushLeaveTheUIActorAvailable() async throws {
+        let writer = LedgerWriteQueue(), entered = expectation(description: "disk write entered")
+        let release = DispatchSemaphore(value: 0)
+        let write = writer.submit {
+            entered.fulfill()
+            guard release.wait(timeout: .now() + 3) == .success else { throw YubaiError.invalid("UI actor blocked") }
+            return 42
+        }
+        let flushing = expectation(description: "UI actor started async flush")
+        let flush = Task { flushing.fulfill(); await writer.flush() }
+        await fulfillment(of: [entered, flushing], timeout: 5)
+        release.signal()
+        let value = try await write.value
+        await flush.value
+        XCTAssertEqual(value, 42)
+    }
+    func testQueuedHistoryClearRunsAfterSaveAndPreservesCurrentAttachments() async throws {
+        let repo = repository(); defer { try? FileManager.default.removeItem(at: repo.directory) }
+        let writer = LedgerWriteQueue()
+        var ledger = Ledger()
+        ledger.accounts = [Account(name: "Original")]
+        let attachment = Attachment(name: "synthetic.csv", data: Data("original".utf8))
+        var entry = Entry(date: Dates.now, amount: 100, accountID: ledger.accounts[0].id, title: "Synthetic")
+        entry.attachmentID = attachment.id
+        ledger.entries = [entry]; ledger.attachments = [attachment]
+        let first = ledger
+        _ = try await writer.submit { try repo.save(first) }.value
+        ledger.accounts[0].name = "Saved before clearing"
+        let edited = ledger
+        let save = writer.submit { try repo.save(edited) }
+        let clear = writer.submit(invalidatingOnFailure: false) { try repo.clearRecoveryHistory() }
+        _ = try await save.value
+        try await clear.value
+        let loaded = try repo.load()
+        XCTAssertEqual(loaded.accounts, edited.accounts)
+        XCTAssertEqual(try repo.attachmentData(first.attachments[0].id), Data("original".utf8))
+        XCTAssertTrue(try repo.recoveries().isEmpty)
+    }
     func testExternalCASFailureRollsBackToExternalDiskRatherThanOptimisticSnapshot() async throws {
         let repo = repository(); defer { try? FileManager.default.removeItem(at: repo.directory) }
         var seed = Ledger(); seed.accounts = [Account(name: "Original")]; seed = try repo.save(seed)

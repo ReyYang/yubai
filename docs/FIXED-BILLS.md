@@ -62,6 +62,6 @@ FixedFlows.categories(inflow: Bool, in ledger: Ledger) -> [String]
 
 `AppSheet.editPlan(UUID)` 打开 `FixedFlowEditor(planID:)`；本月／以后／已停掉及首页现有 Plan 行主体可改，rent 不可改。编辑由 `FixedFlows.edit` 预填、隐藏方向切换，`FixedFlows.update` 可成功构造才启用「好」，保存走 `store.apply(..., label: "修改安排")` 后关闭。添加／编辑复用分类 Menu，默认分类保持，添加切换方向时重置不适用分类。预览复用 Core 发生项，保留月末锚点与总期数约束。
 
-底部「停掉以后的」与列表共用 `FixedFlowStopConfirmation` 和原 `FixedFlows.stop`；无待处理期直接确认，有待处理期先记账或跳过，成功后关闭编辑，未保存改动不提交；已停掉隐藏按钮。新增可见中文仅「改」「分类」「停掉以后的」。原行内按钮、左滑、contextMenu、恢复、旧期处理及快照撤销保持。
+底部「停掉以后的」与列表共用 `FixedFlowStopConfirmation` 和原 `FixedFlows.stop`；无未办完期直接确认，有未办完期先记账或跳过，成功后关闭编辑，未保存改动不提交；已停掉隐藏按钮。新增可见中文仅「改」「分类」「停掉以后的」。原行内按钮、左滑、contextMenu、恢复、旧期处理及快照撤销保持。
 
 Linux 构建通过；全量 767 项，763 通过／4 原有跳过／0 失败（125.513 秒）。新增 7 项 UI 回归源码；Apple SDK 类型检查、Xcode 编译与 UI 实跑待 Mac。产品 tracker／设计入口已同步，本节补充并更新上方 Core 阶段的「UI 尚未接线／资源尚未同步」状态；外部画布与分发资源仍未同步。

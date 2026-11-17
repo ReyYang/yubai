@@ -85,7 +85,7 @@ final class PerformanceScaleTests: XCTestCase {
             XCTAssertThrowsError(try ManualBookkeeping.available(after: edited, in: ledger, now: now))
         }
     }
-    func test4200EntryCashTimelineAndLivingMatchOriginalAlgorithm() throws {
+    func test4200EntryLivingMatchesOriginalAlgorithm() throws {
         let priorZone = NSTimeZone.default
         defer { NSTimeZone.default = priorZone }
         for zone in ["Asia/Shanghai", "America/New_York"] {
@@ -95,7 +95,6 @@ final class PerformanceScaleTests: XCTestCase {
                 if !hasSalary { ledger.plans.removeAll { $0.inflow } }
                 else { ledger.plans.append(Plan(title: "Salary", amount: 600_000, dueDate: Dates.addDays(10, to: now), frequency: .monthly, inflow: true, nature: .income)) }
                 let funds = Finance.funds(ledger, now: now)
-                XCTAssertEqual(Finance.cashTimeline(ledger, funds: funds, now: now), Finance.referenceCashTimeline(ledger, funds: funds, now: now))
                 XCTAssertEqual(Finance.estimatedDailyLiving(ledger, now: now), Finance.referenceEstimatedDailyLiving(ledger, now: now))
             }
         }
@@ -150,138 +149,5 @@ private extension Finance {
         }
         return min(Money.limit / 366, max(0, windows.sorted()[4]) / 10)
     }
-    static func referenceCashTimeline(_ ledger: Ledger, funds: Funds, now: Date) -> CashTimeline {
-        let today = Dates.day(now), boundary = Dates.addMonths(-3, to: Dates.day(now))
-        let cashIDs = Set(ledger.accounts.filter { $0.kind == .cash || $0.kind == .bank }.map(\.id))
-        var candidate = SalaryDetection.candidate(in: ledger, now: now)
-        let salaryPlan = ledger.plans.filter { $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once }
-            .sorted { $0.id.uuidString < $1.id.uuidString }.first { plan in
-                guard let payday = funds.payday, let index = plan.occurrenceIndex(on: payday) else { return false }
-                return !plan.isSkipped(on: plan.scheduledDate(at: index)) && plan.title == funds.paydayTitle
-            }
-        // Confirming salary deliberately does not rewrite old entries. Recover its
-        // local evidence from a copy so their original company titles still match.
-        if candidate == nil, let plan = salaryPlan, plan.frequency == .monthly {
-            var detectionLedger = ledger
-            detectionLedger.plans.removeAll { $0.active && $0.inflow && $0.nature == .income && $0.frequency == .monthly }
-            if let evidence = SalaryDetection.candidate(in: detectionLedger, now: now),
-               plan.accountID == nil || plan.accountID == evidence.accountID,
-               abs(Double(evidence.amount) - Double(plan.amount)) <= Double(plan.amount) * 0.1 {
-                candidate = evidence
-            }
-        }
-        let salaryIDs = Set(candidate?.entryIDs ?? [])
-        func isSalary(_ entry: Entry) -> Bool {
-            guard entry.nature == .income else { return false }
-            if salaryIDs.contains(entry.id) { return true }
-            guard let plan = salaryPlan else { return false }
-            return entry.planID == plan.id || (SalaryDetection.payerKey(entry.title) == SalaryDetection.payerKey(plan.title)
-                && (plan.accountID == nil || entry.accountID == plan.accountID))
-        }
-        let salaryEntries = ledger.activeEntries.filter { isSalary($0) && cashIDs.contains($0.accountID) && $0.postingDate(for: $0.accountID) <= now }
-        let hasPayday = salaryPlan != nil || candidate != nil
-        let month = Dates.calendar.dateInterval(of: .month, for: today)!.start
-        func monthly(_ offset: Int, day: Int) -> Date {
-            let first = Dates.addMonths(offset, to: month)
-            let last = Dates.calendar.range(of: .day, in: .month, for: first)!.count
-            return Dates.addDays(min(max(1, day), last) - 1, to: first)
-        }
-        var nominal: [Date] = []
-        if let plan = salaryPlan, let payday = funds.payday, let nextIndex = plan.occurrenceIndex(on: payday) {
-            // Derive every date from the original schedule to avoid Feb/Mar drift.
-            for offset in -1..<400 {
-                let day = Dates.day(plan.scheduledDate(at: nextIndex - offset))
-                if !plan.isSkipped(on: day) { nominal.append(day) }
-                if nominal.count >= 3 && day < Dates.addMonths(-2, to: boundary) { break }
-            }
-        } else {
-            let anchor = candidate?.dayOfMonth ?? 1
-            nominal = (-6...1).map { monthly($0, day: anchor) }.reversed()
-        }
-        let spacing = nominal.count > 1 ? abs(Dates.calendar.dateComponents([.day], from: nominal[1], to: nominal[0]).day ?? 30) : 30
-        let tolerance = max(1, min(15, spacing / 2 - 1))
-        let boundaries = Array(Set(nominal.map { expected -> Date in
-            guard hasPayday else { return expected }
-            let nearby = salaryEntries.filter { abs(Dates.calendar.dateComponents([.day], from: expected, to: Dates.day($0.postingDate(for: $0.accountID))).day ?? 999) <= tolerance }
-            return nearby.min { lhs, rhs in
-                let a = abs(lhs.postingDate(for: lhs.accountID).timeIntervalSince(expected)), b = abs(rhs.postingDate(for: rhs.accountID).timeIntervalSince(expected))
-                return a == b ? lhs.amount > rhs.amount : a < b
-            }.map { Dates.day($0.postingDate(for: $0.accountID)) } ?? expected
-        })).sorted()
-        let currentIndex = boundaries.lastIndex { $0 <= today }!
-        var cycles: [CashTimelineCycle] = []
-        for index in stride(from: currentIndex, through: 1, by: -1) {
-            let first = boundaries[index]
-            if index != currentIndex && first < boundary { break }
-            cycles.append(CashTimelineCycle(start: first, end: Dates.addDays(-1, to: boundaries[index + 1]),
-                                            previousStart: boundaries[index - 1], previousEnd: Dates.addDays(-1, to: first)))
-        }
-        let historyStart = cycles.last!.previousStart, end = cycles[0].end
-        let plans = Dictionary(uniqueKeysWithValues: ledger.plans.map { ($0.id, $0) })
-        var deltas: [Date: Int64] = [:], actualEvents: [Date: [CashTimelineEvent]] = [:]
-        for entry in ledger.activeEntries {
-            var movements: [Date: Int64] = [:], legs = [entry.accountID]
-            if entry.nature.paired, let other = entry.otherAccountID, other != entry.accountID { legs.append(other) }
-            for id in legs where cashIDs.contains(id) {
-                let posting = entry.postingDate(for: id), day = Dates.day(posting)
-                guard posting <= now, day >= historyStart else { continue }
-                movements[day, default: 0] += entry.delta(for: id)
-            }
-            let recurring = entry.rentID != nil || entry.planID.flatMap { plans[$0] }.map { $0.frequency != .once } == true
-            for (day, amount) in movements {
-                deltas[day, default: 0] += amount
-                if amount != 0 {
-                    actualEvents[day, default: []].append(CashTimelineEvent(id: entry.id.uuidString + Dates.text(day), title: entry.displayTitle,
-                        amount: amount, date: day, isSalary: isSalary(entry), isRecurring: recurring))
-                }
-            }
-        }
-        // Pre-reconciliation entries only reconstruct history; today's reconciled
-        // funds.cash remains the anchor, including archived cash/bank accounts.
-        var history: [CashTimelinePoint] = [], balance = funds.cash, day = today
-        while day >= historyStart {
-            let events = (actualEvents[day] ?? []).sorted { abs($0.amount) == abs($1.amount) ? $0.id < $1.id : abs($0.amount) > abs($1.amount) }
-            history.append(CashTimelinePoint(date: day, balance: balance, events: events))
-            balance -= deltas[day, default: 0]; day = Dates.addDays(-1, to: day)
-        }
-        history.reverse()
-        let daily = estimatedDailyLiving(ledger, now: now)
-        let days = Dates.calendar.dateComponents([.day], from: today, to: end).day ?? 0
-        let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
-        let rents = Dictionary(uniqueKeysWithValues: ledger.rents.map { ($0.id, $0) })
-        var paidLedger = ledger
-        paidLedger.entries = ledger.entries.filter { $0.date <= now }
-        var scheduled: [Date: [CashTimelineEvent]] = [:]
-        for item in occurrences(in: paidLedger, now: now, days: days + 1)
-            where Dates.day(item.date) >= cycles[0].start && Dates.day(item.date) <= end {
-            let plan = item.planID.flatMap { plans[$0] }
-            // Recognition/confirmation leaves old unlinked payroll untouched. An
-            // observed receipt must not become a second outstanding salary. Linked
-            // partial payments still use FixedFlowPayments' remaining amount.
-            if let salaryPlan, plan?.id == salaryPlan.id,
-               salaryEntries.contains(where: { entry in
-                   (entry.planID != salaryPlan.id || entry.occurrence == nil)
-                       && abs(Dates.calendar.dateComponents([.day], from: Dates.day(entry.date), to: Dates.day(item.date)).day ?? 999) <= tolerance
-               }) { continue }
-            let accountID = plan?.accountID ?? item.rentID.flatMap { rents[$0]?.accountID }
-            if let accountID, accounts[accountID] != nil, !cashIDs.contains(accountID), plan?.nature != .repayment { continue }
-            let date = max(today, Dates.day(item.date))
-            scheduled[date, default: []].append(CashTimelineEvent(id: item.id, title: item.title,
-                amount: item.inflow ? item.amount : -item.amount, date: Dates.day(item.date)))
-        }
-        var forecast: [CashTimelinePoint] = []
-        var line = [CashTimelineVertex(id: 0, date: today, balance: funds.cash)]
-        balance = funds.cash
-        for offset in 0...max(0, days) {
-            let date = Dates.addDays(offset, to: today)
-            balance -= offset > 0 ? daily : 0
-            line.append(CashTimelineVertex(id: line.count, date: date, balance: balance))
-            let events = (scheduled[date] ?? []).sorted { abs($0.amount) == abs($1.amount) ? $0.id < $1.id : abs($0.amount) > abs($1.amount) }
-            balance += events.reduce(Int64(0)) { $0 + $1.amount }
-            if !events.isEmpty { line.append(CashTimelineVertex(id: line.count, date: date, balance: balance)) }
-            forecast.append(CashTimelinePoint(date: date, balance: balance, events: events))
-        }
-        return CashTimeline(today: today, start: boundary, hasPayday: hasPayday, cycles: cycles, dailyLiving: daily,
-                            floor: ledger.profile.floorAmount, history: history, forecast: forecast, forecastLine: line)
-    }
+
 }

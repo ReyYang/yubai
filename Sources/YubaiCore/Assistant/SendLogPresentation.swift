@@ -45,7 +45,7 @@ public enum SendLogPresentation {
         if value.hasPrefix("问余白") { return "问余白" }
         if value.contains("识别列") { return "识别表头" }
         if value.contains("记忆") || value == "每周回看" { return "记住的事" }
-        if value.contains("来信") { return "每周来信" }
+        if value.contains("来信") { return "周回顾" }
         return value
     }
     public static func rules(in group: SendLogGroup) -> [String] {

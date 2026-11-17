@@ -371,7 +371,7 @@ final class UnsortedGroupsTests: XCTestCase {
         entry.title = "只有商户"; entry.note = ""
         XCTAssertEqual(UnsortedEntryPresentation.summary(entry), "只有商户")
         let fallback = UnsortedEntryPresentation.fallbackFields(entry, account: "合成银行卡", hideAmounts: false)
-        XCTAssertEqual(fallback.map(\.key), ["时间", "金额", "账户", "明细", "备注"])
+        XCTAssertEqual(fallback.map(\.key), ["时间", "金额", "账户", "账目", "备注"])
         XCTAssertEqual(fallback.map(\.value), [Dates.text(entry.date, time: true), "-¥12.00", "合成银行卡", "只有商户", ""])
         XCTAssertEqual(UnsortedEntryPresentation.fallbackFields(entry, account: "合成银行卡", hideAmounts: true)[1].value, "••••")
     }

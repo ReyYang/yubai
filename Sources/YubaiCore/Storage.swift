@@ -72,7 +72,7 @@ public struct LedgerRepository: Sendable {
         switch reason {
         case "导入整理", "整理重试", "重试整理": return "导入整理"
         case "回答整理问题": return "回答整理问题"
-        case "整理", "按对方分": return "按对方分"
+        case "整理", "按商户整理", "\u{6309}\u{5bf9}\u{65b9}\u{5206}": return "按商户整理"
         case "批量记账": return "批量记账"
         case "自动记下", "归小项", "更新管家卡片", "每周来信": return reason
         default: return nil
@@ -701,7 +701,7 @@ public struct LedgerRepository: Sendable {
         return try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil).reduce(0) { try $0 + bytesIn($1) }
     }
 
-    @discardableResult public func deleteOldScreenshots(from ledger: Ledger, months: Int, now: Date = Date(), calendar: Calendar = .current) throws -> Ledger {
+    @discardableResult public func deleteOldScreenshots(from ledger: Ledger, months: Int, now: Date = Dates.now, calendar: Calendar = .current) throws -> Ledger {
         do {
             return try access(writing: true) { root in
                 historyLock.lock(); defer { historyLock.unlock() }
@@ -873,7 +873,7 @@ public struct LedgerRepository: Sendable {
 
 public enum Backup {
     private struct Envelope: Codable {
-        var format = "yubai-backup"; var version = 1; var createdAt = Date()
+        var format = "yubai-backup"; var version = 1; var createdAt = Dates.now
         var encrypted: Bool; var salt: Data?; var rounds: Int?; var payload: Data; var checksum: String
     }
     private static func key(password: String, salt: Data, rounds: Int) throws -> SymmetricKey {

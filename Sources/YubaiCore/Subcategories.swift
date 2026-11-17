@@ -245,7 +245,7 @@ public struct SubcategoryBatchResult: Sendable {
     public let ledgerUpdatedAt: Date
     public let day: String
     public let choices: [UUID: SubcategoryChoice]
-    public func apply(to ledger: inout Ledger, now: Date = Date()) throws {
+    public func apply(to ledger: inout Ledger, now: Date = Dates.now) throws {
         try Task.checkCancellation()
         guard ledger.id == ledgerID, ledger.updatedAt == ledgerUpdatedAt, Dates.text(now) == day,
               SubcategoryBatch.isDue(ledger, now) else { throw YubaiError.invalid("账本或日期已变化，请明天再归类。") }
@@ -264,8 +264,8 @@ public struct SubcategoryBatchResult: Sendable {
     }
 }
 public enum SubcategoryBatch {
-    public static func isDue(_ ledger: Ledger, _ now: Date = Date()) -> Bool { ledger.lastSubcategoryBatchDay != Dates.text(now) }
-    public static func isDue(ledger: Ledger, now: Date = Date()) -> Bool { isDue(ledger, now) }
+    public static func isDue(_ ledger: Ledger, _ now: Date = Dates.now) -> Bool { ledger.lastSubcategoryBatchDay != Dates.text(now) }
+    public static func isDue(ledger: Ledger, now: Date = Dates.now) -> Bool { isDue(ledger, now) }
     public static func pending(_ ledger: Ledger) -> [Entry] {
         ledger.activeEntries.filter { entry in
             guard entry.subcategory == nil, !entry.subcategoryUserEdited, [.expense, .income].contains(entry.nature) else { return false }
@@ -275,7 +275,7 @@ public enum SubcategoryBatch {
     static let chunkSize = 40
     /// One daily round may contain arbitrarily many bounded requests. Persist only
     /// after every chunk validates; failure/cancellation leaves the ledger untouched.
-    public static func run(transport: any ChatTransport, ledger: Ledger, now: Date = Date()) async throws -> SubcategoryBatchResult {
+    public static func run(transport: any ChatTransport, ledger: Ledger, now: Date = Dates.now) async throws -> SubcategoryBatchResult {
         guard isDue(ledger, now) else { throw YubaiError.invalid("今天已经归过小项了。") }
         try Task.checkCancellation()
         let redactor = Redactor(ledger: ledger); let candidates = pending(ledger); let groupID = UUID()

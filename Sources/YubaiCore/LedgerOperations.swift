@@ -33,7 +33,7 @@ public enum LedgerOperations {
         }
         try candidate.validate(); ledger = candidate
     }
-    @discardableResult public static func mergeTransfer(_ first: UUID, _ second: UUID, nature: Nature = .transfer, in ledger: inout Ledger, now: Date = Date()) throws -> UUID {
+    @discardableResult public static func mergeTransfer(_ first: UUID, _ second: UUID, nature: Nature = .transfer, in ledger: inout Ledger, now: Date = Dates.now) throws -> UUID {
         guard first != second, let a = ledger.entries.first(where: { $0.id == first && $0.deletedAt == nil }),
               let b = ledger.entries.first(where: { $0.id == second && $0.deletedAt == nil }),
               a.amount == b.amount, a.nature.inflow != b.nature.inflow, a.accountID != b.accountID,

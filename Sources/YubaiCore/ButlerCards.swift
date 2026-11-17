@@ -26,7 +26,7 @@ public struct CardCandidate: Equatable, Sendable {
                               evidence: kind == .offCharacter ? evidence : Array(evidence.prefix(1000)), action: action, dedupeKey: dedupeKey)
         card.createdAt = now; card.letter = letter; card.facts = facts; card.areaID = areaID; card.priority = priority
         card.meta = meta
-        if kind != .offCharacter && evidence.count > 1000 { card.facts?.append(CardFact("明细", "显示 1000 笔")) }
+        if kind != .offCharacter && evidence.count > 1000 { card.facts?.append(CardFact("依据", "显示 1000 笔")) }
         return card
     }
 }
@@ -70,32 +70,31 @@ public enum ButlerCards {
     }
     public static func detect(_ ledger: Ledger, now: Date) -> [CardCandidate] {
         var result: [CardCandidate] = []
-        let week = calendar.dateInterval(of: .weekOfYear, for: now)!.start
-        let month = calendar.dateInterval(of: .month, for: now)!.start
+        let period = Finance.cycle(in: ledger, now: now).start
         for area in ledger.profile.restrain {
-            let usage = area.usage(in: ledger, now: now)
-            let countLimit = area.softLimit?.perWeekCount
-            let amountLimit = area.softLimit?.perMonthAmount
-            let over = countLimit.map { usage.weekCount >= $0 && usage.weekCount > 0 } == true || amountLimit.map { usage.monthAmount >= $0 && usage.monthAmount > 0 } == true
-            let near = countLimit.map { Double(usage.weekCount) >= Double($0) * 0.8 && usage.weekCount > 0 } == true || amountLimit.map { Double(usage.monthAmount) >= Double($0) * 0.8 && usage.monthAmount > 0 } == true
+            let usage = area.periodUsage(in: ledger, now: now)
+            let countLimit = area.softLimit?.periodCount
+            let amountLimit = area.softLimit?.periodAmount
+            let over = countLimit.map { usage.count >= $0 && usage.count > 0 } == true || amountLimit.map { usage.amount >= $0 && usage.amount > 0 } == true
+            let near = countLimit.map { Double(usage.count) >= Double($0) * 0.8 && usage.count > 0 } == true || amountLimit.map { Double(usage.amount) >= Double($0) * 0.8 && usage.amount > 0 } == true
             let noLine = countLimit == nil && amountLimit == nil
-            guard over || near || (noLine && usage.weekCount > 0) else { continue }
+            guard over || near || (noLine && usage.count > 0) else { continue }
             let entries = ledger.activeEntries.filter { e in
-                guard e.date >= min(week, month), e.date <= now, e.nature == .expense || e.nature == .refund else { return false }
+                guard e.date >= period, e.date <= now, e.nature == .expense || e.nature == .refund else { return false }
                 let source = e.relatedEntryID.flatMap { id in ledger.entries.first { $0.id == id } } ?? e
                 return matches(area, entry: source, ledger: ledger)
             }.sorted { $0.date > $1.date }
-            var facts = [CardFact("领域", area.title), CardFact("你的原话", area.note), CardFact("本周", "\(usage.weekCount) 次"), CardFact("本月消费", cents: usage.monthAmount)]
-            if let countLimit { facts.append(CardFact("每周最多", "\(countLimit) 次")) }
-            if let amountLimit { facts.append(CardFact("每月最多", cents: amountLimit)) }
+            var facts = [CardFact("领域", area.title), CardFact("你的原话", area.note), CardFact("本期次数", "\(usage.count) 次"), CardFact("本期消费", cents: usage.amount)]
+            if let countLimit { facts.append(CardFact("每期最多", "\(countLimit) 次")) }
+            if let amountLimit { facts.append(CardFact("每期最多", cents: amountLimit)) }
             let detail: String
-            if let countLimit, usage.weekCount >= countLimit || (!over && Double(usage.weekCount) >= Double(countLimit) * 0.8) {
-                detail = "本周第 \(usage.weekCount) 次 · 你写的最多 \(countLimit) 次"
+            if let countLimit, usage.count >= countLimit || (!over && Double(usage.count) >= Double(countLimit) * 0.8) {
+                detail = "本期第 \(usage.count) 次 · 最多 \(countLimit) 次"
             } else if let amountLimit {
-                detail = "本月 \(Money.text(usage.monthAmount)) · 你写的最多 \(Money.text(amountLimit))"
-            } else { detail = "本周有 \(usage.weekCount) 次，落在你想克制的领域。" }
+                detail = "本期 \(Money.text(usage.amount)) · 最多 \(Money.text(amountLimit))"
+            } else { detail = "本期 \(usage.count) 次" }
             result.append(CardCandidate(kind: .restrain, dedupeKey: "restrain:\(area.id):\(isoWeek(now))", evidence: entries.map(\.id), facts: facts,
-                title: String(area.title.prefix(8)) + "这周的记录", body: detail,
+                title: String(area.title.prefix(8)) + "本期记录", body: detail,
                 action: .openEvidence, priority: over ? 1 : 2, areaID: area.id))
         }
         let funds = Finance.funds(ledger, now: now)
@@ -103,10 +102,10 @@ public enum ButlerCards {
         let bills = funds.occurrences.filter { !$0.inflow && Dates.day($0.date) <= funds.cycleEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
         for item in bills where Dates.day(item.date) >= Dates.day(now) {
             let out = bills.filter { Dates.day($0.date) <= Dates.day(item.date) }.reduce(Int64(0)) { $0 + $1.amount }
-            let remaining = funds.liquidNow - funds.savingTarget - out
+            let remaining = funds.spendable.rawR + funds.committed - out
             guard remaining < 0 else { continue }
             let facts = [CardFact("付款", item.title), CardFact("付款日", Dates.text(item.date)), CardFact("待付", cents: item.amount),
-                         CardFact("付款前及当天最少还能花", cents: remaining), CardFact("存着不动", cents: funds.emergency),
+                         CardFact("付款前及当天最少还能花", cents: remaining), CardFact("存下的钱", cents: funds.emergency),
                          CardFact("要攒", cents: funds.savingTarget), CardFact("此前及当天要付", cents: out)]
             result.append(CardCandidate(kind: .shortfall, dedupeKey: "shortfall:" + item.id, evidence: [], facts: facts,
                 title: "钱不够", body: "到这笔付款时，还能花 \(Money.text(remaining))。", action: .openEvidence, priority: 0))
@@ -236,20 +235,20 @@ public enum ButlerCards {
                 return false
             }
         }) else { return }
-        let hasLine = area.softLimit?.perWeekCount != nil || area.softLimit?.perMonthAmount != nil
+        let hasLine = area.softLimit?.periodCount != nil || area.softLimit?.periodAmount != nil
         let move = relax && !hasLine
         if relax {
             if hasLine {
-                area.softLimit = SoftLimit(perWeekCount: area.softLimit?.perWeekCount.map { min(10_000, $0 + 1) },
-                    perMonthAmount: area.softLimit?.perMonthAmount.map { min(Money.limit, ($0 * 5 + 2) / 4) })
+                area.softLimit = SoftLimit(perPeriodCount: area.softLimit?.periodCount.map { min(10_000, $0 + 1) },
+                    perPeriodAmount: area.softLimit?.periodAmount.map { min(Money.limit, ($0 * 5 + 2) / 4) })
             } else { area.softLimit = nil }
         } else {
             let old = area.softLimit
-            let count = old?.perWeekCount.map { max(0, $0 - 1) }
-            let amount = old?.perMonthAmount.map { $0 * 4 / 5 }
-            area.softLimit = SoftLimit(perWeekCount: count ?? (amount == nil ? max(1, area.usage(in: ledger, now: now).weekCount - 1) : nil), perMonthAmount: amount)
+            let count = old?.periodCount.map { max(0, $0 - 1) }
+            let amount = old?.periodAmount.map { $0 * 4 / 5 }
+            area.softLimit = SoftLimit(perPeriodCount: count ?? (amount == nil ? max(1, area.periodUsage(in: ledger, now: now).count - 1) : nil), perPeriodAmount: amount)
         }
-        let reason = move ? "最近两次觉得「\(title)」值得，要记为愿意多花吗？" : (relax ? "最近两次觉得「\(title)」值得，要调高每周次数或每月金额吗？" : "最近两次对「\(title)」有点后悔，要调低每周次数或每月金额吗？")
+        let reason = move ? "最近两次觉得「\(title)」值得，要记为愿意多花吗？" : (relax ? "最近两次觉得「\(title)」值得，要调高每期次数或金额吗？" : "最近两次对「\(title)」有点后悔，要调低每期次数或金额吗？")
         var proposal = ChangeSet(source: "卡片反馈", reason: reason,
                                  items: [.profile(.upsertArea(area, stance: move ? .generous : .restrain))])
         proposal.createdAt = now; ledger.pendingChanges.append(proposal)

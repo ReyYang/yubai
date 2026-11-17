@@ -6,7 +6,6 @@ final class PerformanceProfileTests: XCTestCase {
         let s = Date(); for _ in 0..<n { try body() }
         let elapsed = Date().timeIntervalSince(s) * 1000 / Double(n)
         if name == "save preservingRecovery (记一笔)" { XCTAssertLessThan(elapsed, 500) }
-        if name == "cashTimeline" { XCTAssertLessThan(elapsed, 40) }
         if name == "available(after:)" || name == "available(edit:)" { XCTAssertLessThan(elapsed, 12) }
         print(String(format: "PROF %-40@ %8.1f ms", name as NSString, elapsed))
     }
@@ -29,13 +28,12 @@ final class PerformanceProfileTests: XCTestCase {
         let bytes = try LedgerCodec.encodeMetadata(ledger); print("PROF bytes", bytes.count)
         try t("decode") { _ = try LedgerCodec.decode(bytes) }
         try t("save preservingRecovery (记一笔)", 3) { var l = ledger; l.entries[7].purpose = UUID().uuidString; ledger = try repo.save(l, reason: "记一笔", requiringUnchanged: true) }
-        try t("save merged recovery", 3) { var l = ledger; l.entries[7].purpose = UUID().uuidString; ledger = try repo.save(l, reason: "按对方分", requiringUnchanged: true) }
+        try t("save merged recovery", 3) { var l = ledger; l.entries[7].purpose = UUID().uuidString; ledger = try repo.save(l, reason: "按商户整理", requiringUnchanged: true) }
         try t("save no recovery", 3) { var l = ledger; l.entries[7].purpose = UUID().uuidString; ledger = try repo.save(l, reason: "x", requiringUnchanged: true, preservingRecovery: false) }
         let acct = ledger.accounts[0]
         t("Finance.funds cold") { _ = Finance.funds(ledger) }
         t("Finance.funds", 3) { _ = Finance.funds(ledger) }
         let funds = Finance.funds(ledger)
-        t("cashTimeline", 3) { _ = Finance.cashTimeline(ledger, funds: funds, now: Date()) }
         t("Finance.balance", 3) { _ = Finance.balance(acct, in: ledger) }
         t("RestrainProgress", 3) { _ = RestrainProgress.current(ledger: ledger) }
         t("ButlerCards.queued", 3) { _ = ButlerCards.queued(ledger) }

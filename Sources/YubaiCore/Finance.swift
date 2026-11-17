@@ -17,18 +17,18 @@ public struct Funds: Equatable, Sendable {
     public var cycleStart = Date.distantPast
     public var cycleEnd = Date.distantPast
     public var cycleIsPayday = false
-    public var liquidStart: Int64 = 0
     public var cycleIncome: Int64 = 0
+    public var savingRuleTarget: Int64 = 0
+    public var salaryLateDays: Int? = nil
     public var savingTarget: Int64 = 0
     public var fixedSavingsTotal: Int64 { emergency }
     public var cycleSpent: Int64 = 0
     public var dueRest: Int64 = 0
-    public var dailyAllowance: Int64 = 0
     public var savingShortfall: Int64 = 0
-    public var liquidNow: Int64 { liquidStart + cycleIncome - cycleSpent }
+    public var spendable: SpendableBreakdown = .empty
     /// Retained for source compatibility; fixed savings are deducted directly.
     public var floorRoom: Int64? = nil
-    public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Date()))
+    public var horizonEnd: Date = Dates.addDays(Finance.observationDays, to: Dates.day(Dates.now))
     public var horizonDays: Int = Finance.observationDays; public var payday: Date? = nil; public var paydayTitle: String? = nil
 }
 public struct Breakdown: Equatable, Identifiable, Sendable {
@@ -115,14 +115,14 @@ public enum Finance {
         ledger.calculations.storeDailyLiving(value, day: end)
         return value
     }
-    public static func balance(_ account: Account, in ledger: Ledger, at: Date = Date()) -> Int64 {
+    public static func balance(_ account: Account, in ledger: Ledger, at: Date = Dates.now) -> Int64 {
         account.anchorBalance + ledger.entries.lazy.filter { $0.deletedAt == nil && account.includes($0, posting: $0.postingDate(for: account.id)) && $0.postingDate(for: account.id) <= at }.reduce(Int64(0)) { $0 + $1.delta(for: account.id) }
     }
-    public static func occurrences(in ledger: Ledger, now: Date = Date(), days: Int? = nil) -> [Occurrence] {
+    public static func occurrences(in ledger: Ledger, now: Date = Dates.now, days: Int? = nil) -> [Occurrence] {
         let start = Dates.day(now); let end = Dates.addDays(days ?? observationDays, to: start)
         let calendar = Dates.calendar
         func month(_ date: Date) -> Date { calendar.date(from: calendar.dateComponents([.year, .month], from: date))! }
-        let payments = FixedFlowPayments(in: ledger)
+        let payments = FixedFlowPayments(in: ledger, now: now)
         var result: [Occurrence] = []
         for p in ledger.plans where p.active {
             // Always derive from the original day (Jan 31 → Feb 28 → Mar 31), never chained dates.
@@ -162,22 +162,24 @@ public enum Finance {
             for offset in 1...observationDays {
                 let day = Dates.addDays(offset, to: today)
                 if let index = plan.occurrenceIndex(on: day), !plan.isSkipped(on: day),
-                   plan.endDate.map({ (plan.previousOccurrences.isEmpty ? plan.scheduledDate(at: index) : day) <= $0 }) ?? true { return (day, plan.title) }
+                   !(plan.occurrenceDateOverrides?.isEmpty ?? true) ||
+                    (plan.endDate.map({ (plan.previousOccurrences.isEmpty ? plan.scheduledDate(at: index) : day) <= $0 }) ?? true) {
+                    return (day, plan.title)
+                }
             }
             return nil
         }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }
     }
-    public static func cycle(in ledger: Ledger, now: Date = Date()) -> (start: Date, end: Date, payday: Bool) {
+    static func scheduledCycle(in ledger: Ledger, now: Date) -> (start: Date, end: Date, payday: Bool) {
         let month = Dates.calendar.dateInterval(of: .month, for: now)!
         let natural = (start: month.start, end: Dates.addDays(-1, to: month.end), payday: false)
         if ledger.cycleAnchor == .calendarMonth { return natural }
-        // Explicit payday mode uses a monthly income schedule. Legacy nil keeps
-        // the automatic behavior, including older non-monthly schedules.
-        var source = ledger
-        if ledger.cycleAnchor == .payday { source.plans.removeAll { $0.frequency != .monthly } }
-        if let next = nextPayday(in: source, now: now),
-           let plan = source.plans.filter({ $0.active && $0.inflow && $0.nature == .income && $0.frequency != .once && $0.title == next.title })
-            .sorted(by: { $0.id.uuidString < $1.id.uuidString }).first(where: { $0.occurrenceIndex(on: next.date) != nil }) {
+        if let plan = anchorPlan(in: ledger, now: now),
+           let next = nextPayday(in: { var source = ledger; source.plans = [plan]; return source }(), now: now) {
+            if !(plan.occurrenceDateOverrides?.isEmpty ?? true),
+               let previous = plan.schedule(through: Dates.addDays(1, to: Dates.day(now)).addingTimeInterval(-0.001)).last(where: { !plan.isSkipped(on: $0.date) }) {
+                return (Dates.day(previous.date), Dates.addDays(-1, to: next.date), true)
+            }
             // Derive from the original schedule, preserving Jan 31 → Feb 28 → Mar 31.
             let calendar = Dates.calendar
             let months = calendar.dateComponents([.month], from: calendar.dateInterval(of: .month, for: plan.dueDate)!.start,
@@ -187,6 +189,8 @@ public enum Finance {
             case .weekly: index = (calendar.dateComponents([.day], from: Dates.day(plan.dueDate), to: next.date).day ?? 0) / 7
             case .monthly: index = months
             case .quarterly: index = months / 3
+            case .halfYearly: index = months / 6
+            case .fortnightly: index = (calendar.dateComponents([.day], from: Dates.day(plan.dueDate), to: next.date).day ?? 0) / 14
             case .yearly: index = months / 12
             case .once: index = 0
             }
@@ -200,7 +204,7 @@ public enum Finance {
         }
         return natural
     }
-    public static func funds(_ ledger: Ledger, now: Date = Date(), days: Int = Finance.observationDays) -> Funds {
+    public static func funds(_ ledger: Ledger, now: Date = Dates.now, days: Int = Finance.observationDays) -> Funds {
         let horizon = max(0, min(366, days))
         if let cached = ledger.calculations.cachedFunds(now: now, days: horizon) { return cached }
         let accounts = ledger.accounts // Archived accounts still own money and obligations.
@@ -227,13 +231,17 @@ public enum Finance {
             }
         }
         let occurrences = occurrences(in: ledger, now: now, days: horizon)
+        let cycle = cycleInfo(in: ledger, now: now)
         let payday = nextPayday(in: ledger, now: now)
-        let cycle = cycle(in: ledger, now: now)
+        let paydayDate = cycle.payday ? cycle.nextPayday : payday?.date
+        let paydayTitle = cycle.payday ? anchorPlan(in: ledger, now: now)?.title : payday?.title
         let horizonEnd = cycle.end
         let horizonDays = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: horizonEnd).day ?? horizon
         // Credit principal is reserved once as debt. A credit-repayment plan only changes its payment date.
         let repayments = Set(ledger.plans.filter { $0.nature == .repayment }.map(\.id))
         let reserved = self.occurrences(in: ledger, now: now, days: horizonDays + 1)
+        // Every unpaid occurrence through period end is still owed, including
+        // overdue bills from this period and earlier periods.
         let commitments = reserved.filter { !$0.inflow && Dates.day($0.date) <= horizonEnd && !($0.planID.map { repayments.contains($0) } ?? false) }
         let committed = commitments.reduce(Int64(0)) { $0 + $1.amount }
         let goals = ledger.goals.reduce(Int64(0)) { $0 + $1.reserved }
@@ -244,12 +252,10 @@ public enum Finance {
             e.nature == .unknownIn && e.date <= now && accountsByID[e.accountID].map { $0.includes(e, posting: e.date) && ($0.kind == .cash || $0.kind == .bank) } == true
         }.reduce(Int64(0)) { $0 + $1.amount }
         let emergency = ledger.fixedSavingsTotal(now: now)
-        let cycleRows = entries.filter { $0.date >= cycle.start && $0.date <= now }
-        let income = cycleRows.filter { $0.nature == .income && !$0.intoFixedSavings }.reduce(Int64(0)) { $0 + $1.amount }
-        let spent = cycleRows.reduce(Int64(0)) { $0 + spendingAmount($1, ledger: ledger) }
-        let savingTarget = ledger.savingRule?.target(income: income) ?? 0
-        let liquid = cash - debt - emergency - goals - uncertain
-        let available = liquid - savingTarget - committed
+        let breakdown = makeSpendableBreakdown(ledger, now: now, cycle: cycle, commitments: commitments)
+        let income = breakdown.income, spent = breakdown.spent
+        let savingTarget = breakdown.effectiveSaving
+        let available = breakdown.available
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
         if accounts.isEmpty { warnings.append("还没有账户") }
@@ -277,12 +283,13 @@ public enum Finance {
                      livingEstimated: true, committed: committed, goals: goals, emergency: emergency, living: living,
                      uncertainInflow: uncertain, available: available, expectedIncome: expectedIncome,
                      occurrences: occurrences, points: points, warnings: warnings, floorRoom: nil,
-                     horizonEnd: horizonEnd, horizonDays: horizonDays, payday: payday?.date, paydayTitle: payday?.title)
+                     horizonEnd: horizonEnd, horizonDays: horizonDays, payday: paydayDate, paydayTitle: paydayTitle)
         value.cycleStart = cycle.start; value.cycleEnd = cycle.end; value.cycleIsPayday = cycle.payday
-        value.liquidStart = liquid - income + spent; value.cycleIncome = income; value.savingTarget = savingTarget
+        value.spendable = breakdown; value.cycleIncome = income; value.savingTarget = savingTarget
         value.cycleSpent = spent; value.dueRest = committed
-        value.dailyAllowance = max(0, available) / Int64(max(1, horizonDays + 1))
-        value.savingShortfall = min(savingTarget, max(0, -available))
+        value.savingRuleTarget = (ledger.savingRule?.target(income: income) ?? 0) + Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).reduce(0) { $0 + $1.amount }
+        value.salaryLateDays = cycle.lateSince.map { Dates.calendar.dateComponents([.day], from: $0, to: Dates.day(now)).day ?? 0 }
+        value.savingShortfall = breakdown.savingLess
         ledger.calculations.storeFunds(value, in: ledger, now: now, days: horizon)
         return value
     }
@@ -291,6 +298,7 @@ public enum Finance {
     }
     /// Indexed callers can share the same rules without a rent lookup per row.
     public static func spendingAmount(_ entry: Entry, rent: Rent?) -> Int64 {
+        if entry.kind == .adjustment { return 0 }
         if entry.nature == .expense {
             if let personal = entry.personalExpense { return personal }
             if let rent, rent.monthlyTotal > 0 {
@@ -329,7 +337,17 @@ public enum Finance {
         let income = incomeBreakdown.sorted {
             $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount
         }
-        let spending = review.byCategory.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
+        let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        let expenseRows = ledger.entries.filter { $0.deletedAt == nil && $0.date >= interval.start && $0.date < interval.end && ($0.nature == .expense || $0.nature == .refund) }
+        let expenseGroups = Dictionary(grouping: expenseRows) { entry -> String in
+            let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
+            return source.isUnitemized && Classification.isPending(source) ? Reconciliation.unitemizedTitle : ledger.normalizedCategory(for: entry, entriesByID: lookup).category
+        }
+        let spendingBreakdown: [Breakdown] = expenseGroups.map { name, rows in
+            let amount = rows.reduce(Int64(0)) { $0 + spendingAmount($1, ledger: ledger) }
+            return Breakdown(category: name, amount: amount, count: rows.count)
+        }
+        let spending = spendingBreakdown.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
         return CashFlowSummary(income: review.income, spending: review.spending,
                                incomeByCategory: income, spendingByCategory: spending)
     }
@@ -342,12 +360,13 @@ public enum Finance {
         return grouped.map { sub, rows in Breakdown(category: sub, amount: rows.reduce(0) { $0 + (income ? $1.amount : spendingAmount($1, ledger: ledger)) }, count: rows.filter { $0.nature == .expense || $0.nature == .income }.count) }
             .sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount }
     }
-    public static func assessPurchase(_ ledger: Ledger, amount: Int64, title purchaseTitle: String = "", category: String? = nil, subcategory: String? = nil, now: Date = Date()) -> PurchaseAssessment {
-        let f = funds(ledger, now: now); let after = f.available - amount
+    public static func assessPurchase(_ ledger: Ledger, amount: Int64, title purchaseTitle: String = "", category: String? = nil, subcategory: String? = nil, now: Date = Dates.now) -> PurchaseAssessment {
+        let f = funds(ledger, now: now); let rawAfter = f.spendable.rawR - amount
+        let after = max(0, rawAfter), deficit = max(0, -rawAfter - f.spendable.plannedSaving)
         let incomplete = ledger.accounts.isEmpty || ledger.accounts.contains { !$0.reconciled } || !f.warnings.isEmpty
-        let severity = f.liquidNow - f.dueRest - amount < 0 ? 2 : (incomplete || amount > max(0, f.available) / 3 ? 1 : 0)
-        let title = after < 0 ? "这笔购买会挤占已安排的资金" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
-        let explanation = after < 0 ? "还差 \(Money.text(-after))，可以少花一些或晚点再买。" : "买了以后还能花 \(Money.text(after))。"
+        let severity = deficit > 0 ? 2 : (rawAfter < 0 || incomplete || amount > f.available / 3 ? 1 : 0)
+        let title = deficit > 0 ? "先别买" : rawAfter < 0 ? "等等再说" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
+        let explanation = deficit > 0 ? "买了以后，要付的账单还差 \(Money.text(deficit))。" : rawAfter < 0 ? "买了以后，这个月少攒 \(Money.text(min(f.spendable.plannedSaving, -rawAfter)))。" : "买了以后还能花 \(Money.text(after))。"
         let horizon = f.payday == nil ? "到 \(Dates.calendar.component(.month, from: f.horizonEnd))月\(Dates.calendar.component(.day, from: f.horizonEnd))日已知付款" : "发工资前已知付款"
         let bounds = PurchaseBounds.compute(ledger: ledger, amount: amount, title: purchaseTitle, category: category, subcategory: subcategory, now: now)
         let verdict: PurchaseVerdict = bounds.allowedVerdicts == [.skip] ? .skip : !bounds.allowedVerdicts.contains(.buy) || amount > max(0, f.available) / 3 ? .wait : .buy
@@ -355,7 +374,7 @@ public enum Finance {
         sample.subcategory = subcategory
         let hasPart = SpendingParts.part(for: sample, in: ledger) != nil
         let reason = hasPart || !bounds.allowedVerdicts.contains(.buy) ? bounds.boundReason : verdict == .wait ? "这笔 \(Money.text(amount)) 超过当前还能花 \(Money.text(f.available)) 的三分之一。" : bounds.boundReason
-        let facts = ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱 \(Money.text(f.goals))", "存着不动 \(Money.text(f.emergency))", "要攒 \(Money.text(f.savingTarget))"]
+        let facts = ["当前现金 \(Money.text(f.cash))", "信用卡要还 \(Money.text(f.debt))", "\(horizon) \(Money.text(f.committed))", "在存钱 \(Money.text(f.goals))", "存下的钱 \(Money.text(f.emergency))", "要攒 \(Money.text(f.savingTarget))"]
 
         return PurchaseAssessment(verdict: verdict, reason: reason, title: title, explanation: explanation, afterPurchase: after, severity: severity,
                                   facts: facts + f.warnings,
@@ -394,7 +413,7 @@ public struct LedgerPresentationCache {
         sortedEntries = nil; byID = nil; flows = [:]; slices = [:]; records = [:]; subcategories = [:]; evidence = [:]; candidates = nil; settingsValue = nil; savingsValue = nil; capturesValue = nil
     }
     // Two half-open intervals in the same gaps between posting dates select exactly
-    // the same rows. This also caches a live interval whose end is Date() each render,
+    // the same rows. This also caches a live interval whose end is Dates.now each render,
     // without rounding dates or missing a future entry as it becomes eligible.
     private func boundary(_ date: Date) -> Int {
         var low = 0, high = entryDates.count
@@ -461,7 +480,7 @@ public struct LedgerPresentationCache {
         let value = SubscriptionCheck.candidates(ledger: ledger)
         candidates = value; return value
     }
-    public mutating func savings(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> LedgerSavingsTotals {
+    public mutating func savings(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> LedgerSavingsTotals {
         prepare(ledger, revision: revision)
         let zone = TimeZone.current
         if let cached = savingsValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
@@ -486,7 +505,7 @@ public struct LedgerPresentationCache {
         }
         savingsValue = (value, now, expires, zone); return value
     }
-    public mutating func recentCaptures(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> [Entry] {
+    public mutating func recentCaptures(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> [Entry] {
         prepare(ledger, revision: revision)
         let zone = TimeZone.current
         if let cached = capturesValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
@@ -500,7 +519,7 @@ public struct LedgerPresentationCache {
         }
         capturesValue = (rows, now, expires, zone); return rows
     }
-    public mutating func settings(in ledger: Ledger, revision: UInt64, now: Date = Date()) -> LedgerSettingsSummary {
+    public mutating func settings(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> LedgerSettingsSummary {
         prepare(ledger, revision: revision)
         let zone = TimeZone.current
         if let cached = settingsValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }

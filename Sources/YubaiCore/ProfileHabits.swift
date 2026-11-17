@@ -15,7 +15,7 @@ public struct HabitLine: Equatable, Identifiable, Sendable {
 public enum ProfileHabits {
     /// Last 90 calendar days through now. Categories and exact raw titles (merchant
     /// proxies) overlap; these five lines must not be added together.
-    public static func summary(_ ledger: Ledger, now: Date = Date()) -> [HabitLine] {
+    public static func summary(_ ledger: Ledger, now: Date = Dates.now) -> [HabitLine] {
         let start = Dates.addDays(-89, to: Dates.day(now))
         let byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         var totals: [String: (kind: HabitLine.Kind, title: String, total: Int64, count: Int)] = [:]
@@ -43,19 +43,24 @@ public enum ProfileHabits {
 }
 
 public extension SoftLimit {
+    var periodCount: Int? { perPeriodCount ?? perWeekCount }
+    var periodAmount: Int64? { perPeriodAmount ?? perMonthAmount }
     var text: String {
         var parts: [String] = []
-        if let count = perWeekCount { parts.append("每周最多 \(count) 次") }
-        if let amount = perMonthAmount { parts.append("每月最多 " + Money.text(amount)) }
+        if let count = periodCount { parts.append("每期最多 \(count) 次") }
+        if let amount = periodAmount { parts.append("每期最多 " + Money.text(amount)) }
         return parts.joined(separator: " · ")
     }
 }
 
 public extension ProfileArea {
+    func periodUsage(in ledger: Ledger, now: Date = Dates.now) -> (count: Int, amount: Int64) {
+        usage(in: ledger, from: Finance.cycle(in: ledger, now: now).start, through: now)
+    }
     /// Monday-based current week and current calendar month through now. A category
     /// OR any keyword matches; empty selectors match nothing. Refunds follow the
     /// original expense for matching and reduce amount, never the purchase count.
-    func usage(in ledger: Ledger, now: Date = Date()) -> (weekCount: Int, monthAmount: Int64) {
+    func usage(in ledger: Ledger, now: Date = Dates.now) -> (weekCount: Int, monthAmount: Int64) {
         var calendar = Dates.calendar; calendar.firstWeekday = 2; calendar.minimumDaysInFirstWeek = 4
         let week = calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? Dates.day(now)
         let month = calendar.dateInterval(of: .month, for: now)?.start ?? Dates.day(now)

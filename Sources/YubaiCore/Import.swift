@@ -42,6 +42,7 @@ public struct ImportRow: Identifiable, Sendable {
     public var paymentMethod: String = ""
     /// Category after the ledger's aliases, before this import's explicit choices.
     public var sourceCategory: String = ""
+    public var accountIsUnknown = false
 }
 public struct ImportBalance: Sendable, Equatable {
     public var amount: Int64
@@ -327,6 +328,7 @@ public enum BillImporter {
                 else if ledger.activeEntries.contains(where: { $0.source != source && $0.amount == entry.amount && $0.nature.inflow == entry.nature.inflow && abs($0.date.timeIntervalSince(date)) < 60 && $0.accountID == mappedAccount }) {
                     rowStatus = .possibleDuplicate; message = "另一来源有同时间同金额记录，核对后可选中导入"
                 }
+                if rowStatus == .possibleDuplicate, manualMergeCandidate(for: entry, in: ledger) != nil { rowStatus = .ready }
                 if rowStatus == .ready && status.contains("退款") && entry.nature != .refund { message += "；含退款状态，退款明细需另行导入或补记" }
                 rows.append(ImportRow(line: line, entry: entry, status: rowStatus, message: message, included: rowStatus == .ready, paymentMethod: isTransfer ? (fromAccount == nil ? fromName : (toAccount == nil ? toName : "")) : method, sourceCategory: sourceCategory))
                 if rowStatus == .ready {
@@ -366,6 +368,12 @@ public enum BillImporter {
     /// Only an explicit new-category choice can create a main, and only for
     /// selected source rows. Category creation and the import commit together.
     public static func commit(_ preview: ImportPreview, data: Data, confirmedNewCategories: Set<String> = [], to ledger: inout Ledger) throws -> ImportBatch {
+        try commitTimed(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &ledger, now: nil)
+    }
+    public static func commit(_ preview: ImportPreview, data: Data, confirmedNewCategories: Set<String> = [], to ledger: inout Ledger, now: Date) throws -> ImportBatch {
+        try commitTimed(preview, data: data, confirmedNewCategories: confirmedNewCategories, to: &ledger, now: now)
+    }
+    private static func commitTimed(_ preview: ImportPreview, data: Data, confirmedNewCategories: Set<String>, to ledger: inout Ledger, now: Date?) throws -> ImportBatch {
         var candidate = ledger
         var confirmed = preview
         for name in confirmedNewCategories.sorted() {
@@ -378,14 +386,16 @@ public enum BillImporter {
                 confirmed.rows[i].entry?.userEdited = true
             }
         }
-        let batch = try commitValidated(confirmed, data: data, to: &candidate)
+        let batch = try commitValidated(confirmed, data: data, to: &candidate, now: now)
         ledger = candidate
         return batch
     }
-    private static func commitValidated(_ preview: ImportPreview, data: Data, to ledger: inout Ledger) throws -> ImportBatch {
+    private static func commitValidated(_ preview: ImportPreview, data: Data, to ledger: inout Ledger, now: Date?) throws -> ImportBatch {
         guard preview.rows.filter(\.included).allSatisfy({ [.ready, .possibleDuplicate].contains($0.status) }) else { throw YubaiError.invalid("仍有不可入账的行被选中，请重新预览并核对账户。") }
         guard !preview.selectedEntries.isEmpty else { throw YubaiError.invalid("还没有选中可导入的记录。") }
         var batch = ImportBatch(filename: preview.filename, importedCount: preview.selectedEntries.count, duplicateCount: preview.duplicateCount, skippedCount: preview.rows.filter { !$0.included && $0.status != .duplicate }.count)
+        if let now { batch.importedAt = now }
+        let before = ledger
         batch.needsOrganization = true; batch.undo = ImportUndo(updatedAt: ledger.updatedAt)
         let attachment = Attachment(name: preview.filename, data: data); batch.attachmentID = attachment.id
         var existing = Set(ledger.entries.map(\.id))
@@ -401,6 +411,15 @@ public enum BillImporter {
                 }
             }
         }
+        let manual = Dictionary(grouping: ledger.entries.filter { $0.deletedAt == nil && $0.recordedAt != nil && $0.batchID == nil }, by: \.amount)
+        let unknown = Dictionary(uniqueKeysWithValues: preview.rows.filter(\.included).compactMap { row in row.entry.map { ($0.id, row.accountIsUnknown) } })
+        var matches: [UUID: Entry] = [:]
+        for entry in preview.selectedEntries {
+            let candidates = (manual[entry.amount] ?? []).filter { manualMatches($0, imported: entry, accountIsUnknown: unknown[entry.id] == true) }
+            if candidates.count == 1 { matches[entry.id] = candidates[0] }
+        }
+        let owners = Dictionary(grouping: matches, by: { $0.value.id }).mapValues(\.count)
+        var added: Set<UUID> = []
         for var entry in preview.selectedEntries {
             // Unconfirmed review labels must resolve to an existing main.
             let choice = ledger.categoryAssignment(category: entry.category, subcategory: entry.subcategory, income: entry.nature.categoryIncome)
@@ -414,18 +433,31 @@ public enum BillImporter {
             guard entry.externalID.isEmpty || !existingSourceIDs.contains(sourceKey(entry)), entry.fingerprint.isEmpty || !existingHashes.contains(entry.fingerprint) else { throw YubaiError.invalid("账本在预览后发生变化，已有重复记录。请重新预览，再确认导入。") }
             SubcategoryClassifier.classify(&entry, ledger: ledger)
             if entry.userEdited { CategoryMemory.remember(entry, in: &ledger) }
-            existing.insert(entry.id); entry.batchID = batch.id; entry.attachmentID = attachment.id; ledger.entries.append(entry)
+            existing.insert(entry.id); entry.batchID = batch.id; entry.attachmentID = attachment.id
+            if let original = matches[entry.id], owners[original.id] == 1, let index = ledger.entries.firstIndex(where: { $0.id == original.id }) {
+                entry = mergedImport(entry, preserving: original, accountIsUnknown: unknown[entry.id] == true)
+                ledger.entries[index] = entry
+            } else { ledger.entries.append(entry) }
+            added.insert(entry.id)
         }
-        ledger.attachments.append(attachment); ledger.imports.append(batch); try ledger.validate(); return batch
+        ledger.attachments.append(attachment); ledger.imports.append(batch)
+        _ = FixedFlows.autoLink(&ledger, addedEntryIDs: added, now: batch.importedAt)
+        ImportOrganization.recordUndo(batchID: batch.id, before: before, in: &ledger)
+        try ledger.validate(); return ledger.imports.first { $0.id == batch.id }!
     }
-    public static func undo(batchID: UUID, in ledger: inout Ledger, now: Date = Date()) {
+    public static func undo(batchID: UUID, in ledger: inout Ledger, now: Date = Dates.now) {
         guard let batch = ledger.imports.first(where: { $0.id == batchID }) else { return }
         if let undo = batch.undo {
-            ledger.entries.removeAll { $0.batchID == batchID }
+            let originals = Set(undo.entries.map(\.id))
+            ledger.entries.removeAll { $0.batchID == batchID && !originals.contains($0.id) }
             for original in undo.entries {
                 if let i = ledger.entries.firstIndex(where: { $0.id == original.id }) { ledger.entries[i] = original }
+                else { ledger.entries.append(original) }
             }
             ledger.plans.removeAll { undo.planIDs.contains($0.id) }
+            for original in undo.plans ?? [] {
+                if let i = ledger.plans.firstIndex(where: { $0.id == original.id }) { ledger.plans[i] = original }
+            }
             ledger.cards.removeAll { undo.cardIDs.contains($0.id) }
             for id in undo.memoryIDs ?? [] { Memory.reject(lineMemoryID: id, in: &ledger, now: now) }
             ledger.attachments.removeAll { $0.id == batch.attachmentID }

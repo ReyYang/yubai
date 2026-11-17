@@ -35,7 +35,7 @@ public enum Memory {
     }
     /// Budget counts the redacted JSON, including its envelope. If even an empty
     /// envelope cannot fit, retain the omission metadata so recall remains discoverable.
-    public static func context(ledger: Ledger, now: Date = Date(), characterBudget: Int = Memory.defaultCharacterBudget) -> JSONValue {
+    public static func context(ledger: Ledger, now: Date = Dates.now, characterBudget: Int = Memory.defaultCharacterBudget) -> JSONValue {
         let redactor = Redactor(ledger: ledger)
         let rows = ranked(ledger.memories).map { ($0.kind, redactor.value(row($0, now: now))) }
         func block(_ selected: [(MemoryKind, JSONValue)], omitted: Int) -> JSONValue {
@@ -70,7 +70,7 @@ public enum Memory {
     }
     /// Apply once inside the caller's store.update. A stale snapshot or edit is
     /// rejected as a whole; use markers never replace a newer lastUsedAt.
-    public static func apply(_ reply: AssistantReply, to ledger: inout Ledger, now: Date = Date()) throws {
+    public static func apply(_ reply: AssistantReply, to ledger: inout Ledger, now: Date = Dates.now) throws {
         try Task.checkCancellation()
         guard reply.memoryLedgerID.map({ $0 == ledger.id }) ?? true,
               reply.memoryLedgerUpdatedAt.map({ $0 == ledger.updatedAt }) ?? true else { throw YubaiError.invalid("账本已改变，请重新聊一次。") }
@@ -98,7 +98,7 @@ public enum Memory {
         if next.memories != ledger.memories { next.updatedAt = max(now, ledger.updatedAt) }
         try next.validate(); ledger = next
     }
-    public static func undo(noteID: UUID, in ledger: inout Ledger, now: Date = Date()) {
+    public static func undo(noteID: UUID, in ledger: inout Ledger, now: Date = Dates.now) {
         guard let i = ledger.memories.firstIndex(where: { $0.id == noteID }) else { return }
         if let previous = ledger.memories[i].previousText {
             ledger.memories[i].text = previous; ledger.memories[i].previousText = nil
@@ -107,7 +107,7 @@ public enum Memory {
             ledger.updatedAt = max(now, ledger.updatedAt)
         } else { reject(lineMemoryID: noteID, in: &ledger, now: now) }
     }
-    public static func edit(noteID: UUID, text: String, in ledger: inout Ledger, now: Date = Date()) throws {
+    public static func edit(noteID: UUID, text: String, in ledger: inout Ledger, now: Date = Dates.now) throws {
         guard let i = ledger.memories.firstIndex(where: { $0.id == noteID }) else { throw YubaiError.invalid("这条记忆已删除。") }
         let clean = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard validText(clean) else { throw YubaiError.invalid("请用不超过200字的一句话。") }
@@ -120,7 +120,7 @@ public enum Memory {
         next.updatedAt = max(now, ledger.updatedAt)
         try next.validate(); ledger = next
     }
-    public static func reject(lineMemoryID: UUID, in ledger: inout Ledger, now: Date = Date()) {
+    public static func reject(lineMemoryID: UUID, in ledger: inout Ledger, now: Date = Dates.now) {
         let count = ledger.memories.count
         ledger.memories.removeAll { $0.id == lineMemoryID }
         let changed = removeLearnedLines(for: lineMemoryID, in: &ledger) || count != ledger.memories.count

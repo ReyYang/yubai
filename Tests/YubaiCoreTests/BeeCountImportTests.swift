@@ -25,7 +25,7 @@ final class BeeCountImportTests: XCTestCase {
         let entries = preview.selectedEntries
         XCTAssertEqual(entries.map(\.amount), [2350, 1280, 45025, 1200000, 8990, 30000, 200, 2350])
         XCTAssertEqual(entries.map(\.nature), [.expense, .expense, .income, .income, .expense, .transfer, .expense, .expense])
-        XCTAssertEqual(entries.map(\.title), ["餐饮", "豆浆套餐", "春季奖励", "工资", "键盘腕托", "日常备用金", "公交", "餐饮"])
+        XCTAssertEqual(entries.map(\.title), ["餐饮", "豆浆套餐", "春季奖励", "工资", "键盘腕托", "日常存款", "公交", "餐饮"])
         XCTAssertEqual(entries.map(\.category), ["餐饮", "餐饮", "工资奖金", "工资奖金", "购物", "内部移动", "交通", "餐饮"])
         XCTAssertEqual(entries[1].subcategory, "早餐"); XCTAssertEqual(entries[2].subcategory, "奖金"); XCTAssertEqual(entries[3].subcategory, "工资")
         XCTAssertTrue(entries.allSatisfy { $0.source == "BeeCount" && $0.accountID == ledger.accounts[0].id })

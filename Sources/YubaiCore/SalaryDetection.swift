@@ -24,7 +24,7 @@ public enum SalaryDetection {
         return stripped.isEmpty ? title.trimmingCharacters(in: .whitespacesAndNewlines) : stripped
     }
 
-    public static func candidate(in ledger: Ledger, now: Date = Date()) -> SalaryCandidate? {
+    public static func candidate(in ledger: Ledger, now: Date = Dates.now) -> SalaryCandidate? {
         guard !ledger.plans.contains(where: { $0.active && $0.inflow && $0.nature == .income && $0.frequency == .monthly }) else { return nil }
         if let cached = ledger.calculations.cachedSalary(now: now) { return cached }
         let calendar = Dates.calendar
@@ -84,7 +84,7 @@ public enum SalaryDetection {
     }
 
     /// The caller can snapshot the ledger to undo this entire change atomically.
-    @discardableResult public static func confirm(_ candidate: SalaryCandidate, in ledger: inout Ledger, now: Date = Date()) -> Plan? {
+    @discardableResult public static func confirm(_ candidate: SalaryCandidate, in ledger: inout Ledger, now: Date = Dates.now) -> Plan? {
         guard let fresh = self.candidate(in: ledger, now: now), fresh.key == candidate.key else { return nil }
         let salary = ledger.categories.first { $0.income && !$0.system && ($0.name.contains("工资") || $0.subcategories.contains("工资")) }
         let fallback = ledger.categories.first { $0.income && $0.name == "其他收入" }

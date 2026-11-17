@@ -34,7 +34,7 @@ final class ProfileColdStartTests: XCTestCase {
             ChatMessage(role: .assistant, content: "你希望始终留着多少钱？"),
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "read", name: "get_profile")]),
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "whole", name: "propose_profile_change", arguments: wholeProfile)]),
-            ChatMessage(role: .assistant, content: "整理好了一份消费观，确认后才会生效。")])
+            ChatMessage(role: .assistant, content: "导入结果一份消费观，确认后才会生效。")])
         let coldStart = ProfileColdStart(transport: script)
         var messages: [ChatMessage] = []
         let original = try LedgerCodec.encode(ctx.ledger)
@@ -53,7 +53,7 @@ final class ProfileColdStartTests: XCTestCase {
         var confirmed = ctx.ledger; try change.apply(to: &confirmed)
         XCTAssertEqual(confirmed.profile.generous.map(\.title), ["学习"])
         XCTAssertEqual(confirmed.profile.restrain.map(\.title), ["外卖"])
-        XCTAssertEqual(confirmed.profile.restrain[0].softLimit, SoftLimit(perWeekCount: 3, perMonthAmount: 50_000))
+        XCTAssertEqual(confirmed.profile.restrain[0].softLimit, SoftLimit(perPeriodCount: 3, perPeriodAmount: 50_000))
         XCTAssertEqual(confirmed.profile.principles, ["大件先等两天"])
         XCTAssertEqual(confirmed.profile.floorAmount, 500_000)
         XCTAssertEqual(confirmed.entries, ctx.ledger.entries)

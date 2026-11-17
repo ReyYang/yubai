@@ -118,4 +118,4 @@ case "$task_platform" in
     task_upload mac 'generic/platform=macOS'
     ;;
 esac
-printf '\n上传命令已完成。请到 App Store Connect → 余白 → TestFlight 等待处理，再把构建加入自己的内部测试组。\n'
+printf '\n上传命令已完成。请到 App Store Connect → 余白 → TestFlight 等待审核，再把构建加入自己的内部测试组。\n'

@@ -38,7 +38,7 @@ final class ButlerTests: XCTestCase {
         XCTAssertEqual(cards.count, 1); XCTAssertEqual(cards.first?.kind, .restrain)
         XCTAssertEqual(cards.first?.priority, 1)
         XCTAssertEqual(Set(cards.first?.evidence ?? []), Set(ledger.entries.map(\.id)))
-        XCTAssertEqual(cards.first?.facts.first { $0.label == "本月消费" }?.cents, 6000)
+        XCTAssertEqual(cards.first?.facts.first { $0.label == "本期消费" }?.cents, 6000)
         ledger.profile.restrain = []
         ledger.entries = [expense(ledger, amount: 500_000, title: "大件", category: "日用购物")]
         XCTAssertTrue(ButlerCards.detect(ledger, now: now).isEmpty)
@@ -58,6 +58,7 @@ final class ButlerTests: XCTestCase {
     }
     func testRentShortfallUsesCashOnlyEvenWhenRemainderIsBelowFloor() {
         var ledger = seed(); ledger.accounts[0].anchorBalance = 100_000
+        ledger.entries = [Entry(date: now, amount: 100_000, nature: .income, accountID: ledger.accounts[0].id, title: "已到账收入")]
         ledger.profile.floorAmount = 20_000
         ledger.plans = [Plan(title: "房租", amount: 110_000, dueDate: Dates.addDays(5, to: now))]
         ledger.preferences.horizonDays = 7 // Detection still looks 30 days ahead.
@@ -73,12 +74,13 @@ final class ButlerTests: XCTestCase {
     }
     func testShortfallFloorFactIsContextOnlyAndRequiresAnExplicitTarget() throws {
         var ledger = seed(); ledger.accounts[0].anchorBalance = 100_000
+        ledger.entries = [Entry(date: now, amount: 100_000, nature: .income, accountID: ledger.accounts[0].id, title: "已到账收入")]
         ledger.plans = [Plan(title: "房租", amount: 110_000, dueDate: Dates.addDays(5, to: now))]
         for floor: Int64? in [nil, 0, 20_000] {
             ledger.profile.floorAmount = floor
             let card = try XCTUnwrap(ButlerCards.detect(ledger, now: now).first { $0.kind == .shortfall })
             XCTAssertEqual(card.facts.first { $0.label == "付款前及当天最少还能花" }?.cents, -10_000)
-            XCTAssertEqual(card.facts.first { $0.label == "存着不动" }?.cents, 0)
+            XCTAssertEqual(card.facts.first { $0.label == "存下的钱" }?.cents, 0)
         }
     }
     func testUpkeepAgingAndActivity() {
@@ -171,7 +173,7 @@ final class ButlerTests: XCTestCase {
         let rejected = await ButlerWording.word(candidates, ledger: ledger, transport: bad)
         XCTAssertEqual(rejected, candidates)
         let requests = await bad.recorded(); XCTAssertEqual(requests.count, 1)
-        XCTAssertNotNil(requests[0].groupID); XCTAssertEqual(requests[0].groupTitle, "管家卡片与每周来信")
+        XCTAssertNotNil(requests[0].groupID); XCTAssertEqual(requests[0].groupTitle, "管家卡片与周回顾")
         let good = ScriptedChatTransport([ChatMessage(role: .assistant, content: try JSONValue.object(["cards": .array([
             .object(["key": .string("c0"), "title": .string("外卖到线了"), "body": .string("本月外卖 ¥60.00，到了你留的线。")])])]).jsonText())])
         let accepted = await ButlerWording.word(candidates, ledger: ledger, transport: good)
@@ -206,7 +208,7 @@ final class ButlerTests: XCTestCase {
         try proposal.apply(to: &ledger)
         XCTAssertTrue(ledger.profile.generous.isEmpty)
         XCTAssertEqual(ledger.profile.restrain.first?.id, area.id)
-        XCTAssertEqual(ledger.profile.restrain.first?.softLimit, SoftLimit(perWeekCount: 3, perMonthAmount: 6250))
+        XCTAssertEqual(ledger.profile.restrain.first?.softLimit, SoftLimit(perPeriodCount: 3, perPeriodAmount: 6250))
     }
     func testOffCharacterSelectionIncludesImportHistoryAndMergesSameCategory() async {
         var ledger = seed()
@@ -334,8 +336,8 @@ final class ButlerTests: XCTestCase {
             for id in ledger.cards.map(\.id) { ButlerCards.feedback(value, cardID: id, in: &ledger, now: now) }
             guard case .profile(.upsertArea(let area, let stance))? = ledger.pendingChanges.first?.items.first else { return XCTFail("Expected profile proposal") }
             XCTAssertEqual(stance, .restrain)
-            XCTAssertEqual(area.softLimit?.perWeekCount, value == .worth ? 1 : 0)
-            XCTAssertEqual(area.softLimit?.perMonthAmount, value == .worth ? 128 : 81)
+            XCTAssertEqual(area.softLimit?.perPeriodCount, value == .worth ? 1 : 0)
+            XCTAssertEqual(area.softLimit?.perPeriodAmount, value == .worth ? 128 : 81)
         }
     }
     func testRefreshArchivesOldDismissedPayloadAndKeepsMemoryAndDedupe() throws {
