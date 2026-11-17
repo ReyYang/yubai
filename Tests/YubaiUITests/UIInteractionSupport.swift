@@ -67,9 +67,11 @@ class YubaiUITestCase: XCTestCase {
     private var revealedScrollFrames: [CGRect]?
     private var revealedKeyboards: [CGRect] = []
     private var revealedOcclusions: [CGRect] = []
+    private var revealedPanOcclusions: [CGRect] = []
     private(set) var revealFailure = ""
     private(set) var transitionWaitReport = ""
     private(set) var windowMetricsReadReport = ""
+    private(set) var keyboardWaitReport = ""
     private var lastPrintedMetricsError = ""
     private let scriptedNow = Date().timeIntervalSince1970
     private var diagnosticApp: XCUIApplication?
@@ -278,10 +280,20 @@ class YubaiUITestCase: XCTestCase {
             .allElementsBoundByAccessibilityElement
         for probe in probes.reversed() {
             do {
-                if let metrics = windowMetrics(in: try probe.snapshot()) { return metrics }
+                if let metrics = windowMetrics(in: try probe.snapshot()) {
+                    windowMetricsReadReport = ""; lastPrintedMetricsError = ""
+                    return metrics
+                }
             } catch { reportWindowMetricsError("UI-WINDOW-METRICS snapshot failed: \(error)") }
         }
-        return (try? app.snapshot()).flatMap { windowMetrics(in: $0) }
+        do {
+            if let metrics = windowMetrics(in: try app.snapshot()) {
+                windowMetricsReadReport = ""; lastPrintedMetricsError = ""
+                return metrics
+            }
+            if windowMetricsReadReport.isEmpty { reportWindowMetricsError("UI-WINDOW-METRICS no readable probe in application snapshot; probeCount=\(probes.count)") }
+        } catch { reportWindowMetricsError("UI-WINDOW-METRICS application snapshot failed: \(error)") }
+        return nil
     }
 
     func waitForBambooRasters(in app: XCUIApplication, deadline: Date? = nil) -> UIBambooWait.Result {
@@ -465,6 +477,7 @@ class YubaiUITestCase: XCTestCase {
             // region instead of accepting a covered row and failing early.
             let occlusions = UIViewportGeometry.fixedOcclusions(fixed, owners: match?.owners ?? [],
                 hasScrollAncestors: !ancestors.isEmpty || match == nil, window: tree.frame)
+            let panOcclusions = keyboards + fixed.filter { !(match?.owners ?? []).contains($0.id) }.map(\.frame)
             if let match {
                 let staticText = match.node.elementType == .staticText
                 let fits = UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true, staticText: staticText,
@@ -483,6 +496,7 @@ class YubaiUITestCase: XCTestCase {
                             scrollAncestors: ancestors.map(\.frame), keyboards: keyboards, occlusions: occlusions) else { continue }
                     rememberTap(target, in: app, frame: current.frame)
                     revealedScrollFrames = ancestors.map(\.frame); revealedKeyboards = keyboards; revealedOcclusions = occlusions
+                    revealedPanOcclusions = panOcclusions
                     return true
                 }
             }
@@ -503,7 +517,8 @@ class YubaiUITestCase: XCTestCase {
             let containerIndex = ancestors.lastIndex { $0.elementType == container.elementType && $0.identifier == container.identifier && $0.frame == container.frame }
             let enclosingFrames = containerIndex.map { Array(ancestors.prefix($0)).map(\.frame) } ?? searchContainer?.ancestors.map(\.frame) ?? []
             let clipped = UIViewportGeometry.clipped(container.frame, to: enclosingFrames)
-            // Drag only in the observed unobscured region of this scroll.
+            // The complete target must fit above the toast. Gesture planning
+            // separately keeps the physical gutter beside that same toast.
             let viewport = UIViewportGeometry.visibleParts(clipped, ancestors: [], excluding: keyboards + occlusions)
                 .max(by: { $0.width * $0.height < $1.width * $1.height }) ?? .zero
             guard let sample = motionSample(in: tree, container: container, viewport: viewport) else {
@@ -525,14 +540,15 @@ class YubaiUITestCase: XCTestCase {
                 print("Reveal made no progress: \(identifier)\n" + trace.joined(separator: "\n"))
                 return false
             case .drag, .dragHorizontally:
-                guard let gesture = UIRevealPan.plan(step, viewport: viewport, nativeOrigins: travel?.panOrigins) else {
+                guard let gesture = UIRevealPan.plan(step, viewport: clipped, nativeOrigins: travel?.panOrigins,
+                                                    excluding: panOcclusions) else {
                     revealFailure = "No native pan lane in scroll viewport: " + identifier
                     attachTrace()
                     print("Reveal has no pan lane: \(identifier)\n" + trace.joined(separator: "\n"))
                     return false
                 }
                 let start = gesture.start, end = gesture.end
-                trace.append("pan start=\(start) end=\(end) nativeOrigins=\(String(describing: travel?.panOrigins))")
+                trace.append("pan start=\(start) end=\(end) physicalViewport=\(clipped) occlusions=\(panOcclusions) nativeOrigins=\(String(describing: travel?.panOrigins))")
                 let origin = app.coordinate(withNormalizedOffset: .zero)
                 origin.withOffset(CGVector(dx: start.x - tree.frame.minX, dy: start.y - tree.frame.minY))
                     .press(forDuration: 0.05, thenDragTo: origin.withOffset(CGVector(dx: end.x - tree.frame.minX, dy: end.y - tree.frame.minY)),
@@ -579,8 +595,8 @@ class YubaiUITestCase: XCTestCase {
             // A single bounded drag is enough after revealing the last answer.
             let distance = min(viewport.height * 0.5, max(bottomClearance, group.midY - viewport.midY))
             let travel = windowMetrics(in: app)?.scroll(matching: inner)
-            guard let gesture = UIRevealPan.plan(.drag(up: true, distance: distance), viewport: viewport,
-                                                nativeOrigins: travel?.panOrigins) else { return false }
+            guard let gesture = UIRevealPan.plan(.drag(up: true, distance: distance), viewport: UIViewportGeometry.clipped(inner, to: frames),
+                                                nativeOrigins: travel?.panOrigins, excluding: revealedPanOcclusions) else { return false }
             let start = gesture.start, end = gesture.end
             let origin = app.coordinate(withNormalizedOffset: .zero)
             origin.withOffset(CGVector(dx: start.x - app.frame.minX, dy: start.y - app.frame.minY))
@@ -714,18 +730,29 @@ class YubaiUITestCase: XCTestCase {
     func waitForKeyboardEditing(_ identifier: String, in app: XCUIApplication, deadline: Date? = nil) -> Bool {
         let limit = deadline ?? Date().addingTimeInterval(20)
         let end = ProcessInfo.processInfo.systemUptime + max(0, limit.timeIntervalSinceNow)
+        var observed: UIWindowMetrics?
+        keyboardWaitReport = ""
+        func hasFocus() -> Bool {
+            observed = windowMetrics(in: app)
+            return observed?.transitioning == false && observed?.focused == identifier
+        }
+        func failed() -> Bool {
+            keyboardWaitReport = "UI-KEYBOARD-WAIT expected=\(identifier) focused=\(observed?.focused ?? "unreadable") " +
+                "transitioning=\(String(describing: observed?.transitioning)) appeared=\(String(describing: observed?.focusedAfterAppearance)) " +
+                windowMetricsReadReport + " events=" + (observed?.inputFocusEvents ?? []).joined(separator: "\n")
+            print(keyboardWaitReport)
+            let attachment = XCTAttachment(string: keyboardWaitReport)
+            attachment.name = "keyboard-wait"; attachment.lifetime = .keepAlways; add(attachment)
+            return false
+        }
         guard UIConditionWait.run(timeout: 10, deadline: end, read: {
-            guard self.appHasKeyboardFocus(identifier, in: app) else { return false }
+            guard hasFocus() else { return false }
             return app.keyboards.firstMatch.exists
-        }) else { return false }
+        }) else { return failed() }
         let field = control(identifier, in: app), keyboard = app.keyboards.firstMatch
-        return waitForStableFrame(keyboard, deadline: limit) && waitForStableFrame(field, deadline: limit) &&
-            appHasKeyboardFocus(identifier, in: app) && UIViewportGeometry.keyboardClears(field.frame, keyboards: [keyboard.frame])
-    }
-
-    private func appHasKeyboardFocus(_ identifier: String, in app: XCUIApplication) -> Bool {
-        guard let metrics = windowMetrics(in: app) else { return false }
-        return !metrics.transitioning && metrics.focused == identifier
+        guard waitForStableFrame(keyboard, deadline: limit) && waitForStableFrame(field, deadline: limit) &&
+            hasFocus() && UIViewportGeometry.keyboardClears(field.frame, keyboards: [keyboard.frame]) else { return failed() }
+        return true
     }
 
     /// The native tree flattens navigationCapsule into mainNavigation. Its three

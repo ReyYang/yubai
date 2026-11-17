@@ -357,7 +357,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
                 return true
             })
             let last = element("ledgerEntry_47000000-0000-0000-0000-000000471030")
-            XCTAssertTrue(revealControl(last, in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")))
+            XCTAssertTrue(revealControl(last, in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")), revealFailure)
             XCTAssertTrue(last.isHittable)
             XCTAssertLessThanOrEqual(last.frame.maxY, message.frame.minY - 12 + 0.5)
             tap("undoLastChange"); XCTAssertEqual(message.label, "已撤销")

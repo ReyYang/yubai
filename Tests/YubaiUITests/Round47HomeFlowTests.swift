@@ -475,6 +475,13 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             for (fixture, root, bamboo) in [("v47r-ledger", "mainNavigation", true), ("gallery-locked", "lockedPage", false)] {
                 launch(fixture, large: large, root: root)
                 assertCaptureSurface(requiresBamboo: bamboo, cold: !bamboo)
+                // Run 13 decoded the other metrics but lacked paper metadata
+                // after the audit. Recheck the retained root after live reflow.
+                try auditAppText(in: app, dynamicType: true) { issue in
+                    XCTFail("Root paper accessibility audit: " + issue.detailedDescription)
+                    return true
+                }
+                assertCaptureSurface(requiresBamboo: bamboo, cold: !bamboo, deadline: Date().addingTimeInterval(5))
                 let tree = try app.snapshot()
                 var metadata: [XCUIElementSnapshot] = []
                 func collect(_ node: XCUIElementSnapshot) {

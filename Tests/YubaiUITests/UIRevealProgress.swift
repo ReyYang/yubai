@@ -8,7 +8,7 @@ enum UIRevealPan {
         let start: CGPoint
         let end: CGPoint
     }
-    static func plan(_ step: UIRevealProgress.Step, viewport: CGRect, nativeOrigins: [CGPoint]?) -> Gesture? {
+    static func plan(_ step: UIRevealProgress.Step, viewport: CGRect, nativeOrigins: [CGPoint]?, excluding occlusions: [CGRect] = []) -> Gesture? {
         guard viewport.width > 24, viewport.height > 24 else { return nil }
         let inner = viewport.insetBy(dx: 12, dy: 12)
         let vertical: Bool, forward: Bool, distance: CGFloat
@@ -24,7 +24,7 @@ enum UIRevealPan {
         // Native order favors the List gutter over a card. Select the nearest
         // usable ordinate, keeping that order for points at the same height.
         let ranked = candidates.enumerated().filter { _, point in
-            point.x.isFinite && point.y.isFinite && inner.contains(point)
+            point.x.isFinite && point.y.isFinite && inner.contains(point) && !occlusions.contains { $0.contains(point) }
         }.sorted { a, b in
             let first = abs(vertical ? a.element.y - preferred.y : a.element.x - preferred.x)
             let second = abs(vertical ? b.element.y - preferred.y : b.element.x - preferred.x)
@@ -32,10 +32,25 @@ enum UIRevealPan {
         }
         for (_, start) in ranked {
             let sign: CGFloat = forward ? -1 : 1
-            let end = vertical
+            var end = vertical
                 ? CGPoint(x: start.x, y: min(inner.maxY, max(inner.minY, start.y + sign * distance)))
                 : CGPoint(x: min(inner.maxX, max(inner.minX, start.x + sign * distance)), y: start.y)
-            if (vertical ? abs(end.y - start.y) : abs(end.x - start.x)) >= 24 {
+            // Target clearance can require a whole row above a toast, but a
+            // pan can travel in the List gutter BESIDE it. Keep the actual
+            // chrome rectangles for gestures; stop before any crossed surface.
+            for cut in occlusions where !cut.isEmpty && !cut.isNull {
+                if vertical && start.x >= cut.minX && start.x <= cut.maxX {
+                    if forward && start.y >= cut.maxY { end.y = max(end.y, cut.maxY + 12) }
+                    if !forward && start.y <= cut.minY { end.y = min(end.y, cut.minY - 12) }
+                } else if !vertical && start.y >= cut.minY && start.y <= cut.maxY {
+                    if forward && start.x >= cut.maxX { end.x = max(end.x, cut.maxX + 12) }
+                    if !forward && start.x <= cut.minX { end.x = min(end.x, cut.minX - 12) }
+                }
+            }
+            // An obstacle immediately beside the start must never reverse the
+            // intended gesture, even if the absolute distance is large enough.
+            let advance = (vertical ? start.y - end.y : start.x - end.x) * (forward ? 1 : -1)
+            if advance >= 24 {
                 return Gesture(start: start, end: end)
             }
         }

@@ -176,8 +176,9 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         XCTAssertTrue(dismissKeyboardIntroduction(in: app))
-        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app))
+        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app), keyboardWaitReport)
         assertFocusedAppearance(identifier)
+        let editingHost = try XCTUnwrap(windowMetrics(in: app)?.focusedHost, "Focused native host must be observable")
         XCTAssertEqual(app.state, .runningForeground)
         // This is the same native audit that crashed the correction stop.
         // Its Dynamic Type pass changes content size while the editor stays up.
@@ -186,8 +187,9 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             return true
         }
         XCTAssertEqual(app.state, .runningForeground)
-        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app))
+        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app), keyboardWaitReport)
         assertFocusedAppearance(identifier)
+        XCTAssertEqual(windowMetrics(in: app)?.focusedHost, editingHost, "Dynamic Type must retain the active native editing host")
         XCTAssertEqual(app.textViews.matching(identifier: identifier).count, 1)
         assertBambooReadyForCapture(in: app)
         XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)

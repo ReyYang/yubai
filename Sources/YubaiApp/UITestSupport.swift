@@ -14,12 +14,16 @@ enum UITestMetricsPayload {
     }
     static func dictionary(safeArea: [Double], transitioning: Bool, activeTransitions: [String],
                            focused: String, focusedAfterAppearance: Bool?, scrolls: [[String: Any]],
-                           bamboo: [String: Any]?, bambooSurface: [String: Any]?) -> [String: Any] {
+                           bamboo: [String: Any]?, bambooSurface: [String: Any]?,
+                           paperDiagnostics: String? = nil, inputFocusEvents: [String]? = nil, focusedHost: String? = nil) -> [String: Any] {
         var value: [String: Any] = ["safeArea": safeArea, "transitioning": transitioning,
             "activeTransitions": activeTransitions, "focused": focused, "scrolls": scrolls]
         if let focusedAfterAppearance { value["focusedAfterAppearance"] = focusedAfterAppearance }
         if let bamboo { value["bamboo"] = bamboo }
         if let bambooSurface { value["bambooSurface"] = bambooSurface }
+        if let paperDiagnostics { value["paperDiagnostics"] = paperDiagnostics }
+        if let inputFocusEvents { value["inputFocusEvents"] = inputFocusEvents }
+        if let focusedHost { value["focusedHost"] = focusedHost }
         return value
     }
     static func bamboo(ready: [String], pending: Int, pendingKeys: [String], failed: [String],
@@ -57,23 +61,54 @@ enum UITestMetricsPayload {
 /// A non-clipping wrapper can have empty/offscreen bounds while its paper
 /// child still fills the window. Only clipping ancestors cut that child out.
 enum UITestPaperSurfaceSelection {
+    struct Sample {
+        var value: [String: Any]?
+        var visited = 0
+        var invisible = 0
+        var invalid = 0
+        var clipped = 0
+        var markers = 0
+        var emptyMarkers = 0
+        var offscreenMarkers = 0
+        var exhausted = false
+        var description: String {
+            "visited=\(visited) invisible=\(invisible) invalid=\(invalid) clipped=\(clipped) " +
+                "markers=\(markers) emptyMarkers=\(emptyMarkers) offscreenMarkers=\(offscreenMarkers) exhausted=\(exhausted)"
+        }
+    }
     static func first<Node>(in root: Node, viewport: CGRect, children: (Node) -> [Node],
                             visible: (Node) -> Bool, frame: (Node) -> CGRect, clips: (Node) -> Bool,
                             surface: (Node) -> [String: Any]?) -> [String: Any]? {
+        sample(in: root, viewport: viewport, children: children, visible: visible, frame: frame, clips: clips, surface: surface).value
+    }
+    static func sample<Node>(in root: Node, viewport: CGRect, children: (Node) -> [Node],
+                             visible: (Node) -> Bool, frame: (Node) -> CGRect, clips: (Node) -> Bool,
+                             surface: (Node) -> [String: Any]?, limit: Int = 2048) -> Sample {
         var pending: [(Node, CGRect)] = [(root, viewport)]
-        var remaining = 2048
+        var remaining = limit
+        var result = Sample()
         while remaining > 0, let (node, viewport) = pending.popLast() {
-            remaining -= 1
-            guard visible(node) else { continue }
+            remaining -= 1; result.visited += 1
+            guard visible(node) else { result.invisible += 1; continue }
             let bounds = frame(node)
-            guard !bounds.isNull, !bounds.isInfinite else { continue }
-            if !bounds.isEmpty, bounds.intersects(viewport), let value = surface(node) { return value }
+            guard !bounds.isNull, !bounds.isInfinite else { result.invalid += 1; continue }
+            if let value = surface(node) {
+                result.markers += 1
+                if bounds.isEmpty { result.emptyMarkers += 1 }
+                else if !bounds.intersects(viewport) { result.offscreenMarkers += 1 }
+                else { result.value = value; return result }
+            }
             let clip = clips(node) ? viewport.intersection(bounds) : viewport
-            guard !clip.isEmpty, !clip.isNull else { continue }
-            pending.append(contentsOf: children(node).suffix(max(0, remaining - pending.count)).map { ($0, clip) })
+            guard !clip.isEmpty, !clip.isNull else { result.clipped += 1; continue }
+            let next = children(node), capacity = max(0, remaining - pending.count)
+            // Truncating this branch and then falling back to a background
+            // could select paper behind an unvisited foreground surface.
+            guard next.count <= capacity else { result.exhausted = true; return result }
+            pending.append(contentsOf: next.map { ($0, clip) })
         }
         // Unknown metadata is never permission to bypass the raster gate.
-        return nil
+        result.exhausted = result.exhausted || !pending.isEmpty
+        return result
     }
 }
 #endif
@@ -98,15 +133,42 @@ struct UITestPaperSurface: UIViewRepresentable {
         view.bambooKey = bambooKey
         UITestWindowMetrics.invalidate(in: view.window)
     }
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: Probe, context: Context) -> CGSize? {
+        // The transparent UIView has no intrinsic content. Use the actual
+        // paper proposal rather than the native view's empty fitting size.
+        proposal.replacingUnspecifiedDimensions(by: .zero)
+    }
     final class Probe: UIView {
+        private struct WeakProbe { weak var view: Probe? }
+        private static var probes: [WeakProbe] = []
+        static func diagnostics(in window: UIWindow) -> String {
+            probes = probes.filter { $0.view != nil }
+            let attached = probes.compactMap(\.view).filter { $0.window === window }
+            let details = attached.prefix(8).map { marker -> String in
+                var view: UIView? = marker
+                var blockers: [String] = []
+                var clip = window.bounds
+                while let current = view {
+                    if current.isHidden || current.alpha <= 0 {
+                        blockers.append("\(type(of: current)):hidden=\(current.isHidden),alpha=\(current.alpha)")
+                    }
+                    if current.clipsToBounds { clip = clip.intersection(current.convert(current.bounds, to: window)) }
+                    view = current.superview
+                }
+                return "key=\(marker.bambooKey ?? "plain"),frame=\(marker.convert(marker.bounds, to: window)),clip=\(clip),blockers=\(blockers)"
+            }
+            return "live=\(probes.count) attached=\(attached.count) [" + details.joined(separator: "; ") + "]"
+        }
         var bambooKey: String?
         private weak var previousWindow: UIWindow?
         private var sampledBounds = CGRect.null
         init(bambooKey: String?) {
             self.bambooKey = bambooKey
             super.init(frame: .zero)
-            backgroundColor = .clear; isUserInteractionEnabled = false
+            backgroundColor = .clear; isOpaque = false; isUserInteractionEnabled = false
             isAccessibilityElement = false; accessibilityElementsHidden = true
+            Self.probes = Self.probes.filter { $0.view != nil }
+            Self.probes.append(WeakProbe(view: self))
         }
         required init?(coder: NSCoder) { fatalError() }
         override func didMoveToWindow() {
@@ -130,6 +192,12 @@ struct UITestPaperSurface: UIViewRepresentable {
 struct UITestWindowMetrics: UIViewRepresentable {
     @MainActor static func invalidate(in window: UIWindow?) {
         if let window { Probe.cache.invalidate(in: window) }
+    }
+    @MainActor private static var inputFocusEvents: [String] = []
+    @MainActor static func recordInputFocus(_ event: String, in window: UIWindow?) {
+        inputFocusEvents.append(event)
+        if inputFocusEvents.count > 24 { inputFocusEvents.removeFirst(inputFocusEvents.count - 24) }
+        invalidate(in: window)
     }
     func makeUIView(context: Context) -> Probe { Probe() }
     func updateUIView(_ view: Probe, context: Context) {}
@@ -282,10 +350,14 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 controllers.append(contentsOf: children.prefix(max(0, remaining - controllers.count)))
             }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
+            let paper = paperSurface(in: window)
             return UITestMetricsPayload.dictionary(safeArea: rect(safe), transitioning: !activeTransitions.isEmpty,
                 activeTransitions: activeTransitions, focused: focused,
                 focusedAfterAppearance: focused.isEmpty ? nil : focusedAfterAppearance, scrolls: scrolls,
-                bamboo: BambooRasterCache.shared.diagnostics, bambooSurface: paperSurface(in: window))
+                bamboo: BambooRasterCache.shared.diagnostics, bambooSurface: paper.value,
+                paperDiagnostics: paper.description + " " + UITestPaperSurface.Probe.diagnostics(in: window),
+                inputFocusEvents: UITestWindowMetrics.inputFocusEvents,
+                focusedHost: focused.isEmpty ? nil : ((focusedResponder as? UIView)?.superview as? NativeInputAppearance)?.focusHostIdentifier)
         }
         private func panPoints(in scroll: UIScrollView, window: UIWindow) -> [[Double]] {
             var viewport = scroll.convert(scroll.bounds, to: window).intersection(window.bounds)
@@ -314,11 +386,11 @@ struct UITestWindowMetrics: UIViewRepresentable {
             }
             return points
         }
-        private func paperSurface(in window: UIWindow) -> [String: Any]? {
+        private func paperSurface(in window: UIWindow) -> UITestPaperSurfaceSelection.Sample {
             // UIKit subviews are ordered back to front. Descend the frontmost
             // visible branch first, respecting native clipping and hidden tabs.
             // The modal's own PaperCanvas wins over the presenter's background.
-            UITestPaperSurfaceSelection.first(in: window as UIView, viewport: window.bounds,
+            UITestPaperSurfaceSelection.sample(in: window as UIView, viewport: window.bounds,
                 children: { $0.subviews }, visible: { !$0.isHidden && $0.alpha > 0 && $0.window === window },
                 frame: { $0.convert($0.bounds, to: window) }, clips: { $0.clipsToBounds }, surface: { view in
                 if let surface = view as? UITestPaperSurface.Probe {

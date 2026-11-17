@@ -1,6 +1,44 @@
 import XCTest
 
 final class Round47RevealProgressTests: XCTestCase {
+    func testRunThirteenTallToastKeepsItsNativeGutterPanAndStrictRowClearance() throws {
+        let physical = CGRect(x: 0, y: 130, width: 440, height: 668)
+        let body = CGRect(x: 36, y: 465.3333333333333, width: 376, height: 261.6666666666667)
+        let regions = UIViewportGeometry.fixedOcclusions([("toastBody", body)], owners: [], hasScrollAncestors: true,
+            window: CGRect(x: 0, y: 0, width: 440, height: 956))
+        let clearance = try XCTUnwrap(UIViewportGeometry.visibleParts(physical, ancestors: [], excluding: regions).first)
+        XCTAssertEqual(clearance.height, 323.3333333333333, accuracy: 0.001)
+        var progress = UIRevealProgress()
+        let step = progress.next(.init(target: nil, viewport: clearance, scrollOffset: 0))
+        let origins = [CGPoint(x: 13.2, y: 651.04), CGPoint(x: 426.8, y: 651.04),
+                       CGPoint(x: 13.2, y: 276.96), CGPoint(x: 426.8, y: 276.96), CGPoint(x: 220, y: 276.96)]
+        // The old call shrank the gesture viewport to the row-clearance area
+        // and sent the recorded, ineffective short pan over the top hero.
+        let old = try XCTUnwrap(UIRevealPan.plan(step, viewport: clearance, nativeOrigins: origins))
+        XCTAssertEqual(old.start.y, 276.96, accuracy: 0.001)
+        let gesture = try XCTUnwrap(UIRevealPan.plan(step, viewport: physical, nativeOrigins: origins, excluding: [body]))
+        XCTAssertEqual(gesture.start, origins[0])
+        XCTAssertLessThan(gesture.start.x, body.minX)
+        XCTAssertEqual(gesture.start.y - gesture.end.y, clearance.height * 0.5, accuracy: 0.001)
+        XCTAssertFalse(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: CGRect(x: 20, y: 480, width: 400, height: 169.3), scrollAncestors: [physical], occlusions: regions))
+        XCTAssertTrue(UIViewportGeometry.revealed(exists: true, enabled: true, hittable: true,
+            frame: CGRect(x: 20, y: 270, width: 400, height: 169.3), scrollAncestors: [physical], occlusions: regions))
+    }
+    func testPanNeverCrossesAnActualToastOrStartsOnItsButton() throws {
+        let physical = CGRect(x: 0, y: 130, width: 440, height: 668)
+        let toast = CGRect(x: 20, y: 460, width: 400, height: 320)
+        XCTAssertNil(UIRevealPan.plan(.drag(up: true, distance: 300), viewport: physical,
+            nativeOrigins: [CGPoint(x: 220, y: 650)], excluding: [toast]))
+        let header = CGRect(x: 0, y: 130, width: 440, height: 80)
+        let gesture = try XCTUnwrap(UIRevealPan.plan(.drag(up: true, distance: 500), viewport: physical,
+            nativeOrigins: [CGPoint(x: 13.2, y: 651.04)], excluding: [toast, header]))
+        XCTAssertEqual(gesture.end.y, header.maxY + 12)
+        let below = CGRect(x: 20, y: 350, width: 400, height: 200)
+        let stopped = try XCTUnwrap(UIRevealPan.plan(.drag(up: true, distance: 500), viewport: physical,
+            nativeOrigins: [CGPoint(x: 220, y: 651.04)], excluding: [below]))
+        XCTAssertEqual(stopped.end.y, below.maxY + 12)
+    }
     func testRunElevenRescueUsesAHitTestedListGutterAndStillRequiresFullChromeClearance() throws {
         let viewport = CGRect(x: 0, y: 130, width: 440, height: 668)
         let rescue = CGRect(x: 36, y: 798.7, width: 348, height: 72.3)

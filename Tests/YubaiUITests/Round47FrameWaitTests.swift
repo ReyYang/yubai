@@ -247,11 +247,25 @@ final class Round47FrameWaitTests: XCTestCase {
         let result = UIBambooWait.forCapture(timeout: 1, read: {
             var metrics = self.surface(false, bamboo: self.bamboo(ready: ["light@3.0", "dark@3.0"]))
             metrics.bambooSurface = nil
+            metrics.paperDiagnostics = "visited=34 markers=1 emptyMarkers=1 attached=1"
             return metrics
         }, clock: { now }, poll: { now += $0 })
         XCTAssertFalse(result.ready, result.description)
         XCTAssertGreaterThan(result.unreadableReads, 0, result.description)
         XCTAssertLessThanOrEqual(now, 1, result.description)
+        XCTAssertTrue(result.description.contains("packet decoded; bambooSurface missing"), result.description)
+        XCTAssertTrue(result.description.contains("emptyMarkers=1"), result.description)
+    }
+    func testCaptureReportsPacketAndMissingRasterDiagnosticsSeparately() {
+        for missingPacket in [false, true] {
+            var now: TimeInterval = 0
+            let result = UIBambooWait.forCapture(timeout: 1, read: {
+                missingPacket ? nil : self.surface(true, key: "light@3.0", bamboo: nil)
+            }, clock: { now }, poll: { now += $0 })
+            XCTAssertFalse(result.ready, result.description)
+            XCTAssertTrue(result.description.contains(missingPacket ? "window metrics packet unreadable" : "packet decoded; bamboo diagnostics missing"), result.description)
+            XCTAssertFalse(result.description.contains("bambooSurface missing"), result.description)
+        }
     }
     func testCaptureOfABambooSurfaceCannotPassWhenNoWarmWasRequested() {
         var now: TimeInterval = 0

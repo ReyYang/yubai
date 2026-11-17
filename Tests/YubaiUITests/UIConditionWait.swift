@@ -73,10 +73,12 @@ enum UIBambooWait {
         let unreadableReads: Int
         let elapsed: TimeInterval
         let surface: UIWindowMetrics.BambooSurface?
+        let unreadableReason: String?
         var description: String {
             "bamboo {\(observed?.description ?? "diagnostics unreadable")} " +
                 "surface={\(surface?.description ?? "unknown")} " +
                 "unreadableReads=\(unreadableReads) elapsed=\(elapsed) " +
+                (unreadableReason.map { "lastUnreadable={\($0)} " } ?? "") +
                 (observed == nil ? "lastReadable={\(lastReadable?.description ?? "none")}" : "")
         }
     }
@@ -86,7 +88,7 @@ enum UIBambooWait {
                     clock: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
                     poll: (TimeInterval) -> Void = { RunLoop.current.run(until: Date().addingTimeInterval($0)) }) -> Result {
         observe(timeout: timeout, deadline: deadline, read: {
-            read().map { (UIWindowMetrics.BambooSurface(required: true, key: nil), $0) }
+            read().map { (UIWindowMetrics.BambooSurface(required: true, key: nil), $0, nil) }
         }, clock: clock, poll: poll)
     }
 
@@ -98,31 +100,43 @@ enum UIBambooWait {
                            poll: (TimeInterval) -> Void = { RunLoop.current.run(until: Date().addingTimeInterval($0)) }) -> Result {
         observe(timeout: timeout, deadline: deadline, read: {
             guard let metrics = read() else { return nil }
-            return (metrics.bambooSurface, metrics.bamboo)
+            return (metrics.bambooSurface, metrics.bamboo, metrics.paperDiagnostics)
         }, clock: clock, poll: poll)
     }
 
     private static func observe(timeout: TimeInterval, deadline: TimeInterval?,
-                                read: () -> (UIWindowMetrics.BambooSurface?, UIWindowMetrics.Bamboo?)?,
+                                read: () -> (UIWindowMetrics.BambooSurface?, UIWindowMetrics.Bamboo?, String?)?,
                                 clock: () -> TimeInterval, poll: (TimeInterval) -> Void) -> Result {
         let start = clock(), end = min(start + timeout, deadline ?? .infinity)
         var observed: UIWindowMetrics.Bamboo?, lastReadable: UIWindowMetrics.Bamboo?
         var surface: UIWindowMetrics.BambooSurface?
         var accepted = false
         var unreadableReads = 0
+        var unreadableReason: String?
         let finished = UIConditionWait.run(timeout: timeout, deadline: end, read: {
             let sample = read()
             surface = sample?.0; observed = sample?.1
             if let observed { lastReadable = observed }
-            guard let surface else { unreadableReads += 1; return false }
+            guard let sample else {
+                unreadableReads += 1; unreadableReason = "window metrics packet unreadable; see UI-WINDOW-METRICS decode diagnostic"
+                return false
+            }
+            guard let surface else {
+                unreadableReads += 1
+                unreadableReason = "packet decoded; bambooSurface missing; " + (sample.2 ?? "paper selection diagnostics missing")
+                return false
+            }
             if !surface.required { accepted = true; return true }
-            guard let value = observed else { unreadableReads += 1; return false }
+            guard let value = observed else {
+                unreadableReads += 1; unreadableReason = "packet decoded; bamboo diagnostics missing"
+                return false
+            }
             // A failed render (even if a retry recovers), or any main-thread
             // render, fails immediately instead of spending the timeout.
             accepted = value.isReady && (surface.key.map { value.ready.contains($0) } ?? true)
             return value.hasFailure || accepted
         }, clock: clock, poll: poll)
         return Result(ready: finished && accepted, observed: observed, lastReadable: lastReadable,
-                      unreadableReads: unreadableReads, elapsed: clock() - start, surface: surface)
+                      unreadableReads: unreadableReads, elapsed: clock() - start, surface: surface, unreadableReason: unreadableReason)
     }
 }

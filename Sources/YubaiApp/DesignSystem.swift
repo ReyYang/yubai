@@ -682,52 +682,55 @@ struct PaperCanvas: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                YubaiColor.canvas
-                if !reduceTransparency {
-                    let size = geometry.size
-                    // CSS 118°: the gradient line spans the full rectangular page.
-                    let angle = 118.0 * Double.pi / 180
-                    let dx = CGFloat(sin(angle)), dy = CGFloat(-cos(angle))
-                    let length = abs(size.width * dx) + abs(size.height * dy)
-                    let halfX = dx * length / max(1, size.width) / 2
-                    let halfY = dy * length / max(1, size.height) / 2
-                    LinearGradient(stops: [
-                        .init(color: .clear, location: scheme == .dark ? 0.18 : 0.20),
-                        .init(color: YubaiColor.windowLight.opacity(scheme == .dark ? 18.0 / 255 : 199.0 / 255), location: scheme == .dark ? 0.34 : 0.36),
-                        .init(color: .clear, location: scheme == .dark ? 0.52 : 0.54)
-                    ], startPoint: UnitPoint(x: 0.5 - halfX, y: 0.5 - halfY), endPoint: UnitPoint(x: 0.5 + halfX, y: 0.5 + halfY))
-                    let radius = max(1, size.width * 1.3)
-                    RadialGradient(stops: [
-                        .init(color: YubaiColor.windowLight.opacity(scheme == .dark ? 20.0 / 255 : 1), location: 0),
-                        .init(color: .clear, location: 0.62)
-                    ], center: .topLeading, startRadius: 0, endRadius: radius)
-                        .frame(width: radius, height: radius)
-                        .scaleEffect(x: 1, y: size.height * 0.55 / radius, anchor: .topLeading)
-                        .frame(width: size.width, height: size.height, alignment: .topLeading).clipped()
-                    if showsBamboo {
-                        BambooShadow(trigger: bambooTrigger)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    }
-                }
-            }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
-        }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
-            #if DEBUG && targetEnvironment(simulator) && os(iOS)
-            .background {
+                artwork(in: geometry.size).accessibilityHidden(true)
+                #if DEBUG && targetEnvironment(simulator) && os(iOS)
                 if UITestSupport.script != nil {
-                    GeometryReader { geometry in
-                        UITestPaperSurface(bambooKey: showsBamboo && !reduceTransparency
-                            ? BambooRasterCache.Key(scheme: scheme, scale: displayScale).identifier : nil)
-                            .frame(width: geometry.size.width, height: geometry.size.height)
-                    }
+                    // A sized native peer IN FRONT of the opaque drawing. A
+                    // secondary background behind that drawing can be culled
+                    // or have an empty host while the actual paper stays visible.
+                    UITestPaperSurface(bambooKey: showsBamboo && !reduceTransparency
+                        ? BambooRasterCache.Key(scheme: scheme, scale: displayScale).identifier : nil)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
                 }
-            }
-            #endif
+                #endif
+            }.frame(width: geometry.size.width, height: geometry.size.height).clipped()
+        }.ignoresSafeArea().allowsHitTesting(false)
             // The surface always exists. A cache miss leaves BambooShadow's
             // conditional image empty, so it must not own its startup task.
             .task(id: showsBamboo ? BambooRasterCache.Key(scheme: scheme, scale: displayScale) : nil) {
                 guard showsBamboo else { return }
                 await BambooRasterCache.shared.warm(scheme: scheme, scale: displayScale)
             }
+    }
+    private func artwork(in size: CGSize) -> some View {
+        ZStack(alignment: .topLeading) {
+            YubaiColor.canvas
+            if !reduceTransparency {
+                // CSS 118°: the gradient line spans the full rectangular page.
+                let angle = 118.0 * Double.pi / 180
+                let dx = CGFloat(sin(angle)), dy = CGFloat(-cos(angle))
+                let length = abs(size.width * dx) + abs(size.height * dy)
+                let halfX = dx * length / max(1, size.width) / 2
+                let halfY = dy * length / max(1, size.height) / 2
+                LinearGradient(stops: [
+                    .init(color: .clear, location: scheme == .dark ? 0.18 : 0.20),
+                    .init(color: YubaiColor.windowLight.opacity(scheme == .dark ? 18.0 / 255 : 199.0 / 255), location: scheme == .dark ? 0.34 : 0.36),
+                    .init(color: .clear, location: scheme == .dark ? 0.52 : 0.54)
+                ], startPoint: UnitPoint(x: 0.5 - halfX, y: 0.5 - halfY), endPoint: UnitPoint(x: 0.5 + halfX, y: 0.5 + halfY))
+                let radius = max(1, size.width * 1.3)
+                RadialGradient(stops: [
+                    .init(color: YubaiColor.windowLight.opacity(scheme == .dark ? 20.0 / 255 : 1), location: 0),
+                    .init(color: .clear, location: 0.62)
+                ], center: .topLeading, startRadius: 0, endRadius: radius)
+                    .frame(width: radius, height: radius)
+                    .scaleEffect(x: 1, y: size.height * 0.55 / radius, anchor: .topLeading)
+                    .frame(width: size.width, height: size.height, alignment: .topLeading).clipped()
+                if showsBamboo {
+                    BambooShadow(trigger: bambooTrigger)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                }
+            }
+        }
     }
 }
 
@@ -3016,7 +3019,7 @@ private struct RowTextInput: View {
             NativeRowInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
                            multiline: multiline, numeric: numeric, secure: secure, maximumLines: maximumLines, verticalInset: verticalInset,
                            fontSize: fontSize, minimum: minimum, enabled: enabled, focus: focus,
-                           preservesTextFocus: inputSession != nil, editingChanged: { inputSession?.setEditing($0, id: editingID) }, search: search, autofocus: autofocus, submit: submit)
+                           preservesTextFocus: inputSession != nil || autofocus, editingChanged: { inputSession?.setEditing($0, id: editingID) }, search: search, autofocus: autofocus, submit: submit)
                 // Register the same FocusState with SwiftUI as well as UIKit.
                 // Otherwise a keyboard/detent relayout can clear an unowned
                 // focus binding and updateUIView immediately resigns the field.
@@ -3080,7 +3083,12 @@ private struct RowTextInput: View {
     }
 }
 
-@MainActor protocol NativeInputAppearance: AnyObject { var hasAppeared: Bool { get } }
+@MainActor protocol NativeInputAppearance: AnyObject {
+    var hasAppeared: Bool { get }
+    #if DEBUG && targetEnvironment(simulator)
+    var focusHostIdentifier: String { get }
+    #endif
+}
 
 private struct NativeRowInput: UIViewControllerRepresentable {
     @Binding var text: String
@@ -3141,12 +3149,16 @@ private struct NativeRowInput: UIViewControllerRepresentable {
         let input: UIView = multiline ? host.editor : host.field
         input.accessibilityIdentifier = identifier; input.accessibilityLabel = label
         host.configureAutofocus(autofocus, enabled: enabled, acknowledged: focus.wrappedValue && input.isFirstResponder)
-        // In a keypad sheet UIKit owns an active text-editing session. A
-        // SwiftUI focus write-back during footer/detent layout is not a user
-        // request to leave that field. Return, another responder and teardown
-        // still end editing through the native delegate.
+        // UIKit owns the active session, including an autofocus form presented
+        // from a pushed evidence page. A live Dynamic Type/detent relayout can
+        // reset SwiftUI's focus scope while the same native editor is editing.
+        // Do not translate that write-back into resignFirstResponder. Return,
+        // interactive keyboard dismissal, another responder and teardown still
+        // end the session through UIKit. This previously protected keypad rows
+        // only, leaving correction forms vulnerable to this focus-scope reset.
         if preservesTextFocus && enabled && host.desiredFocus && input.isFirstResponder {
             if !focus.wrappedValue {
+                host.traceFocus("preserve native session across false binding")
                 DispatchQueue.main.async { [weak host] in
                     guard let host, host.desiredFocus, input.isFirstResponder else { return }
                     host.focusChanged?(true)
@@ -3170,14 +3182,15 @@ private struct NativeRowInput: UIViewControllerRepresentable {
         required init?(coder: NSCoder) { fatalError() }
         override func loadView() { view = host }
         override func viewWillAppear(_ animated: Bool) {
-            super.viewWillAppear(animated); host.hasAppeared = false
+            super.viewWillAppear(animated); host.hasAppeared = false; host.traceFocus("viewWillAppear")
         }
         override func viewDidAppear(_ animated: Bool) {
             super.viewDidAppear(animated)
             host.hasAppeared = true; host.scheduleFocusUpdate()
+            host.traceFocus("viewDidAppear")
         }
         override func viewWillDisappear(_ animated: Bool) {
-            host.hasAppeared = false; super.viewWillDisappear(animated)
+            host.hasAppeared = false; host.traceFocus("viewWillDisappear"); super.viewWillDisappear(animated)
         }
     }
     final class FieldHost: UIView, NativeInputAppearance {
@@ -3191,6 +3204,18 @@ private struct NativeRowInput: UIViewControllerRepresentable {
         var focusChanged: ((Bool) -> Void)?
         var editingChanged: ((Bool) -> Void)?
         var hasAppeared = false
+        #if DEBUG && targetEnvironment(simulator)
+        private let focusTraceID = UUID().uuidString
+        var focusHostIdentifier: String { focusTraceID }
+        #endif
+        func traceFocus(_ event: String) {
+            #if DEBUG && targetEnvironment(simulator)
+            guard UITestSupport.script != nil else { return }
+            let input: UIView = multiline ? editor : field
+            UITestWindowMetrics.recordInputFocus("\(input.accessibilityIdentifier ?? "input") host=\(focusTraceID) \(event) " +
+                "appeared=\(hasAppeared) desired=\(desiredFocus) responder=\(input.isFirstResponder) attached=\(window != nil) bounds=\(bounds)", in: window)
+            #endif
+        }
         private var awaitingPresentation = false
         private var dismantled = false
         private var focusRevision = 0
@@ -3266,7 +3291,7 @@ private struct NativeRowInput: UIViewControllerRepresentable {
             let input: UIView = multiline ? editor : field
             if desiredFocus && !input.isFirstResponder && !bounds.isEmpty && !awaitingPresentation { scheduleFocusUpdate() }
         }
-        override func didMoveToWindow() { super.didMoveToWindow(); scheduleFocusUpdate() }
+        override func didMoveToWindow() { super.didMoveToWindow(); traceFocus("didMoveToWindow"); scheduleFocusUpdate() }
         func scheduleFocusUpdate() {
             guard !focusUpdateScheduled else { return }
             focusUpdateScheduled = true
@@ -3305,7 +3330,7 @@ private struct NativeRowInput: UIViewControllerRepresentable {
             // Ending editing must never acquire focus again, including during
             // dismissal. A pending transition is only an initial focus request.
             if !desiredFocus {
-                if input.isFirstResponder { input.resignFirstResponder() }
+                if input.isFirstResponder { traceFocus("resign requested"); input.resignFirstResponder() }
                 return
             }
             // Attachment/layout can precede the hosted sheet's presentation
@@ -3314,14 +3339,17 @@ private struct NativeRowInput: UIViewControllerRepresentable {
             guard hasAppeared, let attachedWindow = window, !bounds.isEmpty,
                   !input.isFirstResponder, !awaitingPresentation else { return }
             if waitForPresentation(in: attachedWindow) { return }
+            traceFocus("become requested")
             input.becomeFirstResponder()
         }
         func editingEnded() {
             guard !dismantled else { return }
+            traceFocus("native editing ended")
             pendingAutofocus = false; desiredFocus = false; publishFocus(false)
         }
         func editingBegan() {
             guard !dismantled else { return }
+            traceFocus("native editing began")
             desiredFocus = true; publishFocus(true)
         }
         private func publishFocus(_ value: Bool) {
@@ -3334,6 +3362,7 @@ private struct NativeRowInput: UIViewControllerRepresentable {
             }
         }
         func dismantle() {
+            traceFocus("dismantle")
             dismantled = true; hasAppeared = false; pendingAutofocus = false; pendingFocusPublication = nil; desiredFocus = false
             focusChanged = nil; editingChanged = nil
             // Resign even if a presentation callback is pending. The callback
