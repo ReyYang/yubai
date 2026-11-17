@@ -20,11 +20,20 @@ on:
         description: '门禁测试和截图结束后运行诊断分片（parts 显式指定时仍会运行）'
         type: boolean
         default: false
+      simslim:
+        description: 'Try simslim; failures fall back to the stock simulator'
+        type: boolean
+        default: false
       mode:
         description: 'tests = 单元与 UI 测试；gallery = 只跑逐屏截图；both = 都跑'
         type: choice
         options: [tests, gallery, both]
         default: tests
+
+env:
+  # Owner: fill in an exact simslim release tag before opting in (never latest).
+  SIMSLIM_VERSION: 'v0.14.0'
+  SIMSLIM_BOOT_TIMEOUT: '300s'
 
 concurrency:
   group: ${{ inputs.parts != '' && format('ios-parts-{0}-{1}', github.ref, inputs.parts) || format('ios-{0}', github.ref) }}
@@ -77,7 +86,7 @@ jobs:
           xcodebuild build-for-testing -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/DerivedData \
-            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO \
             2>&1 | tee build/xcodebuild-build.log | tail -80
       - name: 校验可迁移路径并打包（保留权限、符号链接与 dSYM）
         run: |
@@ -141,6 +150,11 @@ jobs:
           ')
           xcrun simctl list devices | grep "$udid"
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+      - &prepare-simslim
+        name: Optional simslim
+        if: inputs.simslim
+        continue-on-error: true
+        run: python3 scripts/prepare-simulator-simslim.py
       - name: 运行当前测试分片（使用共享产物）
         timeout-minutes: 34
         run: |
@@ -340,6 +354,7 @@ jobs:
           ')
           xcrun simctl list devices | grep "$udid"
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+      - *prepare-simslim
       - name: 逐屏截图
         shell: bash
         run: |

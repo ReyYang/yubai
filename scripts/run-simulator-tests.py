@@ -18,7 +18,7 @@ def main() -> int:
     build.mkdir(exist_ok=True)
     (build / "test-exit-status").unlink(missing_ok=True)
     action = ["-project", "Yubai.xcodeproj", "-scheme", "Yubai", "-configuration", "Debug"]
-    build_options = ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO",
+    build_options = ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO", "COMPILER_INDEX_STORE_ENABLE=NO",
                      "-derivedDataPath", "build/DerivedData", "test"]
     if "YUBAI_PREBUILT_DERIVED_DATA" in os.environ:
         try:

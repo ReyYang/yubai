@@ -22,7 +22,7 @@ printf 'Simulator: %s\nResults and log: %s\n' "$simulator" "$run_dir"
 python3 "$repo_root/scripts/gallery_inventory.py" --check
 derived_data="$run_dir/DerivedData"
 action=(test -project "$repo_root/Yubai.xcodeproj" -scheme Yubai -configuration Debug)
-build_options=(-derivedDataPath "$derived_data" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO)
+build_options=(-derivedDataPath "$derived_data" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO COMPILER_INDEX_STORE_ENABLE=NO)
 if [[ "${YUBAI_PREBUILT_DERIVED_DATA+x}" == x ]]; then
     xctestrun=$(python3 "$repo_root/scripts/prebuilt_simulator.py" "$YUBAI_PREBUILT_DERIVED_DATA")
     derived_data="$(cd -- "$(dirname -- "$xctestrun")/../.." && pwd)"
