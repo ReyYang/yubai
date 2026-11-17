@@ -7,6 +7,8 @@ import signal
 import subprocess
 import sys
 
+from prebuilt_simulator import validate_prebuilt
+
 
 def main() -> int:
     selectors = json.loads(os.environ["YUBAI_TEST_SELECTORS"])
@@ -15,14 +17,27 @@ def main() -> int:
     build = Path("build")
     build.mkdir(exist_ok=True)
     (build / "test-exit-status").unlink(missing_ok=True)
+    action = ["-project", "Yubai.xcodeproj", "-scheme", "Yubai", "-configuration", "Debug"]
+    build_options = ["ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO",
+                     "-derivedDataPath", "build/DerivedData", "test"]
+    if "YUBAI_PREBUILT_DERIVED_DATA" in os.environ:
+        try:
+            run = validate_prebuilt(os.environ["YUBAI_PREBUILT_DERIVED_DATA"])
+        except (OSError, ValueError, subprocess.CalledProcessError) as error:
+            message = f"Prebuilt simulator artifact unusable; refusing to rebuild: {error}\n"
+            (build / "xcodebuild-test.log").write_text(message)
+            (build / "test-exit-status").write_text("2")
+            print(message, file=sys.stderr, end="")
+            return 2
+        action = ["test-without-building", "-xctestrun", str(run)]
+        build_options = []
     prepared = subprocess.run(["bash", "scripts/prepare-simulator-keyboard.sh", os.environ["SIM_UDID"]], check=False)
     if prepared.returncode:
         print("Keyboard first-use preference unavailable; scoped introduction dismissal remains enabled.", file=sys.stderr)
-    command = ["xcodebuild", "-project", "Yubai.xcodeproj", "-scheme", "Yubai", "-configuration", "Debug",
+    command = ["xcodebuild", *action,
                "-destination", "id=" + os.environ["SIM_UDID"], "-parallel-testing-enabled", "NO",
-               "-resultBundlePath", "build/Yubai.xcresult", "ARCHS=arm64", "ONLY_ACTIVE_ARCH=YES", "CODE_SIGNING_ALLOWED=NO",
-               "-derivedDataPath", "build/DerivedData",
-               "test", *("-only-testing:" + item for item in selectors)]
+               "-resultBundlePath", "build/Yubai.xcresult", *build_options,
+               *("-only-testing:" + item for item in selectors)]
     with (build / "xcodebuild-test.log").open("w") as log:
         process = subprocess.Popen(command, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
         try:

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # macOS / Apple Silicon. Usage: scripts/gallery.sh [simulator-UDID]
+# CI: YUBAI_PREBUILT_DERIVED_DATA selects validated products; unset still builds locally.
 # TEST_RUNNER_ is stripped by xcodebuild for the XCTest runner (not the app).
 # https://developer.apple.com/documentation/xcode-release-notes/xcode-13-release-notes
 set -euo pipefail
@@ -19,6 +20,15 @@ printf 'Simulator: %s\nResults and log: %s\n' "$simulator" "$run_dir"
 # Expected captures, including the V47 ledger/search/end/insights/Yubai revision,
 # come from gallery_inventory.py for every run and every appearance/text/privacy mode.
 python3 "$repo_root/scripts/gallery_inventory.py" --check
+derived_data="$run_dir/DerivedData"
+action=(test -project "$repo_root/Yubai.xcodeproj" -scheme Yubai -configuration Debug)
+build_options=(-derivedDataPath "$derived_data" ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO)
+if [[ "${YUBAI_PREBUILT_DERIVED_DATA+x}" == x ]]; then
+    xctestrun=$(python3 "$repo_root/scripts/prebuilt_simulator.py" "$YUBAI_PREBUILT_DERIVED_DATA")
+    derived_data="$(cd -- "$(dirname -- "$xctestrun")/../.." && pwd)"
+    action=(test-without-building -xctestrun "$xctestrun")
+    build_options=()
+fi
 only=()
 for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done
 (( ${#only[@]} )) || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
@@ -32,19 +42,17 @@ collect_crashes() {
 trap collect_crashes EXIT
 bash "$repo_root/scripts/prepare-simulator-keyboard.sh" "$simulator" \
     || echo "warning: keyboard first-use preference unavailable; scoped introduction dismissal remains enabled" >&2
-env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild test \
-    -project "$repo_root/Yubai.xcodeproj" -scheme Yubai -configuration Debug \
+env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild "${action[@]}" \
     -destination "platform=iOS Simulator,id=$simulator" \
     "${only[@]}" \
     -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
-    -derivedDataPath "$run_dir/DerivedData" -resultBundlePath "$result" \
-    ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO 2>&1 | tee "$run_dir/xcodebuild.log"
+    -resultBundlePath "$result" "${build_options[@]}" 2>&1 | tee "$run_dir/xcodebuild.log"
 build_status=${PIPESTATUS[0]}
 set -e
 
 stall_status=0
 python3 "$repo_root/scripts/export-stall-records.py" --simulator "$simulator" \
-    --output "$shots/stalls" --derived-data "$run_dir/DerivedData" --log "$run_dir/xcodebuild.log" --since "$run_started" || stall_status=$?
+    --output "$shots/stalls" --derived-data "$derived_data" --log "$run_dir/xcodebuild.log" --since "$run_started" || stall_status=$?
 if (( stall_status != 0 )); then echo "warning: stall record export failed (does not change the gallery result)" >&2; fi
 
 if ! find "$shots" -type f -name '*.png' -print -quit | grep -q . && [[ -d "$result" ]]; then

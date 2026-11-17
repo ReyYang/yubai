@@ -16,6 +16,10 @@ on:
         description: '同时做 Release 构建（iOS 真机与 macOS，不签名）'
         type: boolean
         default: false
+      diagnostics:
+        description: '门禁测试和截图结束后运行诊断分片（parts 显式指定时仍会运行）'
+        type: boolean
+        default: false
       mode:
         description: 'tests = 单元与 UI 测试；gallery = 只跑逐屏截图；both = 都跑'
         type: choice
@@ -44,11 +48,58 @@ jobs:
         env:
           YUBAI_TEST_ONLY: ${{ inputs.only }}
           YUBAI_TEST_PARTS: ${{ inputs.parts }}
-        run: python3 scripts/ui-test-shards.py --only "$YUBAI_TEST_ONLY" --parts "$YUBAI_TEST_PARTS" --validate-parts --github-output >> "$GITHUB_OUTPUT"
+          YUBAI_DIAGNOSTICS: ${{ inputs.diagnostics }}
+        run: python3 scripts/ui-test-shards.py --only "$YUBAI_TEST_ONLY" --parts "$YUBAI_TEST_PARTS" --diagnostics "$YUBAI_DIAGNOSTICS" --validate-parts --github-output >> "$GITHUB_OUTPUT"
+
+  simulator-build:
+    # gallery-shards is skipped in tests mode; still build selected tests once.
+    if: >-
+      always() && !cancelled() && needs.test-shards.result == 'success' &&
+      (inputs.mode == 'tests' || needs.gallery-shards.result == 'success') &&
+      ((inputs.mode != 'gallery' && needs.test-shards.outputs.has-shards == 'true') ||
+       (inputs.mode != 'tests' && needs.gallery-shards.outputs.has-shards == 'true'))
+    needs: [test-shards, gallery-shards]
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - &select-xcode
+        name: 选择 Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - name: 编译共享模拟器测试产物
+        timeout-minutes: 34
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild build-for-testing -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO \
+            2>&1 | tee build/xcodebuild-build.log | tail -80
+      - name: 校验可迁移路径并打包（保留权限、符号链接与 dSYM）
+        run: |
+          python3 scripts/prebuilt_simulator.py build/DerivedData --record
+          COPYFILE_DISABLE=1 tar -czf build/simulator-products.tar.gz -C build/DerivedData Build/Products
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-build
+          path: build/simulator-products.tar.gz
+          if-no-files-found: error
+          retention-days: 2
+          compression-level: 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-simulator-build-log
+          path: build/xcodebuild-build.log
+          retention-days: 2
 
   simulator:
     if: inputs.mode != 'gallery' && needs.test-shards.outputs.has-gate-shards == 'true'
-    needs: test-shards
+    needs: [test-shards, simulator-build]
     runs-on: macos-26
     timeout-minutes: 40
     strategy:
@@ -58,13 +109,21 @@ jobs:
       YUBAI_TEST_PART: ${{ matrix.part }}
       YUBAI_TEST_SELECTORS: ${{ toJSON(matrix.tests) }}
       YUBAI_LIVE_EVAL: '0'
+      YUBAI_PREBUILT_DERIVED_DATA: build/DerivedData
     steps: &simulator-steps
       - uses: actions/checkout@v4
-      - name: 选择 Xcode 26
+      - *select-xcode
+      - &download-prebuilt
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-simulator-build
+          path: build/prebuilt-artifact
+      - &restore-prebuilt
+        name: 解包并校验共享测试产物
         run: |
-          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
-          sudo xcode-select -s "$xcode"
-          xcodebuild -version
+          mkdir -p "$YUBAI_PREBUILT_DERIVED_DATA"
+          tar -xzf build/prebuilt-artifact/simulator-products.tar.gz -C "$YUBAI_PREBUILT_DERIVED_DATA"
+          python3 scripts/prebuilt_simulator.py "$YUBAI_PREBUILT_DERIVED_DATA"
       - name: 选择 iPhone 模拟器
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c '
@@ -82,7 +141,7 @@ jobs:
           ')
           xcrun simctl list devices | grep "$udid"
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
-      - name: 编译并运行当前测试分片
+      - name: 运行当前测试分片（使用共享产物）
         timeout-minutes: 34
         run: |
           mkdir -p build
@@ -153,8 +212,11 @@ jobs:
 
   simulator-diagnostics:
     name: ${{ matrix.part }}
-    if: inputs.mode != 'gallery' && needs.test-shards.outputs.has-diagnostic-shards == 'true'
-    needs: test-shards
+    if: >-
+      always() && !cancelled() && inputs.mode != 'gallery' &&
+      needs.test-shards.outputs.has-diagnostic-shards == 'true' &&
+      needs.simulator-build.result == 'success'
+    needs: [test-shards, simulator-build, simulator, gallery]
     runs-on: macos-26
     timeout-minutes: 40
     strategy:
@@ -167,7 +229,7 @@ jobs:
   # Required merge status: diagnostics are reported separately, never folded into it.
   simulator-results:
     if: always()
-    needs: [test-shards, simulator, simulator-diagnostics, gallery-shards, gallery]
+    needs: [test-shards, simulator-build, simulator, simulator-diagnostics, gallery-shards, gallery]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -213,6 +275,19 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/diagnostic-summary.py >> "$GITHUB_STEP_SUMMARY"
 
+      - name: 共享编译必须完成
+        if: always()
+        env:
+          BUILD_RESULT: ${{ needs.simulator-build.result }}
+          BUILD_REQUIRED: ${{ (inputs.mode != 'gallery' && needs.test-shards.outputs.has-shards == 'true') || (inputs.mode != 'tests' && needs.gallery-shards.outputs.has-shards == 'true') }}
+        run: |
+          echo "共享编译：$BUILD_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$BUILD_REQUIRED" = true ]; then
+            test "$BUILD_RESULT" = success
+          else
+            test "$BUILD_RESULT" = skipped
+          fi
+
   gallery-shards:
     if: inputs.mode != 'tests'
     needs: test-shards
@@ -228,10 +303,13 @@ jobs:
           YUBAI_TEST_ONLY: ${{ inputs.only }}
           YUBAI_TEST_PARTS: ${{ inputs.parts }}
         run: python3 scripts/gallery-shards.py --only "$YUBAI_TEST_ONLY" --parts "$YUBAI_TEST_PARTS" --github-output >> "$GITHUB_OUTPUT"
+      - name: 检查界面与逐屏覆盖
+        if: steps.shards.outputs.has-shards == 'true'
+        run: bash scripts/check-ui-consistency.sh
 
   gallery:
     if: inputs.mode != 'tests' && needs.gallery-shards.outputs.has-shards == 'true'
-    needs: gallery-shards
+    needs: [gallery-shards, simulator-build]
     runs-on: macos-26
     timeout-minutes: 50
     strategy:
@@ -239,13 +317,12 @@ jobs:
       matrix: ${{ fromJSON(needs.gallery-shards.outputs.matrix) }}
     env:
       GALLERY_ONLY: ${{ matrix.walks }}
+      YUBAI_PREBUILT_DERIVED_DATA: build/DerivedData
     steps:
       - uses: actions/checkout@v4
-      - name: 选择 Xcode 26
-        run: |
-          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
-          sudo xcode-select -s "$xcode"
-          xcodebuild -version
+      - *select-xcode
+      - *download-prebuilt
+      - *restore-prebuilt
       - name: 选择 iPhone 模拟器
         run: |
           udid=$(xcrun simctl list devices available -j | python3 -c '
@@ -263,8 +340,6 @@ jobs:
           ')
           xcrun simctl list devices | grep "$udid"
           echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
-      - name: 检查界面与逐屏覆盖
-        run: bash scripts/check-ui-consistency.sh
       - name: 逐屏截图
         shell: bash
         run: |

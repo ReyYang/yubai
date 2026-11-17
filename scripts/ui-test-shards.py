@@ -55,7 +55,7 @@ def diagnostic_tests(root: Path, classes: dict[str, list[str]]) -> set[str]:
     return selected
 
 
-def matrix(root: Path, size: int = 8, only: str = "", parts: str = "") -> dict:
+def matrix(root: Path, size: int = 8, only: str = "", parts: str = "", include_diagnostics: bool = True) -> dict:
     validate_linux_coverage(root)
     classes: dict[str, list[str]] = {}
     for path in sorted((root / "Tests/YubaiUITests").glob("*.swift")):
@@ -95,6 +95,8 @@ def matrix(root: Path, size: int = 8, only: str = "", parts: str = "") -> dict:
     if requested:
         shards = [row for row in shards if row["part"] in requested
                   or row["part"].rsplit("-", 1)[0] in requested]
+    elif not include_diagnostics:
+        shards = [row for row in shards if row["blocking"]]
     return {"include": shards}
 
 
@@ -122,12 +124,14 @@ if __name__ == "__main__":
     parser.add_argument("--only", default="", help="When set, keep unit and Round47 UI shards")
     parser.add_argument("--parts", default="", help="Exact parts or ui-<XCTestClass>/diag-<XCTestClass>, separated by spaces/commas")
     parser.add_argument("--validate-parts", action="store_true", help="Reject parts unknown to both shard scripts")
+    parser.add_argument("--diagnostics", choices=("true", "false"), default="true",
+                        help="Include unrequested diagnostics (CI passes false by default; local inventory is unchanged)")
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
     try:
         if args.validate_parts:
             validate_parts(root, args.parts)
-        selected = matrix(root, only=args.only, parts=args.parts)
+        selected = matrix(root, only=args.only, parts=args.parts, include_diagnostics=args.diagnostics == "true")
     except ValueError as error:
         parser.error(str(error))
     result = json.dumps(selected, separators=(",", ":"))
