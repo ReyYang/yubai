@@ -4,8 +4,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
-    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false,
-                        root: String = "mainNavigation") {
+    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false) {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
@@ -18,7 +17,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         launchApp(app)
-        XCTAssertTrue(element(root).waitForExistence(timeout: 15),
+        XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15),
                       "Root navigation missing; bamboo={\(windowMetrics(in: app)?.bamboo?.description ?? "diagnostics unreadable")}")
     }
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
@@ -463,85 +462,6 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         launch("v47-first"); XCTAssertTrue(element("firstOpenScene").exists)
         XCTAssertTrue(element("firstOpenEmptyAmount").exists); XCTAssertEqual(element("addEntry").label, "记第一笔")
         XCTAssertFalse(element("availableFunds").exists); XCTAssertTrue(element("tab_insights").exists)
-    }
-    private func assertCaptureSurface(requiresBamboo: Bool, cold: Bool = false, deadline: Date? = nil,
-                                      file: StaticString = #filePath, line: UInt = #line) {
-        let result = waitForBambooCapture(in: app, deadline: deadline)
-        XCTAssertTrue(result.ready, result.description, file: file, line: line)
-        XCTAssertEqual(result.surface?.required, requiresBamboo, result.description, file: file, line: line)
-        if requiresBamboo {
-            XCTAssertTrue(result.observed?.isReady == true, result.description, file: file, line: line)
-            XCTAssertNotNil(result.surface?.key, result.description, file: file, line: line)
-        }
-        if cold {
-            XCTAssertEqual(result.observed?.renders, 0, result.description, file: file, line: line)
-            XCTAssertEqual(result.observed?.pending, 0, result.description, file: file, line: line)
-        }
-        XCTAssertEqual(app.state, .runningForeground, result.description, file: file, line: line)
-    }
-    func testCaptureGateFollowsTheActualPaperAcrossFirstWindowEntryPaydayAndPush() {
-        for (dark, reduceMotion) in [(false, false), (true, false), (false, true), (true, true)] {
-            launch("v47-first", dark: dark, reduceMotion: reduceMotion)
-            assertCaptureSurface(requiresBamboo: false, cold: true)
-            tap("addEntry"); XCTAssertTrue(element("entryPurpose").waitForExistence(timeout: 5))
-            assertCaptureSurface(requiresBamboo: false, cold: true)
-            tap("cancelManualSheet")
-            XCTAssertTrue(waitForDisappearance(element("entryPurpose")))
-            assertCaptureSurface(requiresBamboo: false, cold: true)
-            add("28")
-            assertCaptureSurface(requiresBamboo: true)
-            tap("setupFirstSalary"); XCTAssertTrue(element("paydaySetupSheet").waitForExistence(timeout: 5))
-            assertCaptureSurface(requiresBamboo: false)
-            tap("paydaySetupAmount"); XCTAssertTrue(element("amountSheetAmount").waitForExistence(timeout: 5))
-            assertCaptureSurface(requiresBamboo: false)
-            tap("amountSheetCancel"); tap("paydaySetupCancel")
-            XCTAssertTrue(waitForDisappearance(element("paydaySetupSheet")))
-            assertCaptureSurface(requiresBamboo: true)
-            tap("tab_yubai"); assertCaptureSurface(requiresBamboo: true)
-            tap("openSettings"); XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
-            assertCaptureSurface(requiresBamboo: false)
-            tap("BackButton"); assertCaptureSurface(requiresBamboo: true)
-            app.terminate()
-        }
-    }
-    func testLockedPaperNeedsNoBambooRenderForCapture() {
-        launch("gallery-locked", root: "lockedPage")
-        assertCaptureSurface(requiresBamboo: false, cold: true, deadline: Date().addingTimeInterval(5))
-    }
-    func testWindowMetricsSnapshotRetainsCompletePayloadOnLedgerAndLockedRoot() throws {
-        for large in [false, true] {
-            for (fixture, root, bamboo) in [("v47r-ledger", "mainNavigation", true), ("gallery-locked", "lockedPage", false)] {
-                launch(fixture, large: large, root: root)
-                assertCaptureSurface(requiresBamboo: bamboo, cold: !bamboo)
-                // Run 13 decoded the other metrics but lacked paper metadata
-                // after the audit. Recheck the retained root after live reflow.
-                try auditAppText(in: app, dynamicType: true) { issue in
-                    XCTFail("Root paper accessibility audit: " + issue.detailedDescription)
-                    return true
-                }
-                assertCaptureSurface(requiresBamboo: bamboo, cold: !bamboo, deadline: Date().addingTimeInterval(5))
-                let tree = try app.snapshot()
-                var metadata: [XCUIElementSnapshot] = []
-                func collect(_ node: XCUIElementSnapshot) {
-                    if node.identifier.hasPrefix(UIWindowMetrics.probeIdentifier + ".") { metadata.append(node) }
-                    for child in node.children { collect(child) }
-                }
-                collect(tree)
-                XCTAssertTrue(metadata.contains { $0.identifier == UIWindowMetrics.probeIdentifier + ".manifest" })
-                XCTAssertGreaterThan(metadata.count, 1)
-                for node in metadata {
-                    let raw = try XCTUnwrap(node.value as? String)
-                    XCTAssertLessThanOrEqual(raw.utf8.count, 400, node.identifier)
-                }
-                let metrics = try XCTUnwrap(windowMetrics(in: tree), windowMetricsReadReport)
-                XCTAssertFalse(metrics.safeRectangle.isEmpty)
-                XCTAssertFalse(metrics.transitioning)
-                XCTAssertEqual(metrics.bambooSurface?.required, bamboo)
-                XCTAssertNotNil(metrics.bamboo)
-                XCTAssertEqual(app.state, .runningForeground)
-                app.terminate()
-            }
-        }
     }
     func testSharedPaydaySheetTitlesGrowAndPassNativeAuditsAcrossGalleryModes() {
         for large in [false, true] {

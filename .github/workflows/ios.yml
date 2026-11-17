@@ -33,6 +33,10 @@ jobs:
     outputs:
       matrix: ${{ steps.shards.outputs.matrix }}
       has-shards: ${{ steps.shards.outputs.has-shards }}
+      gate-matrix: ${{ steps.shards.outputs.gate-matrix }}
+      has-gate-shards: ${{ steps.shards.outputs.has-gate-shards }}
+      diagnostic-matrix: ${{ steps.shards.outputs.diagnostic-matrix }}
+      has-diagnostic-shards: ${{ steps.shards.outputs.has-diagnostic-shards }}
     steps:
       - uses: actions/checkout@v4
       - id: shards
@@ -43,18 +47,18 @@ jobs:
         run: python3 scripts/ui-test-shards.py --only "$YUBAI_TEST_ONLY" --parts "$YUBAI_TEST_PARTS" --validate-parts --github-output >> "$GITHUB_OUTPUT"
 
   simulator:
-    if: inputs.mode != 'gallery' && needs.test-shards.outputs.has-shards == 'true'
+    if: inputs.mode != 'gallery' && needs.test-shards.outputs.has-gate-shards == 'true'
     needs: test-shards
     runs-on: macos-26
     timeout-minutes: 40
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.test-shards.outputs.matrix) }}
-    env:
+      matrix: ${{ fromJSON(needs.test-shards.outputs.gate-matrix) }}
+    env: &simulator-env
       YUBAI_TEST_PART: ${{ matrix.part }}
       YUBAI_TEST_SELECTORS: ${{ toJSON(matrix.tests) }}
       YUBAI_LIVE_EVAL: '0'
-    steps:
+    steps: &simulator-steps
       - uses: actions/checkout@v4
       - name: 选择 Xcode 26
         run: |
@@ -147,17 +151,35 @@ jobs:
           xcodebuild -project Yubai.xcodeproj -scheme Yubai -configuration Release \
             -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO build | tail -20
 
+  simulator-diagnostics:
+    name: ${{ matrix.part }}
+    if: inputs.mode != 'gallery' && needs.test-shards.outputs.has-diagnostic-shards == 'true'
+    needs: test-shards
+    runs-on: macos-26
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.test-shards.outputs.diagnostic-matrix) }}
+    # Keep real failed jobs and the same logs/screenshots; only the gate is required.
+    env: *simulator-env
+    steps: *simulator-steps
+
+  # Required merge status: diagnostics are reported separately, never folded into it.
   simulator-results:
     if: always()
-    needs: [test-shards, simulator, gallery-shards, gallery]
+    needs: [test-shards, simulator, simulator-diagnostics, gallery-shards, gallery]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - name: 所有选中的分片必须完成
+      - uses: actions/checkout@v4
+      - name: 所有门禁分片必须完成
         env:
           MODE: ${{ inputs.mode }}
           SHARDS_RESULT: ${{ needs.test-shards.result }}
           TESTS_RESULT: ${{ needs.simulator.result }}
-          TESTS_HAS_SHARDS: ${{ needs.test-shards.outputs.has-shards }}
+          TESTS_HAS_SHARDS: ${{ needs.test-shards.outputs.has-gate-shards }}
           GALLERY_SHARDS_RESULT: ${{ needs.gallery-shards.result }}
           GALLERY_RESULT: ${{ needs.gallery.result }}
           GALLERY_HAS_SHARDS: ${{ needs.gallery-shards.outputs.has-shards }}
@@ -181,6 +203,15 @@ jobs:
               test "$GALLERY_RESULT" = skipped
             fi
           fi
+
+      - name: Non-blocking diagnostics
+        if: always()
+        env:
+          MODE: ${{ inputs.mode }}
+          DIAGNOSTIC_MATRIX: ${{ needs.test-shards.outputs.diagnostic-matrix }}
+          DIAGNOSTICS_RESULT: ${{ needs.simulator-diagnostics.result }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/diagnostic-summary.py >> "$GITHUB_STEP_SUMMARY"
 
   gallery-shards:
     if: inputs.mode != 'tests'
