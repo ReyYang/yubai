@@ -81,6 +81,26 @@ enum UITestPaperSurfaceSelection {
                             surface: (Node) -> [String: Any]?) -> [String: Any]? {
         sample(in: root, viewport: viewport, children: children, visible: visible, frame: frame, clips: clips, surface: surface).value
     }
+    static func sample<Node: AnyObject>(in root: Node, markers: [Node], parent: (Node) -> Node?,
+                                       viewport: CGRect, children: (Node) -> [Node], visible: (Node) -> Bool,
+                                       frame: (Node) -> CGRect, clips: (Node) -> Bool,
+                                       surface: (Node) -> [String: Any]?, limit: Int = 2048) -> Sample {
+        // The existing marker registry identifies every possible paper branch.
+        // Keep their ancestors for native ordering/visibility/clipping, without
+        // walking unrelated list rows, keyboard views or AX packet children.
+        var branches: Set<ObjectIdentifier> = []
+        for marker in markers {
+            var node: Node? = marker
+            while let current = node, branches.insert(ObjectIdentifier(current)).inserted {
+                if current === root { break }
+                node = parent(current)
+            }
+        }
+        guard branches.contains(ObjectIdentifier(root)) else { return Sample() }
+        return sample(in: root, viewport: viewport,
+            children: { children($0).filter { branches.contains(ObjectIdentifier($0)) } },
+            visible: visible, frame: frame, clips: clips, surface: surface, limit: limit)
+    }
     static func sample<Node>(in root: Node, viewport: CGRect, children: (Node) -> [Node],
                              visible: (Node) -> Bool, frame: (Node) -> CGRect, clips: (Node) -> Bool,
                              surface: (Node) -> [String: Any]?, limit: Int = 2048) -> Sample {
@@ -141,9 +161,12 @@ struct UITestPaperSurface: UIViewRepresentable {
     final class Probe: UIView {
         private struct WeakProbe { weak var view: Probe? }
         private static var probes: [WeakProbe] = []
-        static func diagnostics(in window: UIWindow) -> String {
+        static func attached(in window: UIWindow) -> [Probe] {
             probes = probes.filter { $0.view != nil }
-            let attached = probes.compactMap(\.view).filter { $0.window === window }
+            return probes.compactMap(\.view).filter { $0.window === window }
+        }
+        static func diagnostics(in window: UIWindow) -> String {
+            let attached = Self.attached(in: window)
             let details = attached.prefix(8).map { marker -> String in
                 var view: UIView? = marker
                 var blockers: [String] = []
@@ -351,11 +374,13 @@ struct UITestWindowMetrics: UIViewRepresentable {
             }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
             let paper = paperSurface(in: window)
+            let paperDiagnostics = paper.value == nil
+                ? paper.description + " " + UITestPaperSurface.Probe.diagnostics(in: window) : nil
             return UITestMetricsPayload.dictionary(safeArea: rect(safe), transitioning: !activeTransitions.isEmpty,
                 activeTransitions: activeTransitions, focused: focused,
                 focusedAfterAppearance: focused.isEmpty ? nil : focusedAfterAppearance, scrolls: scrolls,
                 bamboo: BambooRasterCache.shared.diagnostics, bambooSurface: paper.value,
-                paperDiagnostics: paper.description + " " + UITestPaperSurface.Probe.diagnostics(in: window),
+                paperDiagnostics: paperDiagnostics,
                 inputFocusEvents: UITestWindowMetrics.inputFocusEvents,
                 focusedHost: focused.isEmpty ? nil : ((focusedResponder as? UIView)?.superview as? NativeInputAppearance)?.focusHostIdentifier)
         }
@@ -392,7 +417,8 @@ struct UITestWindowMetrics: UIViewRepresentable {
             // The modal's own PaperCanvas wins over the presenter's background.
             // Traversal starts at the window and only follows its subviews;
             // checking UIView.window here can reject the UIWindow root itself.
-            UITestPaperSurfaceSelection.sample(in: window as UIView, viewport: window.bounds,
+            UITestPaperSurfaceSelection.sample(in: window as UIView,
+                markers: UITestPaperSurface.Probe.attached(in: window), parent: { $0.superview }, viewport: window.bounds,
                 children: { $0.subviews }, visible: { !$0.isHidden && $0.alpha > 0 },
                 frame: { $0.convert($0.bounds, to: window) }, clips: { $0.clipsToBounds }, surface: { view in
                 if let surface = view as? UITestPaperSurface.Probe {
