@@ -16,19 +16,21 @@ bash scripts/check-ui-consistency.sh --self-test
 
 ## 覆盖与命名
 
-当前规划 **110 块稿（第四十六轮 87 块、第四十七轮 23 块）、61 条巡游、1,293 个截屏停点**。数量是源码清单，不代表已经取得截图。
+当前规划 **110 块稿（第四十六轮 87 块、第四十七轮 23 块）、56 条巡游、1,183 个截屏停点**。数量是源码清单，不代表已经取得截图。
 
-第四十七轮统一命名为 `V47-{light|dark|a11y|hidden}-{BoardOrState}`，已有巡游继续保留 V46 前缀并使用当前界面。四种状态分别为浅色、深色、最大辅助字号（Accessibility XXXL）、隐藏金额；每块稿在四种状态中各有一个同名停点。补充交互状态使用独立名称，避免同图多名。`scripts/round46-boards.txt` 与 `scripts/round47-boards.txt` 只保存稿名，不保存私有设计地址。
+第四十七轮统一命名为 `V47-{light|dark|a11y|hidden}-{BoardOrState}`，已有巡游继续保留 V46 前缀并使用当前界面。浅色、深色、最大辅助字号（Accessibility XXXL）各完整保留 138 个停点；隐藏金额只保留 `scripts/round47-hidden-key-boards.txt` 中的 28 个关键页，复用原路线，分为 16 和 12 个停点的两条巡游。第四十六轮仍保留完整四种状态。补充交互状态使用独立名称，避免同图多名。`scripts/round46-boards.txt` 与 `scripts/round47-boards.txt` 只保存稿名，不保存私有设计地址。
 
 | 巡游方法 | 条数 | 每条停点 |
 |---|---:|---:|
-| testWalk47BatchA / Dark / Large / Hidden | 4 | 22 |
-| testWalk47BatchB / Dark / Large / Hidden | 4 | 20 |
-| testWalk47BatchB2 / Dark / Large / Hidden | 4 | 20 |
-| testWalk47BatchB3 / Dark / Large / Hidden | 4 | 20 |
-| testWalk47BatchB4 / Dark / Large / Hidden | 4 | 17 |
-| testWalk47BatchC / Dark / Large / Hidden | 4 | 20 |
-| testWalk47BatchD / Dark / Large / Hidden | 4 | 19 |
+| testWalk47BatchA / Dark / Large | 3 | 22 |
+| testWalk47BatchB / Dark / Large | 3 | 20 |
+| testWalk47BatchB2 / Dark / Large | 3 | 20 |
+| testWalk47BatchB3 / Dark / Large | 3 | 20 |
+| testWalk47BatchB4 / Dark / Large | 3 | 17 |
+| testWalk47BatchC / Dark / Large | 3 | 20 |
+| testWalk47BatchD / Dark / Large | 3 | 19 |
+| testWalk47KeyHidden1 | 1 | 16 |
+| testWalk47KeyHidden2 | 1 | 12 |
 | testWalk46Batch1 / Dark / Large / Hidden | 4 | 25 |
 | testWalk46Batch2 / Dark / Large / Hidden | 4 | 28 |
 | testWalk46Batch3 / Dark / Large / Hidden | 4 | 27 |
@@ -48,7 +50,7 @@ bash scripts/check-ui-consistency.sh --self-test
 | testAccessibilityWalk | 1 | 21 |
 | testDarkWalk | 1 | 21 |
 
-`Tests/YubaiUITests/ScreenGalleryTests.swift` 是停点的来源。`scripts/gallery_inventory.py` 从实际方法和共享巡游生成清单，检查重复名称、110 块稿的四种状态以及 CI 是否逐条排入。`scripts/gallery.sh` 使用同一清单生成 `expected.txt`；未执行的停点也会报缺失。CI 每个 part 只跑一条巡游，测试方法最多 30 分钟，作业上限 50 分钟。B 的 77 个停点保留在四段中，每段最多 20 个，lint 校验四种状态共 308 个停点。实际耗时仍需在 Mac 验证。
+`Tests/YubaiUITests/ScreenGalleryTests.swift` 是路线的来源，隐藏金额关键页清单是覆盖约束。`scripts/gallery_inventory.py` 从实际方法和共享巡游生成清单，检查重复名称、每块稿所需的状态、隐藏金额恰好 28 个关键页以及 CI 是否逐条排入。`scripts/gallery.sh` 使用同一清单生成 `expected.txt`；未执行的停点也会报缺失。CI 每个 part 只跑一条巡游，测试方法最多 30 分钟，作业上限 50 分钟。B 的 77 个停点在浅色、深色、最大字号中各保留四段，每段最多 20 个，共 231 个停点；两条隐藏金额巡游也各不超过 20 个停点。`only=r47` 选择 21 个完整模式分片和 `r47-key-hidden-1`、`r47-key-hidden-2`，共 23 个图库任务、442 张截图。实际耗时仍需在 Mac 验证。
 
 ## 每个停点的检查
 
@@ -92,9 +94,9 @@ Linux 可运行清单、脚本合约、UI lint、条件语法解析与 Core 单�
 第四十七轮 D 批覆盖：补回与 AI 建议共用的首页单卡队列／证据页、各自回答后状态、长名称与大额、多条建议、五种错误或空回复、关闭建议、空句纠正与回看答复。`V47-Changes` 是八项变更的总览合约板，其停点验证整合后的首页和共用队列，不把设计说明加入产品界面。
 
 
-2026-11-16 第四十七轮返修：`testWalk47BatchA` 及 Dark / Large / Hidden 四个走查从账本首页开始，覆盖 `Ledger-Home`、`Ledger-Find`、`Ledger-Modes`、`Insights-Two`、`Yubai`、`First-A`、`First-After`。`Ledger-Find-End` 验收最早账目完整位于记账宽钮上方，`Ledger-Return-To-Top` 验收重选账本后清搜索、筛选并回顶。设置走「余白 → 设置」；搜索先点 `openLedgerSearch`，在顶栏展开。已删除独立现在页、首页小票和存钱大卡片的截图要求；存钱页从「已存」胶囊进入。
+2026-11-16 第四十七轮返修：`testWalk47BatchA` 及 Dark / Large 三个完整走查从账本首页开始，覆盖 `Ledger-Home`、`Ledger-Find`、`Ledger-Modes`、`Insights-Two`、`Yubai`、`First-A`、`First-After`。`Ledger-Find-End` 验收最早账目完整位于记账宽钮上方，`Ledger-Return-To-Top` 验收重选账本后清搜索、筛选并回顶。设置走「余白 → 设置」；搜索先点 `openLedgerSearch`，在顶栏展开。已删除独立现在页、首页小票和存钱大卡片的截图要求；存钱页从「已存」胶囊进入。
 
-2026-11-16 rB 整合：B 批四种模式补齐六种 hero 状态、少攒／缺口补救与撤销、上期自动存好与留这月花、发薪补回、每周 AI、设线建议与纠正、余额偏差、下一期年季付账单、竖式的结转／取用／余额差额、金额和次数提醒、记账实时剩余与超出、对账覆盖和底线两态、洞察设线／改数／按次数。深色账本带 carry 卡；账本底部实测留白、末笔可点可左滑及回顶验收保持。上述停点仍需 Apple SDK 构建和模拟器执行。
+2026-11-16 rB 整合：B 批补齐六种 hero 状态、少攒／缺口补救与撤销、上期自动存好与留这月花、发薪补回、每周 AI、设线建议与纠正、余额偏差、下一期年季付账单、竖式的结转／取用／余额差额、金额和次数提醒、记账实时剩余与超出、对账覆盖和底线两态、洞察设线／改数／按次数。深色账本带 carry 卡；账本底部实测留白、末笔可点可左滑及回顶验收保持。上述停点仍需 Apple SDK 构建和模拟器执行。
 
 看门狗的 `source=app` 标记实际应用工作；`source=xctest-audit` 和 `source=xctest-snapshot` 标记 XCTest 审计与查询，系统工作和未完整捕获的堆栈分别为 `system` / `unknown`。全部保留。每个界面只暴露一个定长诊断摘要，完整堆栈由 stderr 与 Documents/tmp 文件导出到 `stalls/`；模拟器已关闭时使用 xcodebuild 日志和本次构建的符号文件。
 

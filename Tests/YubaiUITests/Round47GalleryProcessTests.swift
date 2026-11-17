@@ -1,8 +1,8 @@
 import XCTest
 
 final class Round47GalleryProcessTests: XCTestCase {
-    func testReviewedFixedAmountWarningCoversOnlyTheTwoStopsInEveryGalleryMode() {
-        for mode in ["light", "dark", "hidden", "a11y"] {
+    func testReviewedFixedAmountWarningCoversOnlyTheTwoStopsInFullGalleryModes() {
+        for mode in ["light", "dark", "a11y"] {
             for stop in ["Spend-Edit-Saving", "Spend-Edit-Deficit"] {
                 let name = "V47-\(mode)-\(stop)"
                 let frame = mode == "a11y" ? "{x=24.0,y=234.7,w=392.0,h=72.3}" : "{x=31.1,y=523.0,w=186.9,h=44.0}"
@@ -14,8 +14,8 @@ final class Round47GalleryProcessTests: XCTestCase {
             }
         }
     }
-    func testReviewedPaydayTitleWarningCoversAllFourReviewedModes() {
-        for mode in ["light", "dark", "hidden", "a11y"] {
+    func testReviewedPaydayTitleWarningCoversAllThreeFullModes() {
+        for mode in ["light", "dark", "a11y"] {
             let name = "V47-\(mode)-First-After-Setup"
             let description = "identifier= label=哪天发工资 frame={x=181.6,y=503.4,w=76.8,h=18.6}"
             let warning = GalleryTextReview.warning(stop: name, identifier: "", label: "哪天发工资", kind: .text,
@@ -52,13 +52,13 @@ final class Round47GalleryProcessTests: XCTestCase {
             }
         }
         for stop in ["V47-a11y-First-After-Setup-MISSING", "V47-sepia-First-After-Setup", "V47-light-First-After",
-                     "V47-hidden-First-After-Setup-MISSING", "First-After-Setup", ""] {
+                     "V47-light-First-After-Setup-MISSING", "First-After-Setup", ""] {
             XCTAssertNil(GalleryTextReview.warning(stop: stop, identifier: "", label: "哪天发工资", kind: .text,
                 category: .textClipped, selected: false, elementDescription: "frame=...", auditText: "audit"))
         }
     }
-    func testReviewedDynamicTypeWarningRequiresTheSelectedFixedAmountInBothStopsAndEveryMode() {
-        for mode in ["light", "dark", "hidden", "a11y"] {
+    func testReviewedDynamicTypeWarningRequiresTheSelectedFixedAmountInBothStopsAndFullModes() {
+        for mode in ["light", "dark", "a11y"] {
             for stop in ["Spend-Edit-Saving", "Spend-Edit-Deficit"] {
                 let name = "V47-\(mode)-\(stop)"
                 let description = "identifier=savingMode_fixed label=固定金额 frame={x=31.1,y=523.0,w=186.9,h=44.0}"
@@ -72,7 +72,7 @@ final class Round47GalleryProcessTests: XCTestCase {
         }
     }
     func testReviewedEntriesNeverAcceptAnotherAuditCategory() {
-        for mode in ["light", "dark", "hidden", "a11y"] {
+        for mode in ["light", "dark", "a11y"] {
             for stop in ["Spend-Edit-Saving", "Spend-Edit-Deficit"] {
                 XCTAssertNil(GalleryTextReview.warning(stop: "V47-\(mode)-\(stop)", identifier: "savingMode_fixed", label: "固定金额",
                     kind: .button, category: .other, selected: true, elementDescription: "frame=...", auditText: "audit"))

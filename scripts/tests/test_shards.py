@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+import gallery_inventory as INVENTORY
 
 
 def load_script(name):
@@ -272,6 +273,90 @@ class ShardTests(unittest.TestCase):
                             rows = [row for row in expected["include"] if row["blocking"] == blocking]
                             self.assertEqual(outputs[tier + "-matrix"], compact({"include": rows}))
                             self.assertEqual(outputs["has-" + tier + "-shards"], str(bool(rows)).lower())
+
+
+class GalleryInventoryTests(unittest.TestCase):
+    def test_round47_key_shards_keep_all_full_modes_and_exact_hidden_manifest(self):
+        walks, _ = INVENTORY.check(ROOT)
+        rows = GALLERY.matrix(ROOT, only="r47")["include"]
+        self.assertEqual(len(rows), 23)
+        hidden = [row for row in rows if row["part"].startswith("r47-key-hidden-")]
+        self.assertEqual([row["part"] for row in hidden], ["r47-key-hidden-1", "r47-key-hidden-2"])
+        self.assertEqual([len(walks[row["walks"]]) for row in hidden], [16, 12])
+        keys = (ROOT / "scripts/round47-hidden-key-boards.txt").read_text().splitlines()
+        self.assertEqual(Counter(stop for row in hidden for stop in walks[row["walks"]]),
+                         Counter("V47-hidden-" + key for key in keys))
+        self.assertEqual(Counter(stop.split("-", 2)[1] for row in rows for stop in walks[row["walks"]]),
+                         Counter(light=138, dark=138, a11y=138, hidden=28))
+        for row in hidden:
+            part = row["part"]
+            UI.validate_parts(ROOT, part)
+            self.assertEqual(GALLERY.matrix(ROOT, only="r47", parts=part), {"include": [row]})
+
+    def test_hidden_inventory_rejects_missing_extra_and_replaced_captures(self):
+        original = INVENTORY.inventory(ROOT)
+        name = "testWalk47KeyHidden1"
+        for change in ("missing", "extra", "replaced"):
+            walks = {name: list(stops) for name, stops in original.items()}
+            if change in ("missing", "replaced"):
+                walks[name].pop(0)
+            if change in ("extra", "replaced"):
+                walks[name].append("V47-hidden-Unscheduled-Board")
+            with self.subTest(change=change), patch.object(INVENTORY, "inventory", return_value=walks):
+                with self.assertRaisesRegex(ValueError, "hidden must contain exactly the key boards"):
+                    INVENTORY.check(ROOT)
+
+    def test_hidden_walk_budget_and_two_walk_partition_are_enforced(self):
+        original = INVENTORY.inventory(ROOT)
+        for change in ("over-budget", "third-walk"):
+            walks = {name: list(stops) for name, stops in original.items()}
+            first, second = walks["testWalk47KeyHidden1"], walks["testWalk47KeyHidden2"]
+            if change == "over-budget":
+                first.extend(second[:5])
+                del second[:5]
+            else:
+                walks["testWalk47KeyHidden3"] = [second.pop()]
+            with self.subTest(change=change), patch.object(INVENTORY, "inventory", return_value=walks):
+                with self.assertRaisesRegex(ValueError, "two walks of at most 20 stops"):
+                    INVENTORY.check(ROOT)
+
+    def test_full_modes_cannot_lose_or_replace_a_supplementary_stop(self):
+        original = INVENTORY.inventory(ROOT)
+        for mode, name in (("dark", "testWalk47BatchADark"), ("a11y", "testWalk47BatchALarge")):
+            for replace in (False, True):
+                walks = {name: list(stops) for name, stops in original.items()}
+                walks[name].remove("V47-" + mode + "-First-After-Income")
+                if replace:
+                    walks[name].append("V47-" + mode + "-Unknown-State")
+                with self.subTest(mode=mode, replace=replace), patch.object(INVENTORY, "inventory", return_value=walks):
+                    with self.assertRaisesRegex(ValueError, "same complete 138 stops"):
+                        INVENTORY.check(ROOT)
+
+    def test_hidden_selection_parser_requires_existing_unique_routes(self):
+        source = (ROOT / "Tests/YubaiUITests/ScreenGalleryTests.swift").read_text()
+        for replacement, message in (("Unknown-Board", "Selected gallery stops without routes"),
+                                     ("Ledger-Home-Butler", "Duplicate selected gallery stops")):
+            with self.subTest(replacement=replacement), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                tests = root / "Tests/YubaiUITests"
+                tests.mkdir(parents=True)
+                marker = '"Ledger-Home", "Ledger-Home-Butler"'
+                self.assertEqual(source.count(marker), 1)
+                (tests / "ScreenGalleryTests.swift").write_text(source.replace(
+                    marker, '"' + replacement + '", "Ledger-Home-Butler"'))
+                with self.assertRaisesRegex(ValueError, message):
+                    INVENTORY.inventory(root)
+
+    def test_hidden_key_manifest_rejects_missing_duplicate_and_prefixed_names(self):
+        keys = (ROOT / "scripts/round47-hidden-key-boards.txt").read_text().splitlines()
+        for changed in (keys[:-1], [keys[1], *keys[1:]], ["V47-hidden-" + keys[0], *keys[1:]]):
+            with self.subTest(changed=changed[0]), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / "scripts").mkdir()
+                (root / "scripts/round47-hidden-key-boards.txt").write_text("\n".join(changed) + "\n")
+                with patch.object(INVENTORY, "inventory", return_value=INVENTORY.inventory(ROOT)):
+                    with self.assertRaisesRegex(ValueError, "28 unique board names without the mode"):
+                        INVENTORY.check(root)
 
 
 class ResultGateTests(unittest.TestCase):

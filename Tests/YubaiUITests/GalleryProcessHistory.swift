@@ -44,10 +44,10 @@ enum GalleryTextReview {
                         category: Category, selected: Bool,
                         elementDescription: String, auditText: String) -> String? {
         let reason: String
-        let savingStops = ["light", "dark", "hidden", "a11y"].flatMap { mode in
+        let savingStops = ["light", "dark", "a11y"].flatMap { mode in
             ["V47-\(mode)-Spend-Edit-Saving", "V47-\(mode)-Spend-Edit-Deficit"]
         }
-        let paydayStops = ["light", "dark", "hidden", "a11y"].map { "V47-\($0)-First-After-Setup" }
+        let paydayStops = ["light", "dark", "a11y"].map { "V47-\($0)-First-After-Setup" }
         if savingStops.contains(stop), kind == .button, identifier == "savingMode_fixed", label == "固定金额" {
             switch category {
             case .textClipped: reason = "PNG-reviewed complete fixed-amount label at largest size"

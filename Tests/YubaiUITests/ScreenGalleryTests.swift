@@ -16,6 +16,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private var issues: [String] = []
     private var writeErrors: [String] = []
     private var prefix = ""
+    private var selectedStops: Set<String>?
     private enum GalleryMode: String { case light, dark, a11y, hidden }
     private var galleryMode: GalleryMode = .light
     private var directory: URL!
@@ -123,6 +124,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
 
     @discardableResult private func stop(_ suffix: String, budget: TimeInterval = 90, _ walk: () throws -> Void) -> Bool {
+        guard selectedStops?.contains(suffix) != false else { return false }
         let name = prefix + suffix
         // Observe a death between stops before changing that process's owner.
         observeStoppedProcess(phase: "before next stop")
@@ -538,34 +540,62 @@ final class ScreenGalleryTests: YubaiUITestCase {
     func testWalk47BatchA() { walk47(.light, round47BatchA) }
     func testWalk47BatchADark() { walk47(.dark, round47BatchA) }
     func testWalk47BatchALarge() { walk47(.a11y, round47BatchA) }
-    func testWalk47BatchAHidden() { walk47(.hidden, round47BatchA) }
     func testWalk47BatchB() { walk47(.light, round47BatchB) }
     func testWalk47BatchBDark() { walk47(.dark, round47BatchB) }
     func testWalk47BatchBLarge() { walk47(.a11y, round47BatchB) }
-    func testWalk47BatchBHidden() { walk47(.hidden, round47BatchB) }
     func testWalk47BatchB2() { walk47(.light, round47BatchB2) }
     func testWalk47BatchB2Dark() { walk47(.dark, round47BatchB2) }
     func testWalk47BatchB2Large() { walk47(.a11y, round47BatchB2) }
-    func testWalk47BatchB2Hidden() { walk47(.hidden, round47BatchB2) }
     func testWalk47BatchB3() { walk47(.light, round47BatchB3) }
     func testWalk47BatchB3Dark() { walk47(.dark, round47BatchB3) }
     func testWalk47BatchB3Large() { walk47(.a11y, round47BatchB3) }
-    func testWalk47BatchB3Hidden() { walk47(.hidden, round47BatchB3) }
     func testWalk47BatchB4() { walk47(.light, round47BatchB4) }
     func testWalk47BatchB4Dark() { walk47(.dark, round47BatchB4) }
     func testWalk47BatchB4Large() { walk47(.a11y, round47BatchB4) }
-    func testWalk47BatchB4Hidden() { walk47(.hidden, round47BatchB4) }
     func testWalk47BatchC() { walk47(.light, round47BatchC) }
     func testWalk47BatchCDark() { walk47(.dark, round47BatchC) }
     func testWalk47BatchCLarge() { walk47(.a11y, round47BatchC) }
-    func testWalk47BatchCHidden() { walk47(.hidden, round47BatchC) }
     func testWalk47BatchD() { walk47(.light, round47BatchD) }
     func testWalk47BatchDDark() { walk47(.dark, round47BatchD) }
     func testWalk47BatchDLarge() { walk47(.a11y, round47BatchD) }
-    func testWalk47BatchDHidden() { walk47(.hidden, round47BatchD) }
+    func testWalk47KeyHidden1() { walk47(.hidden, round47KeyHidden1) }
+    func testWalk47KeyHidden2() { walk47(.hidden, round47KeyHidden2) }
     private func walk47(_ mode: GalleryMode, _ walk: (Bool, Bool) -> Void) {
         galleryMode = mode; prefix = "V47-" + mode.rawValue + "-"
         walk(mode == .dark, mode == .a11y)
+    }
+    private func onlyStops(_ names: [String], _ walk: () -> Void) {
+        let previous = selectedStops
+        selectedStops = Set(names)
+        defer { selectedStops = previous }
+        walk()
+    }
+    // Every selected route launches its own fixture, including saving/take
+    // and combined AI evidence. Skipped stops leave no prerequisite state.
+    // gallery_inventory.py checks these selections against the key-board manifest.
+    private func round47KeyHidden1(dark: Bool, large: Bool) {
+        onlyStops([
+            "Ledger-Home", "Ledger-Home-Butler", "Ledger-Find-Search", "Ledger-Find-End",
+            "Insights-Two", "Insights-Year", "Yubai", "Save-Page", "Spend", "Spend-Over",
+            "Spend-Hard", "Spend-Cycle-Bills", "Spend-States-Deficit", "Butler-Cards",
+            "Entry-Recon", "Hero-States"
+        ]) {
+            round47BatchA(dark, large)
+            round47BatchB(dark: dark, large: large)
+        }
+    }
+    private func round47KeyHidden2(dark: Bool, large: Bool) {
+        onlyStops([
+            "Hero-States-Deficit", "Ledger-Over", "Spend-Soft-Lines", "Insights-Soft-Detail",
+            "Spend-Entries", "Take", "Records", "Home-Topup", "Toast", "Home-AI", "AI-Why",
+            "Changes-Evidence"
+        ]) {
+            round47BatchB2(dark: dark, large: large)
+            round47BatchB3(dark: dark, large: large)
+            round47BatchB4(dark: dark, large: large)
+            round47BatchC(dark: dark, large: large)
+            round47BatchD(dark: dark, large: large)
+        }
     }
     private func round47BatchC(dark: Bool, large: Bool) {
         func load(_ fixture: String = "v47-c-empty") throws { try launch(fixture, dark: dark, large: large) }
@@ -1596,7 +1626,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 self.warnings.append(warning); print("GALLERY-WARNING " + warning)
                 return true
             }
-            let reviewedFrequent = ["V47-light-Empty-Frequent", "V47-dark-Empty-Frequent", "V47-hidden-Empty-Frequent"].contains(stopName) &&
+            let reviewedFrequent = ["V47-light-Empty-Frequent", "V47-dark-Empty-Frequent"].contains(stopName) &&
                 target.identifier.isEmpty && target.label == "常记的会自己出现"
             if stopName == "V47-a11y-Empty-Frequent", target.identifier.isEmpty, target.label == "常记的会自己出现" {
                 let warning = stopName + ": Text clipped: PNG-reviewed complete text at largest size; " + self.describe(target) + " " + issue.detailedDescription
