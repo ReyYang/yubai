@@ -256,6 +256,8 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         }) {
             launch(fixture, large: mode.large, dark: mode.dark, hidden: mode.hidden)
             formula(); tap("formulaRow_saving")
+            let galleryMode = mode.large ? "a11y" : mode.hidden ? "hidden" : mode.dark ? "dark" : "light"
+            let stop = "V47-\(galleryMode)-Spend-Edit-" + (fixture == "v47r-deficit" ? "Deficit" : "Saving")
             let fixed = element("savingMode_fixed"), share = element("savingMode_share")
             XCTAssertTrue(waitForStableFrame(fixed))
             XCTAssertTrue(waitForStableFrame(share))
@@ -279,6 +281,10 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
                 tap(id)
                 XCTAssertTrue(segment.isSelected)
                 XCTAssertNoThrow(try auditAppText(in: app, dynamicType: true) { issue in
+                    if let warning = GalleryTextReview.warning(stop: stop, issue: issue) {
+                        print("GALLERY-WARNING " + warning)
+                        return true
+                    }
                     XCTFail("Saving sheet text must grow without clipping: " + issue.detailedDescription)
                     return true
                 })
@@ -332,9 +338,11 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
                 let ordinaryHeight = ordinaryChip.frame.height
                 launch(fixture, large: true, dark: dark); tap("addEntry")
                 typeIntoField(purpose + "\n", identifier: "entryPurpose", in: app)
+                XCTAssertEqual(element("entryPurpose").value as? String, purpose)
                 XCTAssertFalse(app.keyboards.firstMatch.exists)
                 // A second keyboard cycle must also be observed and completed.
                 typeIntoField("\n", identifier: "entryPurpose", in: app)
+                XCTAssertEqual(element("entryPurpose").value as? String, purpose)
                 XCTAssertFalse(app.keyboards.firstMatch.exists)
                 keys(amount); expect("entrySavingHint", contains: expected)
                 let deadline = Date().addingTimeInterval(20)

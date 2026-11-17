@@ -1592,10 +1592,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 return true
             }
             let stopName = self.activeStop ?? ""
-            let kind: GalleryTextReview.Kind = target.elementType == .button ? .button :
-                target.elementType == .staticText ? .text : .other
-            if let warning = GalleryTextReview.warning(stop: stopName, identifier: target.identifier,
-                label: target.label, kind: kind, elementDescription: self.describe(target), auditText: issue.detailedDescription) {
+            if let warning = GalleryTextReview.warning(stop: stopName, issue: issue) {
                 self.warnings.append(warning); print("GALLERY-WARNING " + warning)
                 return true
             }

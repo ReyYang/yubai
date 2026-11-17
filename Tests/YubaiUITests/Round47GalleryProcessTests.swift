@@ -9,17 +9,17 @@ final class Round47GalleryProcessTests: XCTestCase {
                 let description = "identifier=savingMode_fixed label=固定金额 frame=" + frame
                 let audit = "Text of this SwiftUI.AccessibilityNode may be clipped at larger Dynamic Type sizes."
                 let warning = GalleryTextReview.warning(stop: name, identifier: "savingMode_fixed", label: "固定金额",
-                    kind: .button, elementDescription: description, auditText: audit)
+                    kind: .button, category: .textClipped, selected: true, elementDescription: description, auditText: audit)
                 XCTAssertEqual(warning, name + ": Text clipped: PNG-reviewed complete fixed-amount label at largest size; " + description + " " + audit)
             }
         }
     }
-    func testReviewedPaydayTitleWarningCoversOnlyTheThreeReviewedModes() {
-        for mode in ["light", "dark", "hidden"] {
+    func testReviewedPaydayTitleWarningCoversAllFourReviewedModes() {
+        for mode in ["light", "dark", "hidden", "a11y"] {
             let name = "V47-\(mode)-First-After-Setup"
             let description = "identifier= label=哪天发工资 frame={x=181.6,y=503.4,w=76.8,h=18.6}"
             let warning = GalleryTextReview.warning(stop: name, identifier: "", label: "哪天发工资", kind: .text,
-                elementDescription: description, auditText: "native audit text")
+                category: .textClipped, selected: false, elementDescription: description, auditText: "native audit text")
             XCTAssertEqual(warning, name + ": Text clipped: PNG-reviewed complete payday sheet title; " + description + " native audit text")
         }
     }
@@ -32,25 +32,55 @@ final class Round47GalleryProcessTests: XCTestCase {
             ("savingMode_fixed", "固定金额", .text),
             ("savingMode_fixed", "固定金额", .other)
         ] {
-            XCTAssertNil(GalleryTextReview.warning(stop: "V47-light-Spend-Edit-Saving", identifier: identifier,
-                label: label, kind: kind, elementDescription: "frame=...", auditText: "audit"))
+            for category in [GalleryTextReview.Category.textClipped, .dynamicType] {
+                XCTAssertNil(GalleryTextReview.warning(stop: "V47-light-Spend-Edit-Saving", identifier: identifier,
+                    label: label, kind: kind, category: category, selected: true, elementDescription: "frame=...", auditText: "audit"))
+            }
         }
         for (identifier, label, kind) in [("paydayTitle", "哪天发工资", GalleryTextReview.Kind.text),
                                          ("", "哪天发工资…", .text), ("", "哪天发工资", .button), ("", "哪天发工资", .other)] {
             XCTAssertNil(GalleryTextReview.warning(stop: "V47-light-First-After-Setup", identifier: identifier,
-                label: label, kind: kind, elementDescription: "frame=...", auditText: "audit"))
+                label: label, kind: kind, category: .textClipped, selected: false, elementDescription: "frame=...", auditText: "audit"))
         }
     }
     func testReviewedTextCannotMatchOtherStopsOrFutureModes() {
         for stop in ["V47-light-Spend", "V47-a11y-Spend-Edit-Saving-MISSING", "V47-dark-Spend-Edit-Deficit-Other",
                      "V47-sepia-Spend-Edit-Saving", "V46-light-Spend-Edit-Saving", "Spend-Edit-Saving", ""] {
-            XCTAssertNil(GalleryTextReview.warning(stop: stop, identifier: "savingMode_fixed", label: "固定金额",
-                kind: .button, elementDescription: "frame=...", auditText: "audit"))
+            for category in [GalleryTextReview.Category.textClipped, .dynamicType] {
+                XCTAssertNil(GalleryTextReview.warning(stop: stop, identifier: "savingMode_fixed", label: "固定金额",
+                    kind: .button, category: category, selected: true, elementDescription: "frame=...", auditText: "audit"))
+            }
         }
-        for stop in ["V47-a11y-First-After-Setup", "V47-sepia-First-After-Setup", "V47-light-First-After",
+        for stop in ["V47-a11y-First-After-Setup-MISSING", "V47-sepia-First-After-Setup", "V47-light-First-After",
                      "V47-hidden-First-After-Setup-MISSING", "First-After-Setup", ""] {
             XCTAssertNil(GalleryTextReview.warning(stop: stop, identifier: "", label: "哪天发工资", kind: .text,
-                elementDescription: "frame=...", auditText: "audit"))
+                category: .textClipped, selected: false, elementDescription: "frame=...", auditText: "audit"))
+        }
+    }
+    func testReviewedDynamicTypeWarningRequiresTheSelectedFixedAmountInBothStopsAndEveryMode() {
+        for mode in ["light", "dark", "hidden", "a11y"] {
+            for stop in ["Spend-Edit-Saving", "Spend-Edit-Deficit"] {
+                let name = "V47-\(mode)-\(stop)"
+                let description = "identifier=savingMode_fixed label=固定金额 frame={x=31.1,y=523.0,w=186.9,h=44.0}"
+                let audit = "User will not be able to change the font size of this SwiftUI.AccessibilityNode"
+                let warning = GalleryTextReview.warning(stop: name, identifier: "savingMode_fixed", label: "固定金额",
+                    kind: .button, category: .dynamicType, selected: true, elementDescription: description, auditText: audit)
+                XCTAssertEqual(warning, name + ": Dynamic Type: recording-reviewed selected fixed-amount label grows and stacks during live size change; " + description + " " + audit)
+                XCTAssertNil(GalleryTextReview.warning(stop: name, identifier: "savingMode_fixed", label: "固定金额",
+                    kind: .button, category: .dynamicType, selected: false, elementDescription: description, auditText: audit))
+            }
+        }
+    }
+    func testReviewedEntriesNeverAcceptAnotherAuditCategory() {
+        for mode in ["light", "dark", "hidden", "a11y"] {
+            for stop in ["Spend-Edit-Saving", "Spend-Edit-Deficit"] {
+                XCTAssertNil(GalleryTextReview.warning(stop: "V47-\(mode)-\(stop)", identifier: "savingMode_fixed", label: "固定金额",
+                    kind: .button, category: .other, selected: true, elementDescription: "frame=...", auditText: "audit"))
+            }
+            for category in [GalleryTextReview.Category.dynamicType, .other] {
+                XCTAssertNil(GalleryTextReview.warning(stop: "V47-\(mode)-First-After-Setup", identifier: "", label: "哪天发工资",
+                    kind: .text, category: category, selected: false, elementDescription: "frame=...", auditText: "audit"))
+            }
         }
     }
     func testInitialNotRunningStateIsNotACrash() {

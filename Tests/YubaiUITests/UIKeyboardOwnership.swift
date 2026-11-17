@@ -19,3 +19,18 @@ enum UIKeyboardOwnership {
         return collect(root)
     }
 }
+
+/// Return-only handoffs must preserve the entire previous value. Foundation's
+/// String.contains("") is false, so trimming Return into an empty search cannot
+/// verify retention. Actual inserted text still has to be present in full.
+enum UIFieldTextRetention {
+    static func matches(_ value: String?, before: String?, typed: String) -> Bool {
+        guard let value else { return false }
+        let inserted = typed.trimmingCharacters(in: .newlines)
+        if inserted.isEmpty {
+            guard let before else { return false }
+            return value == before
+        }
+        return value.contains(inserted)
+    }
+}
