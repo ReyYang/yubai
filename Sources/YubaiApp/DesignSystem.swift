@@ -1201,6 +1201,14 @@ extension View {
         self
         #endif
     }
+    /// Native actions need the container's button style, not the root's text-link
+    /// style. A style on the row's tap button does not cover this sibling content.
+    func nativeSwipeActions<Actions: View>(edge: HorizontalEdge = .trailing, allowsFullSwipe: Bool = true,
+                                         @ViewBuilder content: () -> Actions) -> some View {
+        swipeActions(edge: edge, allowsFullSwipe: allowsFullSwipe) {
+            content().buttonStyle(.automatic)
+        }
+    }
     func hidesListDisclosure() -> some View {
         #if os(iOS)
         self.navigationLinkIndicatorVisibility(.hidden)

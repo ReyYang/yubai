@@ -19,7 +19,7 @@ struct MemoryView: View {
                             Text(metadata(note)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                         }.padding(.vertical, YubaiSpace.space8).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.hidesListDisclosure().accessibilityIdentifier("memory_" + note.id.uuidString)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                        .nativeSwipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button("删掉") { remove(note) }.tint(YubaiColor.amberTint).accessibilityIdentifier("swipeDeleteMemory_" + note.id.uuidString)
                             Button("改一下") { editing = note }.tint(YubaiColor.card).accessibilityIdentifier("swipeEditMemory_" + note.id.uuidString)
                         }

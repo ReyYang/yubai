@@ -525,7 +525,7 @@ struct EntryAddedList: View {
                         }
                     }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("editSessionEntry_" + entry.id.uuidString)
-                    .swipeActions(edge: .trailing) {
+                    .nativeSwipeActions(edge: .trailing) {
                         Button("删掉") { remove(entry) }.tint(YubaiColor.amberInk)
                             .accessibilityIdentifier("deleteSessionEntry_" + entry.id.uuidString)
                     }.accessibilityAction(named: "删掉") { remove(entry) }

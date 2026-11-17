@@ -443,7 +443,7 @@ struct LedgerEntryRow: View {
         entryButton
             .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .accessibilityValue(isFuture ? "未来" : acknowledged ? "已记下" : "")
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            .nativeSwipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
                     .tint(YubaiColor.amberTint).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
                 Button(action: onSortCategory) { Text("改分类").foregroundStyle(YubaiColor.label) }

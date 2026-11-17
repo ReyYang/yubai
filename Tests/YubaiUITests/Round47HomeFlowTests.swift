@@ -4,7 +4,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     private var app: XCUIApplication!
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app?.terminate(); app = nil; try super.tearDownWithError() }
-    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false) {
+    private func launch(_ fixture: String = "v47r-ledger", large: Bool = false, hidden: Bool = false, dark: Bool = false, reduceMotion: Bool = false, keepUndo: Bool = false) {
         app = XCUIApplication()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
@@ -14,6 +14,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = hidden ? "1" : "0"
         app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
         app.launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] = reduceMotion ? "1" : "0"
+        app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = keepUndo ? "1" : "0"
         app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         launchApp(app)
@@ -394,6 +395,36 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             XCTAssertFalse(element("editEntryAmount").exists)
             app.terminate()
         }
+    }
+    func testLedgerSwipeDeleteAndUndoRestoresRow() {
+        launch(keepUndo: true)
+        let key = "ledgerEntry_" + id(479103)
+        reveal(key)
+        let row = element(key), originalLabel = row.label
+        XCTAssertTrue(swipeToRevealTrailingActions(row, in: app, deadline: Date().addingTimeInterval(5)), revealFailure)
+        let delete = element("deleteLedgerEntry_" + id(479103))
+        XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
+        XCTAssertFalse(element("editEntryAmount").exists)
+        tapControl(delete, in: app, reveals: false)
+        XCTAssertTrue(waitForDisappearance(row))
+        tap("undoLastChange")
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertEqual(row.label, originalLabel)
+    }
+    func testLedgerRowEditSavesAmountWithTwoDecimals() {
+        launch()
+        let key = "ledgerEntry_" + id(479103)
+        reveal(key); tap(key)
+        let amount = element("editEntryAmount")
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "186.40")
+        keys("23.7")
+        XCTAssertEqual(amount.value as? String, "23.70")
+        tap("saveEditedEntry")
+        XCTAssertTrue(waitForDisappearance(amount))
+        reveal(key)
+        XCTAssertTrue(element(key).label.contains("−23.70"))
+        XCTAssertFalse(element(key).label.contains("186.40"))
     }
     func testDayPlusPrefillsThatDayAndRowTapEditsOriginal() {
         launch(); let key = "ledgerEntry_" + id(479103); reveal(key); tap(key)
