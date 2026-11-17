@@ -226,14 +226,14 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             XCTAssertTrue(waitForStableFrame(row))
             let cell = app.cells.containing(.button, identifier: "memory_" + noteID).firstMatch
             XCTAssertTrue(cell.exists)
-            // Swipe the native cell across its visible width. Swiping the
-            // NavigationLink's AX button activated its default navigation in
-            // run 7, so the following swipe-action query could never succeed.
-            let start = cell.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
-            let end = cell.coordinate(withNormalizedOffset: CGVector(dx: 0.15, dy: 0.5))
-            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+            // Run 13 also activated the NavigationLink via cell coordinates.
+            // Use the settled row's screen-space pan, then require the real
+            // swipe action and sheet header before running either native audit.
+            XCTAssertTrue(swipeToRevealTrailingActions(row, in: app, deadline: Date().addingTimeInterval(5)), revealFailure)
             let edit = app.buttons["swipeEditMemory_" + noteID]
             XCTAssertTrue(edit.waitForExistence(timeout: 5))
+            XCTAssertTrue(edit.isHittable)
+            XCTAssertFalse(element("memoryText").exists, "A swipe must not activate the pushed editor")
             tapControl(edit, in: app, reveals: false)
             XCTAssertTrue(element("cancelManualSheet").waitForExistence(timeout: 5))
             try auditFocusedSheet("memoryText")

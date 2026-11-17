@@ -240,11 +240,19 @@ final class Round47HomeFlowTests: YubaiUITestCase {
                     // do not tap the field again to rescue a lost request.
                     XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
                     XCTAssertTrue(dismissKeyboardIntroduction(in: app))
-                    XCTAssertTrue(waitForKeyboardEditing("entriesSearch", in: app, deadline: deadline))
+                    XCTAssertTrue(waitForKeyboardEditing("entriesSearch", in: app, deadline: deadline), keyboardWaitReport)
                     let metrics = windowMetrics(in: app)
-                    XCTAssertEqual(metrics?.focusedAfterAppearance, true)
+                    let context = "large=\(large) dark=\(dark) hidden=\(hidden) focusEvents=\(metrics?.inputFocusEvents ?? [])"
+                    XCTAssertEqual(metrics?.focused, "entriesSearch", context)
+                    XCTAssertEqual(metrics?.focusedAfterAppearance, true, context)
                     XCTAssertEqual(metrics?.transitioning, false)
+                    XCTAssertNotNil(metrics?.focusedHost, context)
                     element("entriesSearch").typeText("咖啡")
+                    XCTAssertEqual(element("entriesSearch").value as? String, "咖啡", context)
+                    XCTAssertTrue(waitForKeyboardEditing("entriesSearch", in: app, deadline: deadline), keyboardWaitReport)
+                    let afterTyping = windowMetrics(in: app)
+                    XCTAssertEqual(afterTyping?.focusedAfterAppearance, true, context)
+                    XCTAssertEqual(afterTyping?.focusedHost, metrics?.focusedHost, context)
                     let end = ProcessInfo.processInfo.systemUptime + max(0, deadline.timeIntervalSinceNow)
                     XCTAssertTrue(UIConditionWait.run(deadline: end, read: { self.element("entriesSearchTotal").exists }))
                     XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entriesSearchTotal").count, 1)
@@ -260,6 +268,37 @@ final class Round47HomeFlowTests: YubaiUITestCase {
                     app.terminate()
                 }
             }
+        }
+    }
+    func testSearchAutofocusReopensAfterCancelAndStaysDismissedAfterReturn() {
+        for large in [false, true] {
+            launch("v47r-ledger-hard", large: large)
+            let deadline = Date().addingTimeInterval(90)
+            tap("openLedgerSearch")
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertTrue(dismissKeyboardIntroduction(in: app))
+            XCTAssertTrue(waitForKeyboardEditing("entriesSearch", in: app, deadline: deadline), keyboardWaitReport)
+            XCTAssertEqual(windowMetrics(in: app)?.focusedAfterAppearance, true)
+            element("entriesSearch").typeText("咖啡\n")
+            XCTAssertTrue(waitForKeyboardDismissal(in: app, deadline: deadline))
+            XCTAssertEqual(element("entriesSearch").value as? String, "咖啡")
+            XCTAssertTrue(element("entriesSearchTotal").exists)
+            // A completed initial request must not revive focus on the next
+            // native sampling turns after Return ends the editing session.
+            for _ in 0..<3 { XCTAssertEqual(windowMetrics(in: app)?.focused, "") }
+            XCTAssertFalse(app.keyboards.firstMatch.exists)
+            tap("entriesSearchCancel")
+            XCTAssertTrue(waitForDisappearance(element("entriesSearch")))
+            tap("openLedgerSearch")
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+            XCTAssertTrue(waitForKeyboardEditing("entriesSearch", in: app, deadline: deadline), keyboardWaitReport)
+            XCTAssertEqual(windowMetrics(in: app)?.focusedAfterAppearance, true)
+            XCTAssertEqual(element("entriesSearch").value as? String, "")
+            tap("entriesSearchCancel")
+            XCTAssertTrue(waitForDisappearance(element("entriesSearch")))
+            XCTAssertTrue(waitForKeyboardDismissal(in: app, deadline: deadline))
+            XCTAssertEqual(app.state, .runningForeground)
+            app.terminate()
         }
     }
     func testFilterButtonUsesTheSameInPlaceFilterRow() {
@@ -343,20 +382,19 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         }
     }
     func testOldestEntryKeepsSwipeActionsAbovePill() {
-        launch("v47r-ledger-end"); let key = "ledgerEntry_" + id(479999); reveal(key)
-        let row = element(key), pill = element("addEntry")
-        XCTAssertTrue(waitForStableFrame(row))
-        XCTAssertLessThan(row.frame.maxY, pill.frame.minY)
-        // A bounded short native pan reveals both actions without completing
-        // the full-swipe delete or letting a row tap open the editor.
-        row.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
-            .press(forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.5)),
-                   withVelocity: .slow, thenHoldForDuration: 0.1)
-        let delete = element("deleteLedgerEntry_" + id(479999)), sort = element("sortLedgerEntry_" + id(479999))
-        XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
-        XCTAssertTrue(sort.isHittable)
-        XCTAssertLessThan(delete.frame.maxY, pill.frame.minY); XCTAssertLessThan(sort.frame.maxY, pill.frame.minY)
-        XCTAssertFalse(element("editEntryAmount").exists)
+        for large in [false, true] {
+            launch("v47r-ledger-end", large: large); let key = "ledgerEntry_" + id(479999); reveal(key)
+            let row = element(key), pill = element("addEntry")
+            XCTAssertTrue(waitForStableFrame(row))
+            XCTAssertLessThan(row.frame.maxY, pill.frame.minY)
+            XCTAssertTrue(swipeToRevealTrailingActions(row, in: app, deadline: Date().addingTimeInterval(5)), revealFailure)
+            let delete = element("deleteLedgerEntry_" + id(479999)), sort = element("sortLedgerEntry_" + id(479999))
+            XCTAssertTrue(delete.waitForExistence(timeout: 5)); XCTAssertTrue(delete.isHittable)
+            XCTAssertTrue(sort.isHittable)
+            XCTAssertLessThan(delete.frame.maxY, pill.frame.minY); XCTAssertLessThan(sort.frame.maxY, pill.frame.minY)
+            XCTAssertFalse(element("editEntryAmount").exists)
+            app.terminate()
+        }
     }
     func testDayPlusPrefillsThatDayAndRowTapEditsOriginal() {
         launch(); let key = "ledgerEntry_" + id(479103); reveal(key); tap(key)

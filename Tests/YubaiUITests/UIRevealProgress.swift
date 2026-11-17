@@ -1,5 +1,24 @@
 import Foundation
 
+/// Capture the settled row in screen space before sending a touch. Coordinates
+/// bound to a Button/NavigationLink can activate that AX control instead of
+/// exercising the native cell's swipe actions (run 13, ledger and memory).
+enum UIRowSwipe {
+    static func plan(row: CGRect, viewport: CGRect, excluding occlusions: [CGRect] = []) -> UIRevealPan.Gesture? {
+        guard !row.isNull, !row.isInfinite, row.width >= 80, row.height > 0,
+              !viewport.isNull, !viewport.isInfinite,
+              [row.minX, row.minY, row.width, row.height, viewport.minX, viewport.minY, viewport.width, viewport.height].allSatisfy({ $0.isFinite }),
+              viewport.contains(row) else { return nil }
+        // Less than half the row width: reveal actions without committing a
+        // full-swipe delete. The whole horizontal path must stay unobstructed.
+        let start = CGPoint(x: row.minX + row.width * 0.85, y: row.midY)
+        let end = CGPoint(x: row.minX + row.width * 0.4, y: row.midY)
+        let path = CGRect(x: end.x, y: start.y - 1, width: start.x - end.x, height: 2)
+        guard !occlusions.contains(where: { $0.intersects(path) }) else { return nil }
+        return UIRevealPan.Gesture(start: start, end: end)
+    }
+}
+
 /// Plan inside both the AX-visible viewport and a natively hit-tested lane of
 /// the owning UIScrollView. Subtracting chrome alone cannot prove pan ownership:
 /// the center of a large card can belong to its own gesture recognizers.

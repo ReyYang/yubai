@@ -3462,6 +3462,7 @@ struct SearchInput: View {
     var identifier = ""
     var label = "搜索"
     var focus: FocusState<Bool>.Binding? = nil
+    var autofocus = false
     var showsCancel = false
     var cancelIdentifier = ""
     var cancel: () -> Void = {}
@@ -3471,7 +3472,11 @@ struct SearchInput: View {
         HStack(spacing: YubaiSpace.gapGroup) {
             HStack(spacing: YubaiSpace.space8) {
                 Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                RowTextInput(text: $text, placeholder: placeholder, label: label, identifier: identifier, focus: fieldFocus, search: true)
+                // Initial search focus uses the same native appearance gate
+                // and active editing session as autofocus form fields. Setting
+                // .focused before inserting the controller bypasses that gate.
+                RowTextInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
+                             focus: fieldFocus, search: true, autofocus: autofocus)
                 if !text.isEmpty {
                     Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(YubaiColor.labelMuted).yubaiHitTarget() }
                         .accessibilityLabel("清空搜索").accessibilityIdentifier(identifier + "Clear")
@@ -3485,6 +3490,9 @@ struct SearchInput: View {
                     .accessibilityIdentifier(cancelIdentifier)
             }
         }.buttonStyle(PressButtonStyle())
+            #if os(macOS)
+            .task { if autofocus { fieldFocus.wrappedValue = true } }
+            #endif
     }
 }
 

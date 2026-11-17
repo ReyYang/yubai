@@ -1,6 +1,58 @@
 import XCTest
 
 final class Round47RevealProgressTests: XCTestCase {
+    func testRunThirteenOldestRowSwipeIsInsideTheRealViewportAndAboveBottomChrome() throws {
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 668)
+        let row = CGRect(x: 20, y: 718, width: 400, height: 64)
+        let chrome = CGRect(x: 0, y: 798, width: 440, height: 158)
+        // The recorded (380,750) -> (180,750) was already inside the List.
+        // C19's reveal fix cannot repair an AX-targeted swipe that opens edit.
+        XCTAssertTrue(viewport.contains(CGPoint(x: 380, y: 750)))
+        XCTAssertTrue(viewport.contains(CGPoint(x: 180, y: 750)))
+        let gesture = try XCTUnwrap(UIRowSwipe.plan(row: row, viewport: viewport, excluding: [chrome]))
+        XCTAssertEqual(gesture.start, CGPoint(x: 360, y: 750))
+        XCTAssertEqual(gesture.end, CGPoint(x: 180, y: 750))
+        XCTAssertLessThan(gesture.start.x - gesture.end.x, row.width / 2)
+        XCTAssertTrue(row.contains(gesture.start) && row.contains(gesture.end))
+        XCTAssertLessThan(gesture.start.y, chrome.minY)
+    }
+    func testRunThirteenMemorySwipeUsesTheSettledRowInsteadOfItsNavigationActivation() throws {
+        let row = CGRect(x: 20, y: 124, width: 400, height: 58.33333333333334)
+        let gesture = try XCTUnwrap(UIRowSwipe.plan(row: row,
+            viewport: CGRect(x: 20, y: 124, width: 400, height: 58.33333333333334)))
+        XCTAssertEqual(gesture.start.x, 360)
+        XCTAssertEqual(gesture.end.x, 180)
+        XCTAssertEqual(gesture.start.y, 153.16666666666669, accuracy: 0.001)
+        XCTAssertEqual(gesture.end.y, gesture.start.y)
+    }
+    func testRowSwipeRejectsAClippedOrMovedRowInsteadOfPanningUnderChrome() {
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 668)
+        let row = CGRect(x: 20, y: 718, width: 400, height: 64)
+        XCTAssertNotNil(UIRowSwipe.plan(row: row, viewport: viewport))
+        for moved in [row.offsetBy(dx: 0, dy: 17), row.offsetBy(dx: 0, dy: -590), row.offsetBy(dx: 21, dy: 0)] {
+            XCTAssertNil(UIRowSwipe.plan(row: moved, viewport: viewport))
+        }
+    }
+    func testRowSwipeRejectsObstaclesAnywhereAlongItsHorizontalPath() {
+        let row = CGRect(x: 20, y: 718, width: 400, height: 64)
+        let viewport = CGRect(x: 0, y: 130, width: 440, height: 668)
+        for x: CGFloat in [180, 260, 360] {
+            XCTAssertNil(UIRowSwipe.plan(row: row, viewport: viewport,
+                excluding: [CGRect(x: x - 5, y: 730, width: 10, height: 40)]))
+        }
+        XCTAssertNotNil(UIRowSwipe.plan(row: row, viewport: viewport,
+            excluding: [CGRect(x: 0, y: 798, width: 440, height: 158), CGRect(x: 20, y: 700, width: 400, height: 20)]))
+    }
+    func testRowSwipeRequiresUsableFiniteGeometry() {
+        let viewport = CGRect(x: 0, y: 0, width: 440, height: 956)
+        for row in [CGRect.zero, .null, .infinite, CGRect(x: 20, y: 100, width: 79, height: 44),
+                    CGRect(x: CGFloat.nan, y: 100, width: 400, height: 44)] {
+            XCTAssertNil(UIRowSwipe.plan(row: row, viewport: viewport))
+        }
+        for invalid in [CGRect.zero, .null, .infinite] {
+            XCTAssertNil(UIRowSwipe.plan(row: CGRect(x: 20, y: 100, width: 400, height: 44), viewport: invalid))
+        }
+    }
     func testRunThirteenTallToastKeepsItsNativeGutterPanAndStrictRowClearance() throws {
         let physical = CGRect(x: 0, y: 130, width: 440, height: 668)
         let body = CGRect(x: 36, y: 465.3333333333333, width: 376, height: 261.6666666666667)

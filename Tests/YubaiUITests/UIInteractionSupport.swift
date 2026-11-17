@@ -597,6 +597,33 @@ class YubaiUITestCase: XCTestCase {
             frame: $0, scrollAncestors: ancestors, keyboards: revealedKeyboards, occlusions: revealedOcclusions) } ?? false
     }
 
+    /// The caller reveals the row first. Freeze its final frame and address
+    /// the application, not the row's AX activation target. Success here means
+    /// only that the pan was sent; callers must still assert every native action.
+    func swipeToRevealTrailingActions(_ row: XCUIElement, in app: XCUIApplication, deadline: Date) -> Bool {
+        let identifier = row.identifier, window = app.frame
+        // Sample the final frame after the native readiness queries. No row
+        // query or further reveal is allowed to retarget the planned touch.
+        guard row.isEnabled, row.isHittable, waitForStableFrame(row, deadline: deadline),
+              settledControlClearsViewport(row), let frames = revealedScrollFrames,
+              let frame = lastFrameWait?.result.frame else {
+            revealFailure = "Swipe row is not settled and clear: \(identifier); \(lastFrameWait?.result.description ?? "no frame")"
+            return false
+        }
+        let viewport = UIViewportGeometry.clipped(window, to: frames)
+        let occlusions = revealedKeyboards + revealedPanOcclusions
+        guard Date() < deadline, let gesture = UIRowSwipe.plan(row: frame, viewport: viewport, excluding: occlusions) else {
+            revealFailure = "No clear row swipe: \(identifier) row=\(frame) viewport=\(viewport) occlusions=\(occlusions)"
+            return false
+        }
+        print("UI-ROW-SWIPE identifier=\(identifier) row=\(frame) viewport=\(viewport) start=\(gesture.start) end=\(gesture.end)")
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: gesture.start.x - window.minX, dy: gesture.start.y - window.minY))
+        let end = origin.withOffset(CGVector(dx: gesture.end.x - window.minX, dy: gesture.end.y - window.minY))
+        start.press(forDuration: 0, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 0.1)
+        return true
+    }
+
     /// Frame a group for capture using its real scroll viewport. The optional
     /// visual clearance is the known page-fade height, not a hittability waiver;
     /// every control still passes the ordinary reveal/native hit checks.

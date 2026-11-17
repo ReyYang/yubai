@@ -131,7 +131,7 @@ struct EntriesView: View {
                 monthButton(month)
                 Spacer(minLength: YubaiSpace.none)
                 HeaderIconButton {
-                    savedOffset = currentOffset; searchExpanded = true; searchFocused = true; scrollToTop = true
+                    savedOffset = currentOffset; searchExpanded = true; scrollToTop = true
                 } icon: { size in Image(systemName: "magnifyingglass").font(.system(size: size)) }
                     .accessibilityLabel("搜索").accessibilityIdentifier("openLedgerSearch")
                 HeaderIconButton { showsFilters.toggle(); scrollToTop = true } icon: { size in Image(systemName: "line.3.horizontal.decrease").font(.system(size: size)) }
@@ -141,7 +141,7 @@ struct EntriesView: View {
     }
     private var searchField: some View {
         SearchInput(text: $search, placeholder: "搜名字、金额、备注", identifier: "entriesSearch", label: "搜索账目",
-                    focus: $searchFocused, showsCancel: true, cancelIdentifier: "entriesSearchCancel", cancel: endSearch)
+                    focus: $searchFocused, autofocus: true, showsCancel: true, cancelIdentifier: "entriesSearchCancel", cancel: endSearch)
     }
     private var filters: some View {
         ChipFlow {
