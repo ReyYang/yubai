@@ -2839,8 +2839,16 @@ struct Segmented<Value: Hashable>: View {
     var identifier: ((Value) -> String)? = nil
     var background = YubaiColor.card
     var body: some View {
-        AdaptiveStackLayout(stacked: textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }),
-                            equalWidth: true, horizontalSpacing: YubaiSpace.space4, verticalSpacing: YubaiSpace.space4) {
+        SegmentedLayout(stacked: textSize.isAccessibilitySize && choices.contains(where: { $0.1.count > 3 }),
+                        segmentCount: choices.count) {
+            // Keep the sliding/fading surface out of the audited Button label.
+            // Stable slots also preserve the reduced-motion crossfade without
+            // moving a persistent surface between the controls.
+            ForEach(choices.indices, id: \.self) { index in
+                ZStack {
+                    if choices[index].0 == selection { selectedSurface }
+                }.allowsHitTesting(false).accessibilityHidden(true)
+            }
             ForEach(choices.indices, id: \.self) { index in
                 segment(choices[index].0, title: choices[index].1)
             }
@@ -2861,7 +2869,6 @@ struct Segmented<Value: Hashable>: View {
                 .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: minimum)
-                .background { if on { selectedSurface } }
                 .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(on ? .isSelected : [])
             .accessibilityIdentifier(identifier?(value) ?? "")
@@ -2927,12 +2934,10 @@ struct ManualSheetHeader: View {
     }
     private var titleText: some View {
         let font = ["记一笔", "改一笔", "改这笔"].contains(title) ? YubaiFont.entrySheetTitle : YubaiFont.navTitle
-        // The line box belongs to the container, not the audited Text leaf.
-        // Its wrapping height follows the width proposed by SheetHeaderLayout.
-        return VStack(spacing: YubaiSpace.none) {
-            Text(title).yubaiFont(font).lineLimit(nil)
-                .fixedSize(horizontal: false, vertical: true)
-        }.yubaiTextLineBox(font)
+        // No enclosing line-box/min-height frame: the layout measures this
+        // title itself at its placed width and leaves its height unspecified.
+        return Text(title).yubaiFont(font).lineLimit(nil).multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
     }
     private var cancelButton: some View {
         Button(action: cancel) {
@@ -2957,7 +2962,7 @@ struct ManualSheetHeader: View {
     var body: some View {
         SheetHeaderLayout(stacked: textSize.isAccessibilitySize) {
             cancelButton
-            titleView.multilineTextAlignment(.center).frame(maxWidth: .infinity)
+            titleView.multilineTextAlignment(.center)
             actionButton
         }.frame(minHeight: 48).padding(.top, inSheet ? YubaiSpace.sheetHeaderTop : 0).buttonStyle(PressButtonStyle())
             .background(YubaiColor.canvas)

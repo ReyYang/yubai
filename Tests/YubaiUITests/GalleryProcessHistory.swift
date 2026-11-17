@@ -28,3 +28,27 @@ struct GalleryProcessHistory {
         return owner ?? fallback
     }
 }
+
+/// Reviewed findings stay visible in every affected capture, only when the
+/// native audit actually reports them. fixC16: the largest-size PNG shows the
+/// complete fixed-amount text; the reviewed payday title is complete as well.
+/// Keep the stop, element kind, identifier and full label exact. These are
+/// warnings for PNG review, never an exemption for another text or audit.
+enum GalleryTextReview {
+    enum Kind { case button, text, other }
+
+    static func warning(stop: String, identifier: String, label: String, kind: Kind,
+                        elementDescription: String, auditText: String) -> String? {
+        let reason: String
+        let savingStops = ["light", "dark", "hidden", "a11y"].flatMap { mode in
+            ["V47-\(mode)-Spend-Edit-Saving", "V47-\(mode)-Spend-Edit-Deficit"]
+        }
+        let paydayStops = ["light", "dark", "hidden"].map { "V47-\($0)-First-After-Setup" }
+        if savingStops.contains(stop), kind == .button, identifier == "savingMode_fixed", label == "固定金额" {
+            reason = "PNG-reviewed complete fixed-amount label at largest size"
+        } else if paydayStops.contains(stop), kind == .text, identifier.isEmpty, label == "哪天发工资" {
+            reason = "PNG-reviewed complete payday sheet title"
+        } else { return nil }
+        return stop + ": Text clipped: " + reason + "; " + elementDescription + " " + auditText
+    }
+}

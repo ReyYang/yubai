@@ -1592,6 +1592,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 return true
             }
             let stopName = self.activeStop ?? ""
+            let kind: GalleryTextReview.Kind = target.elementType == .button ? .button :
+                target.elementType == .staticText ? .text : .other
+            if let warning = GalleryTextReview.warning(stop: stopName, identifier: target.identifier,
+                label: target.label, kind: kind, elementDescription: self.describe(target), auditText: issue.detailedDescription) {
+                self.warnings.append(warning); print("GALLERY-WARNING " + warning)
+                return true
+            }
             let reviewedFrequent = ["V47-light-Empty-Frequent", "V47-dark-Empty-Frequent", "V47-hidden-Empty-Frequent"].contains(stopName) &&
                 target.identifier.isEmpty && target.label == "常记的会自己出现"
             if stopName == "V47-a11y-Empty-Frequent", target.identifier.isEmpty, target.label == "常记的会自己出现" {

@@ -205,6 +205,41 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     private var galleryModes: [(large: Bool, dark: Bool, hidden: Bool)] {
         [(false, false, false), (false, true, false), (false, false, true), (true, false, false)]
     }
+    func testReconcilePresentationAndCaptureStaySettledAcrossGalleryModes() throws {
+        for mode in galleryModes {
+            // Match Entry-Recon's route and original stop bound. No focused
+            // field or raster is required on this fully presented paper sheet.
+            let deadline = Date().addingTimeInterval(90)
+            launch("v47r-reconcile", large: mode.large, dark: mode.dark, hidden: mode.hidden)
+            let open = element("openReconcile")
+            XCTAssertTrue(revealControl(open, in: app, deadline: deadline))
+            XCTAssertTrue(waitForStableFrame(open, deadline: deadline))
+            rememberTap(open, in: app); open.tap()
+            let apply = element("reconcileApply")
+            XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline), transitionWaitReport)
+            XCTAssertTrue(waitForStableFrame(apply, deadline: deadline))
+            let capture = waitForBambooCapture(in: app, deadline: deadline)
+            XCTAssertTrue(capture.ready, capture.description)
+            XCTAssertEqual(capture.surface?.required, false, capture.description)
+            for _ in 0..<3 {
+                XCTAssertLessThan(Date(), deadline)
+                let metrics = windowMetrics(in: app)
+                XCTAssertNotNil(metrics, "The modal probe must stay readable")
+                XCTAssertEqual(metrics?.transitioning, false, transitionWaitReport)
+                XCTAssertEqual(metrics?.activeTransitions, [])
+            }
+            XCTAssertFalse(app.keyboards.firstMatch.exists)
+            try auditAppText(in: app, dynamicType: true) { issue in
+                XCTFail("Reconcile sheet text must grow without clipping: " + issue.detailedDescription)
+                return true
+            }
+            XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)), transitionWaitReport)
+            XCTAssertEqual(app.state, .runningForeground)
+            XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
+            tap("reconcileApply"); gone("reconcileByHand")
+            XCTAssertEqual(app.state, .runningForeground)
+        }
+    }
     func testSavingSegmentsKeepBothCompleteLabelsAcrossAllGalleryModes() {
         savingSegments("v47r-deficit")
     }

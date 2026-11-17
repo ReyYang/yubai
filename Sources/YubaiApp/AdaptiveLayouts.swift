@@ -11,17 +11,17 @@ struct AdaptiveStackLayout: Layout {
     var verticalSpacing: CGFloat = YubaiSpace.space4
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        arrangement(width: proposal.width, subviews: subviews).size
+        arrangement(width: proposal.width, subviews: Array(subviews)).size
     }
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = arrangement(width: bounds.width, subviews: subviews)
+        let result = arrangement(width: bounds.width, subviews: Array(subviews))
         for (index, subview) in subviews.enumerated() {
             let frame = result.frames[index]
             subview.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
                           proposal: ProposedViewSize(frame.size))
         }
     }
-    private func arrangement(width proposed: CGFloat?, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+    fileprivate func arrangement(width proposed: CGFloat?, subviews: [LayoutSubview]) -> (size: CGSize, frames: [CGRect]) {
         guard !subviews.isEmpty else { return (.zero, []) }
         let ideals = subviews.map { $0.sizeThatFits(.unspecified) }
         let gaps = horizontalSpacing * CGFloat(subviews.count - 1)
@@ -42,7 +42,7 @@ struct AdaptiveStackLayout: Layout {
             subviews[index].sizeThatFits(ProposedViewSize(width: equalWidth ? slot : ideals[index].width, height: nil))
         }
         let baselines = subviews.indices.map { index in
-            subviews[index].dimensions(in: ProposedViewSize(sizes[index]))[.firstTextBaseline]
+            baseline ? subviews[index].dimensions(in: ProposedViewSize(width: sizes[index].width, height: nil))[.firstTextBaseline] : 0
         }
         let firstBaseline = baselines.max() ?? 0
         let height = subviews.indices.map { index in
@@ -58,6 +58,34 @@ struct AdaptiveStackLayout: Layout {
                           width: childWidth, height: size.height)
         }
         return (CGSize(width: width, height: height), frames)
+    }
+}
+
+/// Decorations are siblings, outside every Button's composite accessibility
+/// label. They never determine the control's size or constrain its text.
+struct SegmentedLayout: Layout {
+    var stacked: Bool
+    var segmentCount: Int
+    private var contentLayout: AdaptiveStackLayout {
+        AdaptiveStackLayout(stacked: stacked, equalWidth: true,
+                            horizontalSpacing: YubaiSpace.space4, verticalSpacing: YubaiSpace.space4)
+    }
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        contentLayout.arrangement(width: proposal.width, subviews: Array(subviews.dropFirst(segmentCount))).size
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let buttons = Array(subviews.dropFirst(segmentCount))
+        let result = contentLayout.arrangement(width: bounds.width, subviews: buttons)
+        for (index, surface) in subviews.prefix(segmentCount).enumerated() {
+            let frame = result.frames[index]
+            surface.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(frame.size))
+        }
+        for (index, button) in buttons.enumerated() {
+            let frame = result.frames[index]
+            button.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), anchor: .topLeading,
+                         proposal: ProposedViewSize(width: frame.width, height: nil))
+        }
     }
 }
 
@@ -81,25 +109,34 @@ struct SheetHeaderLayout: Layout {
         let ideal = subviews.map { $0.sizeThatFits(.unspecified) }
         let side = YubaiSize.sheetHeaderActionWidth
         let width = max(0, proposed.flatMap { $0.isFinite ? $0 : nil } ?? side * 2 + ideal[1].width)
+        func titleSize(at availableWidth: CGFloat) -> CGSize {
+            let measured = subviews[1].sizeThatFits(ProposedViewSize(width: availableWidth, height: nil))
+            // Give the title its own measured width, centered in its slot.
+            // Round outwards, then remeasure at that exact placement width so
+            // fractional glyph bounds cannot acquire a smaller wrapping box.
+            let placedWidth = min(availableWidth, measured.width.rounded(.up))
+            let placed = subviews[1].sizeThatFits(ProposedViewSize(width: placedWidth, height: nil))
+            return CGSize(width: placedWidth, height: placed.height)
+        }
         if !stacked, ideal[0].width <= side, ideal[2].width <= side, ideal[1].width <= width - side * 2 {
             // Measure at the same width used for placement. An unspecified
             // title measurement is only useful for choosing the arrangement;
             // it must never become a height constraint on the wrapping title.
-            let title = subviews[1].sizeThatFits(ProposedViewSize(width: width - side * 2, height: nil))
+            let title = titleSize(at: width - side * 2)
             let height = max(ideal[0].height, title.height, ideal[2].height)
             return (CGSize(width: width, height: height), [
                 CGRect(x: YubaiSpace.none, y: (height - ideal[0].height) / 2, width: ideal[0].width, height: ideal[0].height),
-                CGRect(x: side, y: (height - title.height) / 2, width: width - side * 2, height: title.height),
+                CGRect(x: (width - title.width) / 2, y: (height - title.height) / 2, width: title.width, height: title.height),
                 CGRect(x: width - ideal[2].width, y: (height - ideal[2].height) / 2, width: ideal[2].width, height: ideal[2].height)
             ])
         }
-        let title = subviews[1].sizeThatFits(ProposedViewSize(width: width, height: nil))
+        let title = titleSize(at: width)
         let y = title.height + YubaiSpace.space4
         if ideal[0].width + ideal[2].width + YubaiSpace.space8 <= width {
             let actionsHeight = max(ideal[0].height, ideal[2].height)
             return (CGSize(width: width, height: y + actionsHeight), [
                 CGRect(x: YubaiSpace.none, y: y + (actionsHeight - ideal[0].height) / 2, width: ideal[0].width, height: ideal[0].height),
-                CGRect(x: YubaiSpace.none, y: YubaiSpace.none, width: width, height: title.height),
+                CGRect(x: (width - title.width) / 2, y: YubaiSpace.none, width: title.width, height: title.height),
                 CGRect(x: width - ideal[2].width, y: y + (actionsHeight - ideal[2].height) / 2, width: ideal[2].width, height: ideal[2].height)
             ])
         }
@@ -107,7 +144,7 @@ struct SheetHeaderLayout: Layout {
         let action = subviews[2].sizeThatFits(ProposedViewSize(width: width, height: nil))
         return (CGSize(width: width, height: y + cancel.height + YubaiSpace.space8 + action.height), [
             CGRect(x: (width - cancel.width) / 2, y: y, width: cancel.width, height: cancel.height),
-            CGRect(x: YubaiSpace.none, y: YubaiSpace.none, width: width, height: title.height),
+            CGRect(x: (width - title.width) / 2, y: YubaiSpace.none, width: title.width, height: title.height),
             CGRect(x: (width - action.width) / 2, y: y + cancel.height + YubaiSpace.space8, width: action.width, height: action.height)
         ])
     }
