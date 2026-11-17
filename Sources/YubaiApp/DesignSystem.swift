@@ -714,8 +714,11 @@ struct PaperCanvas: View {
             #if DEBUG && targetEnvironment(simulator) && os(iOS)
             .background {
                 if UITestSupport.script != nil {
-                    UITestPaperSurface(bambooKey: showsBamboo && !reduceTransparency
-                        ? BambooRasterCache.Key(scheme: scheme, scale: displayScale).identifier : nil)
+                    GeometryReader { geometry in
+                        UITestPaperSurface(bambooKey: showsBamboo && !reduceTransparency
+                            ? BambooRasterCache.Key(scheme: scheme, scale: displayScale).identifier : nil)
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                    }
                 }
             }
             #endif

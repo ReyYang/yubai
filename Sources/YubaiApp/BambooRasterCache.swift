@@ -76,19 +76,16 @@ import os
     #if DEBUG && targetEnvironment(simulator)
     var diagnostics: [String: Any] {
         let statistics = BambooRasterizer.statistics.snapshot
-        var value: [String: Any] = ["ready": images.keys.map(\.identifier).sorted(),
-            "pending": pending.count, "pendingKeys": pending.keys.map(\.identifier).sorted(),
-            "failed": failed.keys.map(\.identifier).sorted(),
-            "failedStages": Dictionary(uniqueKeysWithValues: failed.map { ($0.key.identifier, $0.value.rawValue) }),
-            "renders": statistics.count, "mainRenders": statistics.mainCount,
-            "activeRenders": statistics.active, "maxConcurrentRenders": statistics.maximum, "lastFailure": NSNull()]
         // Keep the last failure after recovery so tests cannot hide a failed
         // render behind a successful retry. This metadata is never visible UI.
-        if let lastFailure {
-            value["lastFailure"] = ["key": lastFailure.key.identifier, "stage": lastFailure.stage.rawValue,
-                                    "attempt": lastFailure.attempt]
+        let failure: [String: Any]? = lastFailure.map {
+            ["key": $0.key.identifier, "stage": $0.stage.rawValue, "attempt": $0.attempt]
         }
-        return value
+        return UITestMetricsPayload.bamboo(ready: images.keys.map(\.identifier).sorted(), pending: pending.count,
+            pendingKeys: pending.keys.map(\.identifier).sorted(), failed: failed.keys.map(\.identifier).sorted(),
+            failedStages: Dictionary(uniqueKeysWithValues: failed.map { ($0.key.identifier, $0.value.rawValue) }),
+            renders: statistics.count, mainRenders: statistics.mainCount, activeRenders: statistics.active,
+            maxConcurrentRenders: statistics.maximum, lastFailure: failure)
     }
     #endif
 }

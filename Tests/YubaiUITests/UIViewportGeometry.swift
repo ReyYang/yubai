@@ -76,6 +76,9 @@ enum UIViewportGeometry {
 /// Values come from the app's scripted-only UIKit probe, in screen points.
 struct UIWindowMetrics: Decodable {
     static let probeIdentifier = "uiTestWindowMetrics"
+    static func isProbeIdentifier(_ identifier: String) -> Bool {
+        identifier == probeIdentifier || identifier.hasPrefix(probeIdentifier + ".")
+    }
     struct BambooSurface: Decodable, CustomStringConvertible {
         let required: Bool
         let key: String?
@@ -131,9 +134,55 @@ struct UIWindowMetrics: Decodable {
     var bambooSurface: BambooSurface? = nil
     var activeTransitions: [String]? = nil
     var safeRectangle: CGRect { Self.rectangle(safeArea) }
-    static func decode(_ value: Any?) -> Self? {
-        guard let value = value as? String, let data = value.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(Self.self, from: data)
+    static func decode(_ value: Any?, onError: (String) -> Void = { print($0) }) -> Self? {
+        do { return try JSONDecoder().decode(Self.self, from: rawData(value)) }
+        catch { onError(diagnostic(error, raw: value)); return nil }
+    }
+    /// Reassemble only parts of the manifest's generation, from ONE snapshot.
+    /// Missing/truncated/mixed samples fail; no cached/default geometry escapes.
+    static func decodePayload(manifest value: Any?, parts: [String: Any], onError: (String) -> Void = { print($0) }) -> Self? {
+        var raw = value
+        do {
+            struct Manifest: Decodable {
+                let version: Int?
+                let checksum: String?
+                let bytes: Int?
+                let parts: Int?
+                let error: String?
+            }
+            let manifest = try JSONDecoder().decode(Manifest.self, from: rawData(value))
+            if let error = manifest.error { throw PayloadError.invalid("App serialization failed: " + error) }
+            guard manifest.version == 1, let checksum = manifest.checksum,
+                  let count = manifest.parts, count > 0, count <= 4096, let length = manifest.bytes, length > 0 else {
+                throw PayloadError.invalid("Invalid window metrics manifest")
+            }
+            let encoded = try (0..<count).map { index -> String in
+                let key = probeIdentifier + "." + checksum + "." + String(index)
+                guard let part = parts[key] as? String, !part.isEmpty, part.utf8.count <= 400 else {
+                    throw PayloadError.invalid("Missing/invalid window metrics part: " + key)
+                }
+                return part
+            }.joined()
+            guard let data = Data(base64Encoded: encoded), data.count == length else {
+                throw PayloadError.invalid("Truncated window metrics payload; expected \(length) bytes")
+            }
+            raw = String(decoding: data, as: UTF8.self)
+            let actual = String(data.reduce(UInt64(14695981039346656037)) { ($0 ^ UInt64($1)) &* 1099511628211 }, radix: 16)
+            guard actual == checksum else { throw PayloadError.invalid("Window metrics checksum mismatch") }
+            return try JSONDecoder().decode(Self.self, from: data)
+        } catch { onError(diagnostic(error, raw: raw)); return nil }
+    }
+    private enum PayloadError: Error, CustomStringConvertible {
+        case invalid(String)
+        var description: String { switch self { case .invalid(let message): return message } }
+    }
+    private static func rawData(_ value: Any?) throws -> Data {
+        guard let value = value as? String else { throw PayloadError.invalid("Window metrics value is not a String: \(String(describing: value))") }
+        return Data(value.utf8)
+    }
+    private static func diagnostic(_ error: Error, raw: Any?) -> String {
+        let value = (raw as? String) ?? String(describing: raw)
+        return "UI-WINDOW-METRICS decode failed: \(error); rawLength=\(value.count) rawPrefix=\(String(value.prefix(300)))"
     }
     static func rectangle(_ values: [CGFloat]) -> CGRect {
         guard values.count == 4 else { return .null }

@@ -69,6 +69,8 @@ class YubaiUITestCase: XCTestCase {
     private var revealedOcclusions: [CGRect] = []
     private(set) var revealFailure = ""
     private(set) var transitionWaitReport = ""
+    private(set) var windowMetricsReadReport = ""
+    private var lastPrintedMetricsError = ""
     private let scriptedNow = Date().timeIntervalSince1970
     private var diagnosticApp: XCUIApplication?
     private var collectingStalls = false
@@ -224,9 +226,46 @@ class YubaiUITestCase: XCTestCase {
     }
 
     func windowMetrics(in tree: XCUIElementSnapshot) -> UIWindowMetrics? {
-        if tree.identifier == UIWindowMetrics.probeIdentifier, let metrics = UIWindowMetrics.decode(tree.value) { return metrics }
+        if tree.identifier == UIWindowMetrics.probeIdentifier {
+            var values: [String: Any] = [:]
+            func collect(_ node: XCUIElementSnapshot) {
+                if let value = node.value { values[node.identifier] = value }
+                for child in node.children { collect(child) }
+            }
+            collect(tree)
+            let report: (String) -> Void = { self.reportWindowMetricsError($0) }
+            if let manifest = values[UIWindowMetrics.probeIdentifier + ".manifest"] {
+                return UIWindowMetrics.decodePayload(manifest: manifest, parts: values, onError: report)
+            }
+            // Preserve a useful diagnostic for older app builds and a newly
+            // mounted probe whose first asynchronous sample has not arrived.
+            return UIWindowMetrics.decode(tree.value, onError: report)
+        }
         for child in tree.children.reversed() { if let metrics = windowMetrics(in: child) { return metrics } }
+        if tree.elementType == .application {
+            // UIKit can flatten a non-element container. Retain the coherent
+            // app snapshot fallback, matching parts by the manifest checksum.
+            var manifests: [Any] = [], parts: [String: Any] = [:]
+            func collect(_ node: XCUIElementSnapshot) {
+                if node.identifier == UIWindowMetrics.probeIdentifier + ".manifest", let value = node.value {
+                    manifests.append(value)
+                } else if node.identifier.hasPrefix(UIWindowMetrics.probeIdentifier + "."), let value = node.value {
+                    parts[node.identifier] = value
+                }
+                for child in node.children { collect(child) }
+            }
+            collect(tree)
+            for manifest in manifests.reversed() {
+                if let metrics = UIWindowMetrics.decodePayload(manifest: manifest, parts: parts,
+                    onError: { self.reportWindowMetricsError($0) }) { return metrics }
+            }
+        }
         return nil
+    }
+
+    private func reportWindowMetricsError(_ error: String) {
+        windowMetricsReadReport = error
+        if lastPrintedMetricsError != error { print(error); lastPrintedMetricsError = error }
     }
 
     func windowMetrics(in app: XCUIApplication) -> UIWindowMetrics? {
@@ -238,7 +277,9 @@ class YubaiUITestCase: XCTestCase {
         let probes = app.otherElements.matching(identifier: UIWindowMetrics.probeIdentifier)
             .allElementsBoundByAccessibilityElement
         for probe in probes.reversed() {
-            if let snapshot = try? probe.snapshot(), let metrics = UIWindowMetrics.decode(snapshot.value) { return metrics }
+            do {
+                if let metrics = windowMetrics(in: try probe.snapshot()) { return metrics }
+            } catch { reportWindowMetricsError("UI-WINDOW-METRICS snapshot failed: \(error)") }
         }
         return (try? app.snapshot()).flatMap { windowMetrics(in: $0) }
     }
@@ -255,7 +296,7 @@ class YubaiUITestCase: XCTestCase {
 
     func assertBambooReadyForCapture(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
         let result = waitForBambooCapture(in: app)
-        XCTAssertTrue(result.ready, "Bamboo must finish before capture: \(result)", file: file, line: line)
+        XCTAssertTrue(result.ready, "Bamboo must finish before capture: \(result) \(windowMetricsReadReport)", file: file, line: line)
     }
 
     func auditAppText(in app: XCUIApplication, dynamicType: Bool = false, handler: @escaping (XCUIAccessibilityAuditIssue) -> Bool) throws {
@@ -271,7 +312,7 @@ class YubaiUITestCase: XCTestCase {
         let result = UITransitionWait.run(deadline: end, read: { self.windowMetrics(in: app) })
         transitionWaitReport = result.description
         if !result.settled {
-            let report = "UI-TRANSITION-WAIT \(result) remaining=\(deadline.timeIntervalSinceNow)"
+            let report = "UI-TRANSITION-WAIT \(result) remaining=\(deadline.timeIntervalSinceNow) \(windowMetricsReadReport)"
             print(report)
             let attachment = XCTAttachment(string: report)
             attachment.name = "transition-wait"; attachment.lifetime = .keepAlways; add(attachment)
@@ -655,7 +696,7 @@ class YubaiUITestCase: XCTestCase {
         tapControl(field, in: app)
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), identifier)
         XCTAssertTrue(dismissKeyboardIntroduction(in: app))
-        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app), "Keyboard/focus did not settle: " + identifier)
+        XCTAssertTrue(waitForKeyboardEditing(identifier, in: app), "Keyboard/focus did not settle: " + identifier + " " + windowMetricsReadReport)
         field.typeText(text)
         let expected = text.trimmingCharacters(in: .newlines)
         XCTAssertTrue(UIConditionWait.run(timeout: 6, read: { (field.value as? String ?? "").contains(expected) }),

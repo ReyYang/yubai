@@ -37,11 +37,14 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
     }
     private func settings() { tap("openSettings"); tap("openIntelligencePrivacy"); XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5)) }
     private func backToRoot() {
+        let deadline = Date().addingTimeInterval(30)
         for _ in 0..<8 {
+            XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline), transitionWaitReport)
             if element("mainNavigation").exists && element("mainNavigation").isHittable { return }
             let custom = element("BackButton")
             if custom.exists { custom.tap() } else { app.navigationBars.buttons.firstMatch.tap() }
         }
+        XCTFail("Root navigation did not return")
     }
     func testVerifiedCardShowsCodeNumbersAndPushesEvidence() {
         launch(); XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 10))
@@ -459,6 +462,11 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("butlerEvidenceTitle").waitForExistence(timeout: 5))
         XCTAssertTrue(element("butlerEvidenceTitle").label.contains("••••"))
         tap("butlerAIIncorrect"); tap("butlerAICorrectionSave")
+        // Save closes the correction, then its onDismiss pops the evidence.
+        // Waiting for both postconditions avoids tapping the outgoing page's
+        // BackButton between those two native transitions (run 12, t=50.3s).
+        XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
+        XCTAssertTrue(waitForDisappearance(element("butlerAIEvidencePage")))
         backToRoot()
         XCTAssertFalse(element("savingsTopupCard").exists)
         XCTAssertFalse(element("butlerSuggestionCard").exists)

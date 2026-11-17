@@ -1394,7 +1394,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
         func indexScrolls(_ node: XCUIElementSnapshot, ancestors: [ScrollAncestor] = [], path: String = "root",
                           fixedChrome: Bool = false, nativeNavigation: Bool = false, presentations: [CGRect] = []) {
-            guard node.identifier != UIWindowMetrics.probeIdentifier else { return }
+            guard !UIWindowMetrics.isProbeIdentifier(node.identifier) else { return }
             let fixed = fixedChrome || ["rootHeaderRegion", "fixedBottomBar"].contains(node.identifier) ||
                 node.identifier.hasPrefix("tab_") || node.identifier == "addEntry"
             let native = nativeNavigation || node.elementType == .navigationBar
@@ -1412,7 +1412,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
             }
         }
         func sheetGrabbers(_ owner: XCUIElementSnapshot) {
-            guard owner.identifier != UIWindowMetrics.probeIdentifier else { return }
+            guard !UIWindowMetrics.isProbeIdentifier(owner.identifier) else { return }
             let children = owner.children
             if owner.elementType == .other, owner.identifier.isEmpty, children.count >= 2,
                children[0].elementType == .button, children[0].identifier.isEmpty,
@@ -1469,7 +1469,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         var occupiedScrolls: [String: ScrollAncestor] = [:]
         for (target, snapshot) in controls {
             guard captureProcessIsRunning(phase: "control audit") else { throw Miss(description: "App process died during control audit") }
-            if snapshot.identifier == UIWindowMetrics.probeIdentifier { continue }
+            if UIWindowMetrics.isProbeIdentifier(snapshot.identifier) { continue }
             let frame = snapshot.frame
             guard !frame.isEmpty, window.intersects(frame) else { continue }
             guard target.isHittable else { continue } // inactive/modal/off-viewport elements
@@ -1575,7 +1575,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
                 if !self.attachedAuditInventory { self.attachedAuditInventory = true; self.attachUnresolvedAudit(issue) }
                 return true
             }
-            if target.identifier == UIWindowMetrics.probeIdentifier { return true }
+            if UIWindowMetrics.isProbeIdentifier(target.identifier) { return true }
             if fullyOccluded(target) { return true }
             // The board permits exactly this collapsed, independently labelled
             // text with its own expand button. Prove the expanded state below;
@@ -1711,7 +1711,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         let window = app.frame
         if let snapshot = try? app.snapshot() {
             func textNodes(_ node: XCUIElementSnapshot) {
-                guard node.identifier != UIWindowMetrics.probeIdentifier else { return }
+                guard !UIWindowMetrics.isProbeIdentifier(node.identifier) else { return }
                 if node.elementType == .staticText && window.intersects(node.frame) {
                     lines.append("identifier=\(node.identifier) label=\(node.label) frame=\(frameText(node.frame))")
                 }

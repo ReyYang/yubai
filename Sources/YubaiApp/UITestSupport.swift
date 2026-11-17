@@ -1,5 +1,84 @@
-#if DEBUG && targetEnvironment(simulator)
+#if DEBUG
 import Foundation
+
+/// Pure app-side wire contract, also compiled by scripts/test-ui-helpers.py.
+/// XCTest truncates AX snapshot values at 512 characters (run 12 retained two
+/// exact 512-character JSON prefixes). Keep every value below that boundary;
+/// one subtree snapshot carries a manifest and generation-matched data parts.
+enum UITestMetricsPayload {
+    static let identifier = "uiTestWindowMetrics"
+    static let partLength = 400
+    struct Packet {
+        let manifest: String
+        let parts: [(identifier: String, value: String)]
+    }
+    static func dictionary(safeArea: [Double], transitioning: Bool, activeTransitions: [String],
+                           focused: String, focusedAfterAppearance: Bool?, scrolls: [[String: Any]],
+                           bamboo: [String: Any]?, bambooSurface: [String: Any]?) -> [String: Any] {
+        var value: [String: Any] = ["safeArea": safeArea, "transitioning": transitioning,
+            "activeTransitions": activeTransitions, "focused": focused, "scrolls": scrolls]
+        if let focusedAfterAppearance { value["focusedAfterAppearance"] = focusedAfterAppearance }
+        if let bamboo { value["bamboo"] = bamboo }
+        if let bambooSurface { value["bambooSurface"] = bambooSurface }
+        return value
+    }
+    static func bamboo(ready: [String], pending: Int, pendingKeys: [String], failed: [String],
+                       failedStages: [String: String], renders: Int, mainRenders: Int,
+                       activeRenders: Int, maxConcurrentRenders: Int, lastFailure: [String: Any]?) -> [String: Any] {
+        ["ready": ready, "pending": pending, "pendingKeys": pendingKeys, "failed": failed,
+         "failedStages": failedStages, "renders": renders, "mainRenders": mainRenders,
+         "activeRenders": activeRenders, "maxConcurrentRenders": maxConcurrentRenders,
+         "lastFailure": lastFailure.map { $0 as Any } ?? NSNull()]
+    }
+    static func encode(_ value: [String: Any]) throws -> Packet {
+        // JSONSerialization rejects NaN/inf and unsupported/wrapped objects.
+        // Never publish an empty or partial string on serialization failure.
+        let data = try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])
+        let bytes = Array(data.base64EncodedString().utf8)
+        let checksum = digest(data)
+        let parts = stride(from: 0, to: bytes.count, by: partLength).enumerated().map { index, offset in
+            (identifier: identifier + "." + checksum + "." + String(index),
+             value: String(decoding: bytes[offset..<min(offset + partLength, bytes.count)], as: UTF8.self))
+        }
+        let manifest = try JSONSerialization.data(withJSONObject: ["version": 1, "checksum": checksum,
+            "bytes": data.count, "parts": parts.count], options: [.sortedKeys])
+        return Packet(manifest: String(decoding: manifest, as: UTF8.self), parts: parts)
+    }
+    static func failure(_ error: Error) -> Packet {
+        let message = String(String(describing: error).prefix(200))
+        let data = try! JSONSerialization.data(withJSONObject: ["error": message], options: [.sortedKeys])
+        return Packet(manifest: String(decoding: data, as: UTF8.self), parts: [])
+    }
+    private static func digest(_ data: Data) -> String {
+        String(data.reduce(UInt64(14695981039346656037)) { ($0 ^ UInt64($1)) &* 1099511628211 }, radix: 16)
+    }
+}
+
+/// A non-clipping wrapper can have empty/offscreen bounds while its paper
+/// child still fills the window. Only clipping ancestors cut that child out.
+enum UITestPaperSurfaceSelection {
+    static func first<Node>(in root: Node, viewport: CGRect, children: (Node) -> [Node],
+                            visible: (Node) -> Bool, frame: (Node) -> CGRect, clips: (Node) -> Bool,
+                            surface: (Node) -> [String: Any]?) -> [String: Any]? {
+        var pending: [(Node, CGRect)] = [(root, viewport)]
+        var remaining = 2048
+        while remaining > 0, let (node, viewport) = pending.popLast() {
+            remaining -= 1
+            guard visible(node) else { continue }
+            let bounds = frame(node)
+            guard !bounds.isNull, !bounds.isInfinite else { continue }
+            if !bounds.isEmpty, bounds.intersects(viewport), let value = surface(node) { return value }
+            let clip = clips(node) ? viewport.intersection(bounds) : viewport
+            guard !clip.isEmpty, !clip.isNull else { continue }
+            pending.append(contentsOf: children(node).suffix(max(0, remaining - pending.count)).map { ($0, clip) })
+        }
+        // Unknown metadata is never permission to bypass the raster gate.
+        return nil
+    }
+}
+#endif
+
+#if DEBUG && targetEnvironment(simulator)
 import Observation
 import YubaiCore
 #if os(iOS)
@@ -22,6 +101,7 @@ struct UITestPaperSurface: UIViewRepresentable {
     final class Probe: UIView {
         var bambooKey: String?
         private weak var previousWindow: UIWindow?
+        private var sampledBounds = CGRect.null
         init(bambooKey: String?) {
             self.bambooKey = bambooKey
             super.init(frame: .zero)
@@ -34,6 +114,12 @@ struct UITestPaperSurface: UIViewRepresentable {
             UITestWindowMetrics.invalidate(in: previousWindow)
             UITestWindowMetrics.invalidate(in: window)
             previousWindow = window
+        }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard sampledBounds != bounds else { return }
+            sampledBounds = bounds
+            UITestWindowMetrics.invalidate(in: window)
         }
     }
 }
@@ -49,10 +135,14 @@ struct UITestWindowMetrics: UIViewRepresentable {
     func updateUIView(_ view: Probe, context: Context) {}
     final class Probe: UIView {
         fileprivate static let cache = MetricsCache()
+        private var metadata: [UIView] = []
+        private var publishedManifest = ""
         init() {
             super.init(frame: .zero)
             backgroundColor = .clear; isUserInteractionEnabled = false
-            accessibilityIdentifier = "uiTestWindowMetrics"
+            accessibilityIdentifier = UITestMetricsPayload.identifier
+            isAccessibilityElement = false
+            accessibilityContainerType = .semanticGroup
             updateAccessibility()
             NotificationCenter.default.addObserver(self, selector: #selector(updateAccessibility),
                 name: UIAccessibility.voiceOverStatusDidChangeNotification, object: nil)
@@ -60,23 +150,48 @@ struct UITestWindowMetrics: UIViewRepresentable {
         required init?(coder: NSCoder) { fatalError() }
         @objc private func updateAccessibility() {
             // Script metadata is queryable by XCTest, never a VoiceOver stop.
-            isAccessibilityElement = !UIAccessibility.isVoiceOverRunning
+            metadata.forEach { $0.isAccessibilityElement = !UIAccessibility.isVoiceOverRunning }
         }
-        // AX getters only return metadata. Native traversal runs after the
-        // snapshot, coalesced across probes and run-loop turns.
-        override var accessibilityValue: String? {
-            get { window.flatMap { Self.cache.value(in: $0) } }
+        // AX getters only schedule traversal; the subtree is published together
+        // on a later turn, never mutated while XCTest is resolving a snapshot.
+        override var accessibilityElements: [Any]? {
+            get {
+                if let window { Self.cache.request(in: window) }
+                return metadata
+            }
             set {}
+        }
+        fileprivate func apply(_ packet: UITestMetricsPayload.Packet) {
+            guard publishedManifest != packet.manifest else { return }
+            publishedManifest = packet.manifest
+            let values = [(identifier: UITestMetricsPayload.identifier + ".manifest", value: packet.manifest)] + packet.parts
+            while metadata.count > values.count { metadata.removeLast().removeFromSuperview() }
+            while metadata.count < values.count {
+                let node = UIView(frame: bounds)
+                node.isUserInteractionEnabled = false
+                addSubview(node); metadata.append(node)
+            }
+            for (node, value) in zip(metadata, values) {
+                node.accessibilityIdentifier = value.identifier
+                node.accessibilityValue = value.value
+            }
+            updateAccessibility()
+        }
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            for node in metadata { node.frame = bounds }
         }
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            if let window { Self.cache.request(in: window) }
+            Self.cache.register(self)
         }
     }
 
     @MainActor fileprivate final class MetricsCache: NSObject {
-        private var values: [ObjectIdentifier: (at: TimeInterval, json: String)] = [:]
+        private var values: [ObjectIdentifier: (at: TimeInterval, packet: UITestMetricsPayload.Packet)] = [:]
         private var pending: Set<ObjectIdentifier> = []
+        private struct WeakProbe { weak var view: Probe? }
+        private var probes: [ObjectIdentifier: WeakProbe] = [:]
         private weak var focusedResponder: UIResponder?
         private var focusedAfterAppearance: Bool?
         override init() {
@@ -94,9 +209,12 @@ struct UITestWindowMetrics: UIViewRepresentable {
             } else if focusedResponder === responder { focusedResponder = nil; focusedAfterAppearance = nil }
         }
 
-        func value(in window: UIWindow) -> String? {
+        func register(_ probe: Probe) {
+            probes = probes.filter { $0.value.view != nil }
+            probes[ObjectIdentifier(probe)] = WeakProbe(view: probe)
+            guard let window = probe.window else { return }
+            if let cached = values[ObjectIdentifier(window)] { probe.apply(cached.packet) }
             request(in: window)
-            return values[ObjectIdentifier(window)]?.json
         }
         func invalidate(in window: UIWindow) {
             values[ObjectIdentifier(window)] = nil
@@ -112,16 +230,20 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 guard let self else { return }
                 defer { self.pending.remove(key) }
                 guard let window else { self.values[key] = nil; return }
-                if let json = self.sample(in: window) {
-                    self.values[key] = (ProcessInfo.processInfo.systemUptime, json)
+                let packet: UITestMetricsPayload.Packet
+                do { packet = try UITestMetricsPayload.encode(self.sample(in: window)) }
+                catch { packet = UITestMetricsPayload.failure(error) }
+                self.values[key] = (ProcessInfo.processInfo.systemUptime, packet)
+                for probe in self.probes.values.compactMap(\.view) where probe.window === window {
+                    probe.apply(packet)
                 }
             }
         }
-        private func sample(in window: UIWindow) -> String? {
+        private func sample(in window: UIWindow) -> [String: Any] {
             // Never send a responder-chain action from an AX getter: SwiftUI
             // can reenter its own accessibility/layout work while resolving it.
             let focused = focusedResponder?.isFirstResponder == true ? (focusedResponder as? UIView)?.accessibilityIdentifier ?? "" : ""
-            func rect(_ value: CGRect) -> [CGFloat] { [value.minX, value.minY, value.width, value.height] }
+            func rect(_ value: CGRect) -> [Double] { [value.minX, value.minY, value.width, value.height].map(Double.init) }
             var scrolls: [[String: Any]] = []
             let windows = (window.windowScene?.windows ?? [window]).filter { !$0.isHidden && $0.alpha > 0 }
             // This metadata is advisory for reveal progress, never a reachability
@@ -137,8 +259,8 @@ struct UITestWindowMetrics: UIViewRepresentable {
                     let minimum = -scroll.adjustedContentInset.top
                     let maximum = max(minimum, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height)
                     scrolls.append(["identifier": scroll.accessibilityIdentifier ?? "", "frame": rect(frame),
-                                    "remainingDown": max(0, maximum - scroll.contentOffset.y) * scale,
-                                    "remainingUp": max(0, scroll.contentOffset.y - minimum) * scale,
+                                    "remainingDown": Double(max(0, maximum - scroll.contentOffset.y) * scale),
+                                    "remainingUp": Double(max(0, scroll.contentOffset.y - minimum) * scale),
                                     "panPoints": panPoints(in: scroll, window: scroll.window ?? window)])
                 }
                 pending.append(contentsOf: view.subviews.prefix(max(0, remaining - pending.count)))
@@ -160,17 +282,12 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 controllers.append(contentsOf: children.prefix(max(0, remaining - controllers.count)))
             }
             let safe = window.convert(window.safeAreaLayoutGuide.layoutFrame, to: nil)
-            var value: [String: Any] = ["safeArea": rect(safe), "transitioning": !activeTransitions.isEmpty,
-                                      "activeTransitions": activeTransitions,
-                                      "focused": focused, "scrolls": scrolls,
-                                      "bamboo": BambooRasterCache.shared.diagnostics]
-            if !focused.isEmpty, let focusedAfterAppearance { value["focusedAfterAppearance"] = focusedAfterAppearance }
-            if let surface = paperSurface(in: window) { value["bambooSurface"] = surface }
-            if let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
-               let json = String(data: data, encoding: .utf8) { return json }
-            return nil
+            return UITestMetricsPayload.dictionary(safeArea: rect(safe), transitioning: !activeTransitions.isEmpty,
+                activeTransitions: activeTransitions, focused: focused,
+                focusedAfterAppearance: focused.isEmpty ? nil : focusedAfterAppearance, scrolls: scrolls,
+                bamboo: BambooRasterCache.shared.diagnostics, bambooSurface: paperSurface(in: window))
         }
-        private func panPoints(in scroll: UIScrollView, window: UIWindow) -> [[CGFloat]] {
+        private func panPoints(in scroll: UIScrollView, window: UIWindow) -> [[Double]] {
             var viewport = scroll.convert(scroll.bounds, to: window).intersection(window.bounds)
             var ancestor = scroll.superview
             while let view = ancestor {
@@ -178,7 +295,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 ancestor = view.superview
             }
             guard !viewport.isEmpty, !viewport.isNull else { return [] }
-            var points: [[CGFloat]] = []
+            var points: [[Double]] = []
             for y in [CGFloat(0.78), 0.22, 0.5] {
                 // Inset List gutters avoid a card's own buttons/recognizers.
                 // Keep center candidates for full-width and nested scrolls.
@@ -191,7 +308,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
                     while let view = hit, !(view is UIScrollView) { hit = view.superview }
                     if hit === scroll {
                         let screen = window.convert(point, to: nil)
-                        points.append([screen.x, screen.y])
+                        points.append([Double(screen.x), Double(screen.y)])
                     }
                 }
             }
@@ -201,21 +318,14 @@ struct UITestWindowMetrics: UIViewRepresentable {
             // UIKit subviews are ordered back to front. Descend the frontmost
             // visible branch first, respecting native clipping and hidden tabs.
             // The modal's own PaperCanvas wins over the presenter's background.
-            var pending: [(UIView, CGRect)] = [(window, window.bounds)]
-            var remaining = 2048
-            while remaining > 0, let (view, viewport) = pending.popLast() {
-                remaining -= 1
-                guard !view.isHidden, view.alpha > 0, view.window === window else { continue }
-                let frame = view.convert(view.bounds, to: window)
-                guard !frame.isEmpty, frame.intersects(viewport) else { continue }
+            UITestPaperSurfaceSelection.first(in: window as UIView, viewport: window.bounds,
+                children: { $0.subviews }, visible: { !$0.isHidden && $0.alpha > 0 && $0.window === window },
+                frame: { $0.convert($0.bounds, to: window) }, clips: { $0.clipsToBounds }, surface: { view in
                 if let surface = view as? UITestPaperSurface.Probe {
                     return ["required": surface.bambooKey != nil, "key": surface.bambooKey.map { $0 as Any } ?? NSNull()]
                 }
-                let clip = view.clipsToBounds ? viewport.intersection(frame) : viewport
-                pending.append(contentsOf: view.subviews.suffix(max(0, remaining - pending.count)).map { ($0, clip) })
-            }
-            // Missing metadata is unknown, never permission to bypass the gate.
-            return nil
+                return nil
+            })
         }
     }
 }

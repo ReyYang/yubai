@@ -315,7 +315,12 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(app.staticTexts["今天 · 11月20日"].exists)
         XCTAssertGreaterThanOrEqual(element("ledgerHeroLabel").frame.minY, element("rootHeaderRegion").frame.maxY + 16)
         launch("v47r-deficit")
-        XCTAssertTrue(element("ledgerGapBill").label.contains("12月5日 房租"))
+        // savings47Ledger places the earliest unpaid bill two days after the
+        // scripted Nov 20 clock. Dec 5 belongs to the other ledger fixture.
+        XCTAssertEqual(element("ledgerGapBill").label, "11月22日 房租")
+        XCTAssertEqual(element("ledgerHeroLabel").label, "缺口")
+        XCTAssertGreaterThanOrEqual(element("ledgerHeroLabel").frame.minY, element("rootHeaderRegion").frame.maxY + 16)
+        XCTAssertGreaterThanOrEqual(element("ledgerGapBill").frame.minY, element("rootHeaderRegion").frame.maxY + 16)
     }
     func testSelectedInsightsReturnsToItsPeriodControl() {
         launch(large: true); tap("tab_insights")
@@ -421,8 +426,9 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("firstOpenEmptyAmount").exists); XCTAssertEqual(element("addEntry").label, "记第一笔")
         XCTAssertFalse(element("availableFunds").exists); XCTAssertTrue(element("tab_insights").exists)
     }
-    private func assertCaptureSurface(requiresBamboo: Bool, cold: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
-        let result = waitForBambooCapture(in: app)
+    private func assertCaptureSurface(requiresBamboo: Bool, cold: Bool = false, deadline: Date? = nil,
+                                      file: StaticString = #filePath, line: UInt = #line) {
+        let result = waitForBambooCapture(in: app, deadline: deadline)
         XCTAssertTrue(result.ready, result.description, file: file, line: line)
         XCTAssertEqual(result.surface?.required, requiresBamboo, result.description, file: file, line: line)
         if requiresBamboo {
@@ -462,7 +468,35 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     func testLockedPaperNeedsNoBambooRenderForCapture() {
         launch("gallery-locked", root: "lockedPage")
-        assertCaptureSurface(requiresBamboo: false, cold: true)
+        assertCaptureSurface(requiresBamboo: false, cold: true, deadline: Date().addingTimeInterval(5))
+    }
+    func testWindowMetricsSnapshotRetainsCompletePayloadOnLedgerAndLockedRoot() throws {
+        for large in [false, true] {
+            for (fixture, root, bamboo) in [("v47r-ledger", "mainNavigation", true), ("gallery-locked", "lockedPage", false)] {
+                launch(fixture, large: large, root: root)
+                assertCaptureSurface(requiresBamboo: bamboo, cold: !bamboo)
+                let tree = try app.snapshot()
+                var metadata: [XCUIElementSnapshot] = []
+                func collect(_ node: XCUIElementSnapshot) {
+                    if node.identifier.hasPrefix(UIWindowMetrics.probeIdentifier + ".") { metadata.append(node) }
+                    for child in node.children { collect(child) }
+                }
+                collect(tree)
+                XCTAssertTrue(metadata.contains { $0.identifier == UIWindowMetrics.probeIdentifier + ".manifest" })
+                XCTAssertGreaterThan(metadata.count, 1)
+                for node in metadata {
+                    let raw = try XCTUnwrap(node.value as? String)
+                    XCTAssertLessThanOrEqual(raw.utf8.count, 400, node.identifier)
+                }
+                let metrics = try XCTUnwrap(windowMetrics(in: tree), windowMetricsReadReport)
+                XCTAssertFalse(metrics.safeRectangle.isEmpty)
+                XCTAssertFalse(metrics.transitioning)
+                XCTAssertEqual(metrics.bambooSurface?.required, bamboo)
+                XCTAssertNotNil(metrics.bamboo)
+                XCTAssertEqual(app.state, .runningForeground)
+                app.terminate()
+            }
+        }
     }
     func testSharedPaydaySheetTitlesGrowAndPassNativeAuditsAcrossGalleryModes() {
         for large in [false, true] {

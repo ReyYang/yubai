@@ -749,7 +749,9 @@ final class AppFlowTests: YubaiUITestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 5), .completed, file: file, line: line)
     }
     private func backToRoot(_ app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(30)
         for _ in 0..<8 {
+            XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline), transitionWaitReport, file: file, line: line)
             if app.otherElements["mainNavigation"].exists && app.otherElements["mainNavigation"].isHittable { break }
             let custom = app.buttons["BackButton"]
             if custom.exists && custom.isHittable { tap(custom, in: app, file: file, line: line) }
