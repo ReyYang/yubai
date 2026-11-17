@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+import re
 
 from gallery_inventory import inventory
 
@@ -72,21 +73,31 @@ PARTS = [
 ]
 
 
-def matrix(root: Path, only: str = "") -> dict:
+def matrix(root: Path, only: str = "", parts: str = "") -> dict:
     scheduled = [walk for _, walk in PARTS]
     walks = inventory(root)
     if len(set(scheduled)) != len(scheduled) or set(scheduled) != set(walks):
         raise ValueError("Gallery matrix must include every XCTest walk exactly once")
     rows = [{"part": part, "walks": walk} for part, walk in PARTS if part.startswith(only)]
-    if not rows:
+    requested = set(filter(None, re.split(r"[\s,]+", parts)))
+    if not rows and not requested:
         raise ValueError("No gallery parts start with: " + only)
+    if requested:
+        rows = [row for row in rows if row["part"] in requested]
     return {"include": rows}
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--only", default="", help="Only gallery parts starting with this prefix")
+    parser.add_argument("--parts", default="", help="Space/comma-separated exact parts (UI names are ignored)")
     parser.add_argument("--github-output", action="store_true")
     args = parser.parse_args()
-    result = json.dumps(matrix(Path(__file__).resolve().parent.parent, args.only), separators=(",", ":"))
+    try:
+        selected = matrix(Path(__file__).resolve().parent.parent, args.only, args.parts)
+    except ValueError as error:
+        parser.error(str(error))
+    result = json.dumps(selected, separators=(",", ":"))
     print(("matrix=" if args.github_output else "") + result)
+    if args.github_output:
+        print("has-shards=" + str(bool(selected["include"])).lower())

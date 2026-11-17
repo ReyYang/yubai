@@ -8,6 +8,10 @@ on:
         description: '仅运行此前缀的截图分片；测试保留 Round47 与 unit（空白则运行全部）'
         type: string
         default: ''
+      parts:
+        description: '仅运行指定分片或 UI 测试类（空格或逗号分隔；空白则沿用全部所选分片）'
+        type: string
+        default: ''
       release_builds:
         description: '同时做 Release 构建（iOS 真机与 macOS，不签名）'
         type: boolean
@@ -19,25 +23,27 @@ on:
         default: tests
 
 concurrency:
-  group: ios-${{ github.ref }}
+  group: ${{ inputs.parts != '' && format('ios-parts-{0}-{1}', github.ref, inputs.parts) || format('ios-{0}', github.ref) }}
   cancel-in-progress: true
 
 jobs:
   test-shards:
-    if: inputs.mode != 'gallery'
+    # 所有 mode 都先校验两套分片的共同名称，避免拼错后静默跳过。
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.shards.outputs.matrix }}
+      has-shards: ${{ steps.shards.outputs.has-shards }}
     steps:
       - uses: actions/checkout@v4
       - id: shards
-        name: 从源码生成测试分片
+        name: 校验分片名称并生成测试分片
         env:
           YUBAI_TEST_ONLY: ${{ inputs.only }}
-        run: python3 scripts/ui-test-shards.py --only "$YUBAI_TEST_ONLY" --github-output >> "$GITHUB_OUTPUT"
+          YUBAI_TEST_PARTS: ${{ inputs.parts }}
+        run: python3 scripts/ui-test-shards.py --only "$YUBAI_TEST_ONLY" --parts "$YUBAI_TEST_PARTS" --validate-parts --github-output >> "$GITHUB_OUTPUT"
 
   simulator:
-    if: inputs.mode != 'gallery'
+    if: inputs.mode != 'gallery' && needs.test-shards.outputs.has-shards == 'true'
     needs: test-shards
     runs-on: macos-26
     timeout-minutes: 40
@@ -151,34 +157,49 @@ jobs:
           MODE: ${{ inputs.mode }}
           SHARDS_RESULT: ${{ needs.test-shards.result }}
           TESTS_RESULT: ${{ needs.simulator.result }}
+          TESTS_HAS_SHARDS: ${{ needs.test-shards.outputs.has-shards }}
           GALLERY_SHARDS_RESULT: ${{ needs.gallery-shards.result }}
           GALLERY_RESULT: ${{ needs.gallery.result }}
+          GALLERY_HAS_SHARDS: ${{ needs.gallery-shards.outputs.has-shards }}
         run: |
           echo "测试分片：$SHARDS_RESULT / $TESTS_RESULT；截图分片：$GALLERY_SHARDS_RESULT / $GALLERY_RESULT" >> "$GITHUB_STEP_SUMMARY"
+          test "$SHARDS_RESULT" = success
           if [ "$MODE" != gallery ]; then
-            test "$SHARDS_RESULT" = success
-            test "$TESTS_RESULT" = success
+            if [ "$TESTS_HAS_SHARDS" = true ]; then
+              test "$TESTS_RESULT" = success
+            else
+              test "$TESTS_HAS_SHARDS" = false
+              test "$TESTS_RESULT" = skipped
+            fi
           fi
           if [ "$MODE" != tests ]; then
             test "$GALLERY_SHARDS_RESULT" = success
-            test "$GALLERY_RESULT" = success
+            if [ "$GALLERY_HAS_SHARDS" = true ]; then
+              test "$GALLERY_RESULT" = success
+            else
+              test "$GALLERY_HAS_SHARDS" = false
+              test "$GALLERY_RESULT" = skipped
+            fi
           fi
 
   gallery-shards:
     if: inputs.mode != 'tests'
+    needs: test-shards
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.shards.outputs.matrix }}
+      has-shards: ${{ steps.shards.outputs.has-shards }}
     steps:
       - uses: actions/checkout@v4
       - id: shards
         name: 从源码生成截图分片
         env:
           YUBAI_TEST_ONLY: ${{ inputs.only }}
-        run: python3 scripts/gallery-shards.py --only "$YUBAI_TEST_ONLY" --github-output >> "$GITHUB_OUTPUT"
+          YUBAI_TEST_PARTS: ${{ inputs.parts }}
+        run: python3 scripts/gallery-shards.py --only "$YUBAI_TEST_ONLY" --parts "$YUBAI_TEST_PARTS" --github-output >> "$GITHUB_OUTPUT"
 
   gallery:
-    if: inputs.mode != 'tests'
+    if: inputs.mode != 'tests' && needs.gallery-shards.outputs.has-shards == 'true'
     needs: gallery-shards
     runs-on: macos-26
     timeout-minutes: 50

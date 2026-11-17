@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Generate exact XCTest selectors from source; keep the gallery in its own job."""
 import argparse
+import importlib.util
 import json
 from pathlib import Path
 import re
 
 
-def matrix(root: Path, size: int = 8, only: str = "") -> dict:
+def matrix(root: Path, size: int = 8, only: str = "", parts: str = "") -> dict:
     classes: dict[str, list[str]] = {}
     for path in sorted((root / "Tests/YubaiUITests").glob("*.swift")):
         source = path.read_text()
@@ -35,13 +36,46 @@ def matrix(root: Path, size: int = 8, only: str = "") -> dict:
                            "tests": [f"YubaiUITests/{name}/{method}" for method in methods[start:start + size]]})
     if only:
         shards = [row for row in shards if row["part"] == "unit" or "Round47" in row["part"]]
+    requested = set(filter(None, re.split(r"[\s,]+", parts)))
+    if requested:
+        shards = [row for row in shards if row["part"] in requested
+                  or row["part"].rsplit("-", 1)[0] in requested]
     return {"include": shards}
+
+
+def validate_parts(root: Path, parts: str) -> None:
+    """Validate the shared namespace once in CI, before --only or mode filtering."""
+    requested = set(filter(None, re.split(r"[\s,]+", parts)))
+    if not requested:
+        return
+    rows = matrix(root)["include"]
+    known = {row["part"] for row in rows}
+    known.update(row["part"].rsplit("-", 1)[0] for row in rows if row["part"].startswith("ui-"))
+    spec = importlib.util.spec_from_file_location("gallery_shards", Path(__file__).with_name("gallery-shards.py"))
+    gallery = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gallery)
+    known.update(row["part"] for row in gallery.matrix(root)["include"])
+    unknown = requested - known
+    if unknown:
+        raise ValueError("Unknown shard part(s): " + ", ".join(sorted(unknown))
+                         + ". Use exact UI/gallery part names or ui-<XCTestClass> for all class shards.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--github-output", action="store_true")
     parser.add_argument("--only", default="", help="When set, keep unit and Round47 UI shards")
+    parser.add_argument("--parts", default="", help="Space/comma-separated exact parts or ui-<XCTestClass> names")
+    parser.add_argument("--validate-parts", action="store_true", help="Reject parts unknown to both shard scripts")
     args = parser.parse_args()
-    result = json.dumps(matrix(Path(__file__).resolve().parent.parent, only=args.only), separators=(",", ":"))
+    root = Path(__file__).resolve().parent.parent
+    try:
+        if args.validate_parts:
+            validate_parts(root, args.parts)
+        selected = matrix(root, only=args.only, parts=args.parts)
+    except ValueError as error:
+        parser.error(str(error))
+    result = json.dumps(selected, separators=(",", ":"))
     print(("matrix=" if args.github_output else "") + result)
+    if args.github_output:
+        print("has-shards=" + str(bool(selected["include"])).lower())

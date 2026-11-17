@@ -5,9 +5,11 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+subprocess.run([sys.executable, str(ROOT / "scripts/tests/test_shards.py")], check=True)
 UI = ROOT / "Tests/YubaiUITests"
 names = ["Round47FrameWaitTests", "Round47RevealProgressTests", "Round47ViewportGeometryTests",
          "Round47KeyboardOwnershipTests", "Round47GalleryProcessTests"]
