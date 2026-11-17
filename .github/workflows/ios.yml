@@ -107,7 +107,10 @@ jobs:
           retention-days: 2
 
   simulator:
-    if: inputs.mode != 'gallery' && needs.test-shards.outputs.has-gate-shards == 'true'
+    if: >-
+      always() && !cancelled() && inputs.mode != 'gallery' &&
+      needs.test-shards.outputs.has-gate-shards == 'true' &&
+      needs.simulator-build.result == 'success'
     needs: [test-shards, simulator-build]
     runs-on: macos-26
     timeout-minutes: 40
@@ -322,7 +325,10 @@ jobs:
         run: bash scripts/check-ui-consistency.sh
 
   gallery:
-    if: inputs.mode != 'tests' && needs.gallery-shards.outputs.has-shards == 'true'
+    if: >-
+      always() && !cancelled() && inputs.mode != 'tests' &&
+      needs.gallery-shards.outputs.has-shards == 'true' &&
+      needs.simulator-build.result == 'success'
     needs: [gallery-shards, simulator-build]
     runs-on: macos-26
     timeout-minutes: 50

@@ -359,6 +359,18 @@ class GalleryInventoryTests(unittest.TestCase):
                         INVENTORY.check(root)
 
 
+class WorkflowGuardTests(unittest.TestCase):
+    def test_build_consumers_survive_skipped_ancestors(self):
+        workflow = (ROOT / ".github/workflows/ios.yml").read_text()
+        for name in ("simulator", "gallery", "simulator-diagnostics"):
+            with self.subTest(job=name):
+                header = workflow.split(f"\n  {name}:\n", 1)[1].split("\n    needs:", 1)[0]
+                condition = " ".join(header.split("    if:", 1)[1].split()).removeprefix(">- ")
+                clauses = condition.split(" && ")
+                self.assertEqual(clauses[:2], ["always()", "!cancelled()"])
+                self.assertIn("needs.simulator-build.result == 'success'", clauses)
+
+
 class ResultGateTests(unittest.TestCase):
     """Execute the actual final workflow shell so empty sides cannot hide failures."""
     def test_result_gate_modes_empty_sides_and_failures(self):
