@@ -10,7 +10,8 @@ final class ScreenGalleryTests: YubaiUITestCase {
     private var activeStop: String?
     private var processes = GalleryProcessHistory()
     private var stopHasReportedResult = false
-    private var stopDeadline = Date.distantFuture
+    private let stopBudget = GalleryStopBudget()
+    private var stopDeadline: Date { stopBudget.deadline }
     private var attachedAuditInventory = false
     private var verifiedHeadlines: Set<String> = []
     private var issues: [String] = []
@@ -132,9 +133,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stopHasReportedResult = false
         processes.enterStop(name)
         print("GALLERY-PROCESS stop=\(name) run=\(processes.run) begin")
-        stopDeadline = Date().addingTimeInterval(budget)
+        stopBudget.begin(budget)
         attachedAuditInventory = false
-        defer { activeStop = nil }
+        defer { activeStop = nil; stopBudget.end() }
         var walkFailed = false
         do { try walk() }
         catch { walkFailed = true; issues.append(String(describing: error).replacingOccurrences(of: "\n", with: " ")) }
@@ -148,12 +149,16 @@ final class ScreenGalleryTests: YubaiUITestCase {
             let scroll = app.scrollViews.firstMatch
             if scroll.exists, !waitForStableFrame(scroll, deadline: stopDeadline) { issues.append("Scroll/presentation frame did not settle") }
         }
-        do { if captureProcessIsRunning(phase: "before audit") { try auditGallery() } }
+        do {
+            try stopBudget.excluding {
+                if captureProcessIsRunning(phase: "before audit") { try auditGallery() }
+            }
+        }
         catch { issues.append("Audit failed: " + String(describing: error)) }
         _ = captureProcessIsRunning(phase: "after audit")
         // The writer checks process state after capture and chooses -MISSING
         // using all resulting issues. Do not run a second readiness wait after
-        // the first one has consumed this stop's hard deadline.
+        // the first one has consumed this stop's navigation/capture budget.
         shot(name)
         issues = Array(Set(issues)).sorted()
         let failed = !issues.isEmpty
@@ -248,35 +253,38 @@ final class ScreenGalleryTests: YubaiUITestCase {
     }
     private func launch(_ fixture: String = "gallery", dark: Bool = false, large: Bool = false, organization: String? = nil, statement: String? = nil, longToast: Bool = false, reduceMotion: Bool = false, restoring: Bool = false, versions: Bool = false) throws {
         relaunch = { [unowned self] in try self.launch(fixture, dark: dark, large: large, organization: organization, statement: statement, longToast: longToast, reduceMotion: reduceMotion, restoring: restoring, versions: versions) }
-        collectMainThreadStalls(in: app, context: activeStop ?? prefix + "relaunch")
-        observeStoppedProcess(phase: "before intentional relaunch")
-        app.terminate(); app = XCUIApplication()
-        app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
-        app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
-        app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
-        if fixture.hasPrefix("v47") {
-            let instant = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 20))!
-            app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(instant.timeIntervalSince1970)
+        // Launch retries and cold AX root discovery already have bounded waits.
+        // Recovery after a failed stop must not inherit its exhausted deadline.
+        try stopBudget.excluding {
+            collectMainThreadStalls(in: app, context: activeStop ?? prefix + "relaunch")
+            observeStoppedProcess(phase: "before intentional relaunch")
+            app.terminate(); app = XCUIApplication()
+            app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", large ? "UICTContentSizeCategoryAccessibilityXXXL" : "UICTContentSizeCategoryL"]
+            app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] = fixture
+            if fixture.hasPrefix("v47") {
+                let instant = Calendar.current.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 20))!
+                app.launchEnvironment["YUBAI_UI_TEST_NOW"] = String(instant.timeIntervalSince1970)
+            }
+            app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = galleryMode == .hidden ? "1" : "0"
+            app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
+            app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
+            app.launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] = reduceMotion ? "1" : "0"
+            app.launchEnvironment["YUBAI_GALLERY_TOAST"] = longToast ? "1" : "0"
+            app.launchEnvironment["YUBAI_GALLERY_RESTORE"] = restoring ? "1" : "0"
+            app.launchEnvironment["YUBAI_GALLERY_VERSIONS"] = versions ? "1" : "0"
+            app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
+            app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
+            app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
+            if let organization { app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = organization }
+            if let statement { app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(statement.utf8).base64EncodedString() }
+            guard launchApp(app) else { throw Miss(description: "Application launch failed after three attempts") }
+            processes.launched(in: activeStop)
+            print("GALLERY-PROCESS stop=\(activeStop ?? prefix) run=\(processes.run) launched")
+            // One strict route check includes existence, native transition and
+            // two stable frames, retaining its original discovery allowance.
+            try destination(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
         }
-        app.launchEnvironment["YUBAI_GALLERY_HIDE_AMOUNTS"] = galleryMode == .hidden ? "1" : "0"
-        app.launchEnvironment["YUBAI_UI_TEST_CONFIGURED_KEY"] = "1"
-        app.launchEnvironment["YUBAI_UI_TEST_KEEP_UNDO"] = "1"
-        app.launchEnvironment["YUBAI_UI_TEST_REDUCE_MOTION"] = reduceMotion ? "1" : "0"
-        app.launchEnvironment["YUBAI_GALLERY_TOAST"] = longToast ? "1" : "0"
-        app.launchEnvironment["YUBAI_GALLERY_RESTORE"] = restoring ? "1" : "0"
-        app.launchEnvironment["YUBAI_GALLERY_VERSIONS"] = versions ? "1" : "0"
-        app.launchEnvironment["YUBAI_GALLERY_APPEARANCE"] = dark ? "dark" : "light"
-        app.launchEnvironment["YUBAI_UI_TEST_ENTRY_EXPLICIT_FINISH"] = "1"
-        app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
-        if let organization { app.launchEnvironment["YUBAI_UI_ORGANIZATION_SCENARIO"] = organization }
-        if let statement { app.launchEnvironment["YUBAI_UI_STATEMENT"] = Data(statement.utf8).base64EncodedString() }
-        guard launchApp(app) else { throw Miss(description: "Application launch failed after three attempts") }
-        processes.launched(in: activeStop)
-        print("GALLERY-PROCESS stop=\(activeStop ?? prefix) run=\(processes.run) launched")
-        // One strict route check includes existence, native transition and
-        // two stable frames. A preceding XCTest existence poll duplicated it
-        // and consumed the final second after the measured cold launch.
-        try destination(fixture == "gallery-locked" ? "lockedPage" : "mainNavigation", timeout: 15)
         print("GALLERY-PHASE stop=\(activeStop ?? prefix) phase=launched remaining=\(stopDeadline.timeIntervalSinceNow)")
     }
     private func drag(_ scroll: XCUIElement, up: Bool = true) throws {

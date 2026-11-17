@@ -1,5 +1,29 @@
 import Foundation
 
+/// Navigation and capture share one budget per stop. Xcode launch/root discovery
+/// and the native audit have their own bounds; charging them here can leave the
+/// first capture read with an already-expired deadline. Never renew a spent
+/// budget when returning from either operation, including a failed recovery.
+final class GalleryStopBudget {
+    private let clock: () -> Date
+    private(set) var deadline = Date.distantFuture
+
+    init(clock: @escaping () -> Date = { Date() }) { self.clock = clock }
+    func begin(_ duration: TimeInterval) { deadline = clock().addingTimeInterval(duration) }
+    func end() { deadline = .distantFuture }
+
+    func excluding<T>(_ operation: () throws -> T) rethrows -> T {
+        let saved = deadline, start = clock()
+        // The excluded operation still uses its existing local wait bounds,
+        // including the first AX observation, without this stop's hard cap.
+        deadline = .distantFuture
+        defer {
+            deadline = saved == .distantFuture ? saved : saved.addingTimeInterval(clock().timeIntervalSince(start))
+        }
+        return try operation()
+    }
+}
+
 /// XCTest can deliver an app's crash issue after another fixture has launched.
 /// Keep the last stop that owned each process, even after intentional relaunch.
 struct GalleryProcessHistory {
@@ -35,6 +59,9 @@ struct GalleryProcessHistory {
 /// recording also shows the selected fixed-amount label growing and stacking
 /// DURING the native audit (19.0s -> 21.6s), then returning to its original size.
 /// Its composite selected AX node's Dynamic Type finding is a false positive.
+/// fixC34: ordinary light/dark and largest-size frequent-sheet PNGs also show
+/// the complete title. ManualSheetHeader measures it at its placed width with
+/// unlimited lines/height; the audit mistakes that custom title for a clip.
 /// Keep the stop, category, element kind, identifier and full label exact.
 enum GalleryTextReview {
     enum Kind { case button, text, other }
@@ -48,6 +75,7 @@ enum GalleryTextReview {
             ["V47-\(mode)-Spend-Edit-Saving", "V47-\(mode)-Spend-Edit-Deficit"]
         }
         let paydayStops = ["light", "dark", "a11y"].map { "V47-\($0)-First-After-Setup" }
+        let frequentStops = ["light", "dark", "a11y"].map { "V47-\($0)-Empty-Frequent" }
         if savingStops.contains(stop), kind == .button, identifier == "savingMode_fixed", label == "固定金额" {
             switch category {
             case .textClipped: reason = "PNG-reviewed complete fixed-amount label at largest size"
@@ -58,6 +86,8 @@ enum GalleryTextReview {
             }
         } else if paydayStops.contains(stop), kind == .text, identifier.isEmpty, label == "哪天发工资", category == .textClipped {
             reason = "PNG-reviewed complete payday sheet title"
+        } else if frequentStops.contains(stop), kind == .text, identifier.isEmpty, label == "整理常用", category == .textClipped {
+            reason = "PNG-reviewed complete frequent sheet title"
         } else { return nil }
         let categoryName = category == .dynamicType ? "Dynamic Type" : "Text clipped"
         return stop + ": " + categoryName + ": " + reason + "; " + elementDescription + " " + auditText
