@@ -31,7 +31,7 @@ if [[ "${YUBAI_PREBUILT_DERIVED_DATA+x}" == x ]]; then
 fi
 only=()
 for name in ${GALLERY_ONLY:-}; do only+=("-only-testing:YubaiUITests/ScreenGalleryTests/$name"); done
-(( ${#only[@]} )) || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
+[[ ${only[@]+set} ]] || only=("-only-testing:YubaiUITests/ScreenGalleryTests")
 set +e
 run_started=$(date +%s)
 printf '%s\n' "$run_started" > "$shots/run-started-at"
@@ -42,11 +42,11 @@ collect_crashes() {
 trap collect_crashes EXIT
 bash "$repo_root/scripts/prepare-simulator-keyboard.sh" "$simulator" \
     || echo "warning: keyboard first-use preference unavailable; scoped introduction dismissal remains enabled" >&2
-env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild "${action[@]}" \
+env TEST_RUNNER_YUBAI_GALLERY_DIR="$shots" xcodebuild ${action[@]+"${action[@]}"} \
     -destination "platform=iOS Simulator,id=$simulator" \
-    "${only[@]}" \
+    ${only[@]+"${only[@]}"} \
     -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
-    -resultBundlePath "$result" "${build_options[@]}" 2>&1 | tee "$run_dir/xcodebuild.log"
+    -resultBundlePath "$result" ${build_options[@]+"${build_options[@]}"} 2>&1 | tee "$run_dir/xcodebuild.log"
 build_status=${PIPESTATUS[0]}
 set -e
 

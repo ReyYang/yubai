@@ -4,6 +4,7 @@ import argparse
 import re
 from pathlib import Path
 from gallery_inventory import check as check_gallery
+from bash_array_consistency import check as check_bash_arrays, self_test as test_bash_arrays
 
 ROOT = Path(__file__).resolve().parents[1]
 # Only the shared design system implements input, navigation and geometry.
@@ -225,7 +226,8 @@ def main():
     args = parser.parse_args()
     if args.self_test:
         self_test()
-    errors = []
+        test_bash_arrays()
+    errors = check_bash_arrays(ROOT)
     for path in sorted((ROOT / 'Sources/YubaiApp').glob('*.swift')):
         errors.extend(violations(path.name, path.read_text()))
     for directory in ('Sources/YubaiCore', 'Tests'):
@@ -261,7 +263,7 @@ def main():
     if errors:
         print('\n'.join(errors))
         raise SystemExit(1)
-    print('UI consistency: PASS (shared inputs/back/toast, tokens, vocabulary, charts, gallery)')
+    print('UI consistency: PASS (shared inputs/back/toast, tokens, vocabulary, charts, gallery, bash arrays)')
 
 
 if __name__ == '__main__':
