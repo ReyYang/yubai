@@ -305,11 +305,12 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         saved(); back()
         XCTAssertTrue(element("expandToast").exists || element("expandToast").waitForExistence(timeout: 5))
         XCTAssertTrue(waitForStableFrame(element("toastMessage")))
-        let collapsedHeight = element("toastMessage").frame.height
-        XCTAssertGreaterThan(collapsedHeight, 0)
+        let bodyLineHeight: CGFloat = 22 // YubaiFont.body.lineHeight in DesignSystem.swift (default Dynamic Type).
+        let minimumExpandedHeight = 2 * bodyLineHeight
         element("expandToast").tap(); XCTAssertEqual(element("expandToast").value as? String, "已展开")
-        XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { self.element("toastMessage").frame.height > collapsedHeight }))
-        XCTAssertGreaterThan(element("toastMessage").frame.height, collapsedHeight)
+        // Two body lines fit in YubaiSize.tapMin (44 pt), so expansion need not grow the button.
+        XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { self.element("toastMessage").frame.height >= minimumExpandedHeight }))
+        XCTAssertGreaterThanOrEqual(element("toastMessage").frame.height, minimumExpandedHeight)
         let remains = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !self.element("toastMessage").exists }, object: nil)
         remains.isInverted = true
         XCTAssertEqual(XCTWaiter.wait(for: [remains], timeout: 7), .completed)
