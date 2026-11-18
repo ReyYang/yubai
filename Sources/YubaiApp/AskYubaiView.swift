@@ -73,8 +73,8 @@ struct AskYubaiView: View {
     @State private var conversationLedgerID: UUID?
     private var configured: Bool { IntelligenceRuntime.isConfigured }
     @FocusState private var inputFocused: Bool
-    private var enabled: Bool { store.preferences.isAIEnabled(for: .answers) && configured && IntelligenceRuntime.cloud.unavailableModel == nil && connectivity.connected }
-    private var canRecognizeReceipt: Bool { enabled && store.preferences.isAIEnabled(for: .receiptRecognition) }
+    private var cloudAnswersAvailable: Bool { store.cloudAIReady && connectivity.connected }
+    private var canRecognizeReceipt: Bool { cloudAnswersAvailable && store.preferences.isAIEnabled(for: .receiptRecognition) }
     private var headerTitle: String {
         let replies = messages.compactMap(\.reply)
         if replies.contains(where: { $0.purchaseJudgment != nil || !($0.purchaseQuestions ?? []).isEmpty }) { return "该不该买" }
@@ -90,7 +90,7 @@ struct AskYubaiView: View {
         cancel(); messages = []; session = AskYubaiSession(); store.askConversation.clear()
     }
     @MainActor private func sendPendingQuestion() {
-        guard pendingAutoSend, enabled, !busy, !input.isEmpty else { return }
+        guard pendingAutoSend, !busy, !input.isEmpty else { return }
         pendingAutoSend = false
         send()
     }
@@ -107,8 +107,11 @@ struct AskYubaiView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
             .modifier(AskPageHeader(inSheet: inSheet, showsClear: !messages.isEmpty, clear: clearConversation))
-            .onChange(of: enabled) { _, _ in sendPendingQuestion() }
-            .task { try? await Task.sleep(nanoseconds: 400_000_000); sendPendingQuestion() }
+            .onChange(of: cloudAnswersAvailable) { _, available in if available { sendPendingQuestion() } }
+            .task {
+                try? await Task.sleep(nanoseconds: 400_000_000)
+                if !Task.isCancelled { sendPendingQuestion() }
+            }
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in
                 Task { @MainActor in
@@ -152,6 +155,8 @@ struct AskYubaiView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                    if messages.isEmpty && !busy && !reading { suggestions }
+                    availabilityStatus
                     ForEach(messages) { message in
                         messageView(message, proxy: proxy).messageEntrance(user: message.isUser).id(message.id)
                     }
@@ -161,7 +166,8 @@ struct AskYubaiView: View {
                     if !errorText.isEmpty { InlineNote(text: errorText, style: .attention) }
                     if !voice.errorText.isEmpty && !voice.permissionDenied { InlineNote(text: voice.errorText) }
                     Color.clear.frame(height: YubaiSize.separator).id("latest")
-                }.padding(YubaiSpace.space20).frame(maxWidth: YubaiSize.contentMedium).frame(maxWidth: .infinity)
+                }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space20)
+                    .frame(maxWidth: YubaiSize.contentMedium, alignment: .leading).frame(maxWidth: .infinity)
             }.onChange(of: messages.count) { _, _ in
                 if let last = messages.last, !(last.reply?.purchaseQuestions ?? []).isEmpty {
                     inputFocused = false
@@ -170,26 +176,18 @@ struct AskYubaiView: View {
             }
         }
     }
+    private var suggestions: some View {
+        ChipFlow {
+            ForEach(AskYubai.exampleQuestions(ledger: store.current, occurrences: store.funds.occurrences, now: Dates.now), id: \.self) { question in
+                CategoryChoiceChip(title: question) { input = question; send() }
+            }
+        }
+    }
     private var inputBar: some View {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        return VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            if messages.isEmpty && !busy && !reading {
-                VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-                    ForEach(AskYubai.exampleQuestions(ledger: store.current, occurrences: store.funds.occurrences, now: Dates.now), id: \.self) { question in
-                        Button { input = question; send() } label: {
-                            Text(question).yubaiFont(YubaiFont.callout).padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.gapGroup)
-                                .frame(minHeight: YubaiSize.tapMin)
-                                .overlay { Capsule().strokeBorder(YubaiColor.grabber, lineWidth: YubaiSize.separator) }
-                                .contentShape(Capsule())
-                        }.foregroundStyle(enabled ? YubaiColor.label : YubaiColor.labelSecondary)
-                            .buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.55)
-                    }
-                }
-            }
-            availabilityStatus
-            ChatInputBar(text: $input, placeholder: messages.isEmpty ? "问一句" : "接着问",
-                accessibilityLabel: enabled ? "问余白" : "问余白（暂不可用）", inputID: "askInput", sendID: "sendAsk",
-                enabled: enabled, busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied))), focus: $inputFocused, send: send) {
+        return ChatInputBar(text: $input, placeholder: messages.isEmpty ? "问一句" : "接着问",
+                accessibilityLabel: "问余白", inputID: "askInput", sendID: "sendAsk",
+                busy: busy || reading, showSend: !(voice.recording || (trimmed.isEmpty && (voice.available || voice.permissionDenied))), focus: $inputFocused, send: send) {
                 Menu {
                     Button("从照片选择截图") { photoPicker = true }.accessibilityIdentifier("askChooseReceiptPhoto")
                     Button("选择图片文件") { filePicker = true }.accessibilityIdentifier("askChooseReceiptFile")
@@ -210,18 +208,19 @@ struct AskYubaiView: View {
                     }.accessibilityLabel(voice.recording ? "停止听写" : "语音输入").disabled(voice.permissionDenied)
                 }
             }
-        }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.insetPage)
+            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.insetPage)
+            .frame(maxWidth: YubaiSize.contentMedium).frame(maxWidth: .infinity)
     }
     @ViewBuilder private var availabilityStatus: some View {
         if !configured {
-            NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "还没配密钥 ›", variant: .amber, showsDot: false) }
-                .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity).accessibilityHint("打开智能与隐私，配置密钥")
+            NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "配密钥开启深度对话 ›", variant: .amber, showsDot: false) }
+                .buttonStyle(PressButtonStyle()).accessibilityHint("打开智能与隐私，配置密钥")
                 .accessibilityIdentifier("configureAskKey")
         } else if !connectivity.connected {
-            Pill(text: "没联网", variant: .amber, showsDot: false).frame(maxWidth: .infinity)
+            Pill(text: "没联网", variant: .amber, showsDot: false)
         } else if !store.preferences.isAIEnabled(for: .answers) {
             NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "云端智能没开 ›", variant: .amber, showsDot: false) }
-                .buttonStyle(PressButtonStyle()).frame(maxWidth: .infinity).accessibilityIdentifier("enableAskAI")
+                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("enableAskAI")
         } else if let model = IntelligenceRuntime.cloud.unavailableModel {
             NavigationLink { IntelligencePrivacyView() } label: { Pill(text: "模型不可用 ›", variant: .amber, showsDot: false) }
                 .buttonStyle(PressButtonStyle()).accessibilityLabel("模型「\(model)」不可用，换个模型")
@@ -244,7 +243,7 @@ struct AskYubaiView: View {
         } else if let reply = message.reply {
             if let statement = reply.pastedStatement { AskPastedStatementCard(statement: statement) }
             else if isWhereReply(reply, message: message) { WhereAnswerCard() }
-            else if showsStandardReply(reply) { standardReplyCard(reply, message: message) }
+            else if showsStandardReply(reply) { standardReplyCard(message) }
             ForEach(reply.proposedChangeSets) { change in
                 changeCard(change, message: message)
             }
@@ -255,7 +254,7 @@ struct AskYubaiView: View {
                 SavingPurchaseCard(purchase: purchase, verdict: reply.purchaseVerdict, evidence: reply.evidenceEntryIDs,
                     notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
             }
-        }
+        } else { standardReplyCard(message) }
     }
     private func purchaseQuestions(_ questions: [PurchaseQuestion], reply: AssistantReply, message: AskMessage, proxy: ScrollViewProxy) -> some View {
         let actionsID = "purchaseActions_" + message.id.uuidString
@@ -280,15 +279,17 @@ struct AskYubaiView: View {
         if !drafts.isEmpty && drafts.count == change.items.count { AskEntryDraftCard(change: change, drafts: drafts, image: message.image) }
         else { AskChangeCard(change: change) }
     }
-    private func standardReplyCard(_ reply: AssistantReply, message: AskMessage) -> some View {
+    private func standardReplyCard(_ message: AskMessage) -> some View {
         AssistantCard {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                 HStack(spacing: YubaiSpace.space8) { AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true); Text("余白").yubaiFont(YubaiFont.meta) }.foregroundStyle(YubaiColor.brandInk)
-                Text(store.preferences.hideAmounts ? "金额已隐藏。" : reply.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
-                replyEvidence(reply, message: message)
-                unverifiedAmounts(reply)
-                if message.protectedEdit { protectedRecords(message) }
-                RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
+                Text(store.preferences.hideAmounts ? "金额已隐藏。" : message.text).yubaiFont(YubaiFont.body).textSelection(.enabled).accessibilityIdentifier("askAnswer")
+                if let reply = message.reply {
+                    replyEvidence(reply, message: message)
+                    unverifiedAmounts(reply)
+                    if message.protectedEdit { protectedRecords(message) }
+                    RememberedRows(notes: reply.rememberedNotes + reply.updatedNotes.map(\.note))
+                }
             }
         }
     }
@@ -332,10 +333,20 @@ struct AskYubaiView: View {
     }
     @MainActor private func send() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard enabled, !busy, !text.isEmpty else { return }
+        guard !busy, !reading, !store.locked, !text.isEmpty else { return }
+        pendingAutoSend = false
         let ledger = store.current; let image = originalImage
-        guard image == nil || canRecognizeReceipt,
-              let transport = store.assistantTransport(for: ledger, feature: image == nil ? .answers : .receiptRecognition) else { return }
+        let feature: AIFeature = image == nil ? .answers : .receiptRecognition
+        guard cloudAnswersAvailable, image == nil || canRecognizeReceipt,
+              let transport = store.assistantTransport(for: ledger, feature: feature) else {
+            let priorPurchase = messages.last.map { !$0.isUser && $0.reply == nil && $0.text == LocalAskAnswer.priceQuestion } == true
+                ? messages.last(where: \.isUser)?.text : nil
+            let answer = LocalAskAnswer.reply(to: text, pendingPurchase: priorPurchase, in: ledger, now: Dates.now)
+            input = ""; errorText = ""; originalImage = nil
+            messages.append(contentsOf: [AskMessage(text: text, isUser: true), AskMessage(text: answer)])
+            store.recordQuestion(text)
+            return
+        }
         input = ""; errorText = ""; busy = true; messages.append(AskMessage(text: text, isUser: true))
         store.recordQuestion(text)
         task = Task { @MainActor in
@@ -343,7 +354,7 @@ struct AskYubaiView: View {
             do {
                 let reply = try await session.ask(text, ledger: ledger, transport: transport)
                 try Task.checkCancellation()
-                guard store.current == ledger, !store.locked, enabled else {
+                guard store.current == ledger, !store.locked, cloudAnswersAvailable else {
                     errorText = "账本已更新，可以再问一次。"; input = text; session = AskYubaiSession(); return
                 }
                 let protectedEdit = AskYubai.isProtectedEdit(text)
@@ -396,6 +407,66 @@ struct AskYubaiView: View {
         } catch { if !Task.isCancelled { errorText = error.localizedDescription } }
     }
     @MainActor private func cancel() { task?.cancel(); captureTask?.cancel(); voiceTask?.cancel(); voice.stop(); busy = false; reading = false }
+}
+
+private enum LocalAskAnswer {
+    static let priceQuestion = "多少钱？"
+
+    static func reply(to text: String, pendingPurchase: String?, in ledger: Ledger, now: Date) -> String {
+        let purchase = text.contains("买") ? text : pendingPurchase
+        if let purchase {
+            if let amount = purchasePrice(in: text) {
+                let title = purchaseTitle(purchase)
+                let choice = CategoryGuesser.guess(title, nature: .expense, date: now, in: ledger)
+                let assessment = Finance.assessPurchase(ledger, amount: amount, title: title, category: choice?.category, subcategory: choice?.subcategory, now: now)
+                return ([assessment.verdict.label, assessment.reason] + assessment.facts).joined(separator: "\n")
+            }
+            if purchase == text { return priceQuestion }
+        }
+        let breakdown = Finance.spendableBreakdown(ledger, now: now)
+        let headline = breakdown.headlineTitle + " " + Money.text(breakdown.headlineAmount)
+        if text.contains("上周") {
+            let review = SavingInsights.weekly(ledger, now: now)
+            return [headline, "上周支出 " + Money.text(review.spending)].joined(separator: "\n")
+        }
+        let thisWeek = text.contains("这周") || text.contains("本周")
+        let start = thisWeek ? (ButlerCards.calendar.dateInterval(of: .weekOfYear, for: now)?.start ?? breakdown.cycleStart) : breakdown.cycleStart
+        let flow = Finance.cashFlow(ledger, during: DateInterval(start: start, end: now.addingTimeInterval(0.001)))
+        var facts = [headline, (thisWeek ? "这周支出 " : "本期支出 ") + Money.text(flow.spending)]
+        if let top = flow.spendingByCategory.first, top.amount > 0 {
+            facts.append("花得最多 · " + Classification.displayCategory(top.category) + " " + Money.text(top.amount))
+        }
+        return facts.joined(separator: "\n")
+    }
+
+    private static let number = #"\d+(?:[,，]\d{3})*(?:\.\d{1,2})?"#
+    private static let priceUnit = #"[万千](?:元|块)?|元|块"#
+    private static let explicitPrice = #"(?<![\d.,，−-])(?:[¥￥]\s*\#(number)(?:\s*(?:\#(priceUnit)))?|\#(number)\s*(?:\#(priceUnit)))(?![\d.])"#
+
+    private static func purchasePrice(in text: String) -> Int64? {
+        let query = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
+        if query.range(of: #"(?<![A-Za-z0-9])[−-]\s*[¥￥]?\s*\d"#, options: .regularExpression) != nil { return nil }
+        if let range = query.range(of: explicitPrice, options: .regularExpression) {
+            guard query[range.upperBound...].range(of: explicitPrice, options: .regularExpression) == nil else { return nil }
+            let price = String(query[range])
+            let scale: Int64 = price.contains("万") ? 10_000 : (price.contains("千") ? 1_000 : 1)
+            let raw = price.filter { !"万千块".contains($0) && !$0.isWhitespace }
+            guard let cents = try? Money.parse(raw), cents > 0, cents <= Money.limit / scale else { return nil }
+            return cents * scale
+        }
+        // An affordability question needs a single price, independent of quantities in bookkeeping text.
+        let singlePriceQuery = query.replacingOccurrences(of: "[各每]", with: " ", options: .regularExpression)
+        let candidates = EntryAmountParser.candidates(in: singlePriceQuery)
+        return candidates.count == 1 ? candidates.first : nil
+    }
+
+    private static func purchaseTitle(_ text: String) -> String {
+        let query = text.applyingTransform(.fullwidthToHalfwidth, reverse: false) ?? text
+        let price = query.range(of: explicitPrice, options: .regularExpression) == nil ? number : explicitPrice
+        return query.replacingOccurrences(of: price, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "该不该买|可以买|买得起|能买|想买|要买|买|多少钱", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
 }
 
 struct AskEvidenceView: View {
