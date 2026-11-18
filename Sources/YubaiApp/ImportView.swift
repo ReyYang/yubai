@@ -134,12 +134,9 @@ struct ImportView: View {
         }
         .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
         .amountPrivacy(store.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
-        .manualSheetHeader(resultTitle, actionTitle: result != nil ? "整批撤销" : "导入", primary: false,
-                           enabled: result.map { store.organizingBatchID != $0.id } ?? true, cancelTitle: result != nil ? "关闭" : "取消",
-                           showsAction: result == nil && preview != nil, actionIdentifier: "undoImportResult", action: {
-            if let result, let batch = store.imports.first(where: { $0.id == result.id && $0.undoneAt == nil }) { store.undoImport(batch.id) }
-            else if preview != nil { returnToIntake() }
-        })
+        // The page owns every action: previewActions (跳过这份 / 导入 N 笔) and
+        // ImportResultPage (整批撤销). The header keeps only title and dismiss.
+        .manualSheetHeader(resultTitle, cancelTitle: result != nil ? "关闭" : "取消", showsAction: false)
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.commaSeparatedText, .tabSeparatedText, .plainText, .image, UTType(filenameExtension: "xlsx") ?? .data], allowsMultipleSelection: true) { selection in
             switch selection {
             case .success(let urls): enqueue(urls.map { ImportQueueFile(input: .file($0), name: $0.lastPathComponent) })
@@ -290,45 +287,42 @@ struct ImportView: View {
         }.accessibilityIdentifier("importQueue_" + item.id.uuidString)
     }
     private func previewView(_ p: ImportPreview) -> some View {
-        VStack(spacing: YubaiSpace.none) {
-            Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-                previewHeader(p)
-                decisionCard(p)
-                if !screenshot {
-                    Group {
-                        Card(style: .list) {
-                            VStack(spacing: YubaiSpace.none) {
-                                accountPicker
-                                Divider().overlay(YubaiColor.separator)
-                                Button { showCategories = true } label: {
-                                    HStack(spacing: YubaiSpace.gapGroup) { Text("导入的分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
-                                        .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
-                                if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
-                            }
-                        }
-                    }
-                    Segmented(choices: [("全部", "全部 \(p.rows.count)"), ("要你选", "要你选 \(p.rows.filter(needsDecision).count)"), ("不导入", "不导入 \(p.rows.filter { !$0.included }.count)")], selection: $filter)
-                        .accessibilityIdentifier("importPreviewFilter")
-                }
-                if busy { ProgressView("正在核对…").yubaiFont(YubaiFont.caption) }
-                if screenshot {
-                    CardRows(p.rows) { row in previewRow(row) }
-                } else {
-                    ForEach(groupedRows(p)) { group in
-                        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                            Text(group.title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
-                            CardRows(group.rows) { row in previewRow(row) }
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
+            previewHeader(p)
+            decisionCard(p)
+            if !screenshot {
+                Group {
+                    Card(style: .list) {
+                        VStack(spacing: YubaiSpace.none) {
+                            EntryFormRow(title: "没写账户的记到") { accountPicker.pickerStyle(.menu).labelsHidden() }
+                            Divider().overlay(YubaiColor.separator)
+                            Button { showCategories = true } label: {
+                                HStack(spacing: YubaiSpace.gapGroup) { Text("导入的分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
+                                    .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
+                            if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
                         }
                     }
                 }
-                if screenshot {
-                    Button("对照原图") { showScreenshot = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewImportScreenshot")
-                    Toggle("金额和原图对得上", isOn: $screenshotConfirmed).tint(YubaiColor.toggleOn).accessibilityIdentifier("confirmScreenshotAmounts")
+                Segmented(choices: [("全部", "全部 \(p.rows.count)"), ("要你选", "要你选 \(p.rows.filter(needsDecision).count)"), ("不导入", "不导入 \(p.rows.filter { !$0.included }.count)")], selection: $filter)
+                    .accessibilityIdentifier("importPreviewFilter")
+            }
+            if busy { ProgressView("正在核对…").yubaiFont(YubaiFont.caption) }
+            if screenshot {
+                CardRows(p.rows) { row in previewRow(row) }
+            } else {
+                ForEach(groupedRows(p)) { group in
+                    VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
+                        Text(group.title).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard)
+                        CardRows(group.rows) { row in previewRow(row) }
+                    }
                 }
             }
-            previewActions(p)
-        }
+            if screenshot {
+                Button("对照原图") { showScreenshot = true }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("viewImportScreenshot")
+                Toggle("金额和原图对得上", isOn: $screenshotConfirmed).tint(YubaiColor.toggleOn).accessibilityIdentifier("confirmScreenshotAmounts")
+            }
+        }.fixedBottomBar { previewActions(p) }
     }
     private func previewHeader(_ p: ImportPreview) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
@@ -385,7 +379,7 @@ struct ImportView: View {
         Picker("没写账户的记到", selection: $accountID) {
             Text("请选择账户").tag(UUID?.none)
             ForEach(store.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
-        }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("importDefaultAccount")
+        }.accessibilityIdentifier("importDefaultAccount")
     }
     private var screenshotOriginal: some View {
         Page {
@@ -435,10 +429,12 @@ struct ImportView: View {
                         }
                     }
                     ForEach(methods, id: \.self) { method in
-                        Picker(method, selection: Binding<UUID?>(get: { accountMappings[method] }, set: { accountMappings[method] = $0 })) {
-                            Text("请选择对应账户").tag(UUID?.none)
-                            ForEach(store.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
-                        }.yubaiFont(YubaiFont.row).frame(minHeight: YubaiSize.tapMin).accessibilityIdentifier("mapping_" + method)
+                        EntryFormRow(title: method) {
+                            Picker(method, selection: Binding<UUID?>(get: { accountMappings[method] }, set: { accountMappings[method] = $0 })) {
+                                Text("请选择对应账户").tag(UUID?.none)
+                                ForEach(store.accounts.filter { !$0.archived }) { Text($0.name).tag(Optional($0.id)) }
+                            }.pickerStyle(.menu).labelsHidden().accessibilityIdentifier("mapping_" + method)
+                        }
                     }
                     if !methods.isEmpty { Button("添加缺少的账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
                     if !possible.isEmpty {
@@ -707,9 +703,6 @@ struct ImportView: View {
             $0.confirmedNewCategories = confirmedNewCategories
             $0.selections = rowSelections; $0.edits = rowEdits; $0.screenshotConfirmed = screenshotConfirmed
         }
-    }
-    private func returnToIntake() {
-        saveReviewChoices(); parsingTask?.cancel(); parseID = UUID(); preview = nil; activeFileID = nil; busy = false
     }
     private func commit() {
         guard !busy, accountID != nil, let preview, let data, !preview.selectedEntries.isEmpty,
