@@ -10,7 +10,7 @@ public enum Reconciliation {
         public var missing: Int64; public var from: Date; public var through: Date
         public var floor: Int64
         public var spendableAfter: SpendableBreakdown
-        public var changesSpendable: Bool { floor > 0 }
+        public var changesSpendable: Bool { missing != 0 && floor > 0 }
     }
     public struct Mismatch: Equatable, Sendable {
         public var amount: Int64
@@ -26,17 +26,26 @@ public enum Reconciliation {
         guard days >= minimumDays, !accounts.allSatisfy({ $0.anchorDate > latest }) else { return nil }
         return Gap(lastRecorded: last, days: days, from: Dates.addDays(1, to: last), through: today)
     }
-    public static func rows(in ledger: Ledger, now: Date) -> [Row] {
+    private static func cashAccounts(in ledger: Ledger) -> [Account] {
         ledger.accounts.filter { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }
-            .map { Row(id: $0.id, name: $0.name, book: Finance.balance($0, in: ledger, at: now)) }
+    }
+    public static func rows(in ledger: Ledger, now: Date) -> [Row] {
+        cashAccounts(in: ledger).map { Row(id: $0.id, name: $0.name, book: Finance.balance($0, in: ledger, at: now)) }
     }
     public static func mismatch(in ledger: Ledger, now: Date) -> Mismatch? {
-        guard !rows(in: ledger, now: now).isEmpty, !ledger.entries.isEmpty else { return nil }
+        let accounts = cashAccounts(in: ledger)
+        guard !accounts.isEmpty, !ledger.entries.isEmpty else { return nil }
+        // FirstUse's earliest supported anchor is a placeholder, even in
+        // ledgers that marked the generated account as reconciled.
+        let hasOpeningBalance = accounts.filter {
+            $0.anchorBalance != 0 || ($0.reconciled && $0.anchorDate.timeIntervalSince1970 != -2_208_988_800)
+        }
+        if ledger.lastReconciledAt == nil && hasOpeningBalance.isEmpty { return nil }
         let funds = Finance.funds(ledger, now: now)
         let need = max(0, funds.fixedSavingsTotal + funds.savingTarget) + funds.dueRest + funds.available
-        let amount = max(0, need - (funds.cash - funds.debt))
-        let last = ledger.lastReconciledAt ?? ledger.accounts.filter(\.reconciled).map(\.anchorDate).max()
-        let stale = last.map { (Dates.calendar.dateComponents([.day], from: Dates.day($0), to: Dates.day(now)).day ?? 0) >= staleDays } ?? true
+        let amount = max(0, need - funds.cash)
+        let last = ledger.lastReconciledAt ?? hasOpeningBalance.filter(\.reconciled).map(\.anchorDate).max()
+        let stale = last.map { (Dates.calendar.dateComponents([.day], from: Dates.day($0), to: Dates.day(now)).day ?? 0) >= staleDays } ?? false
         if last.map({ Dates.day($0) == Dates.day(now) }) == true { return nil }
         guard amount > mismatchTolerance || stale else { return nil }
         return Mismatch(amount: amount, lastReconciledAt: last, stale: stale)
@@ -44,14 +53,19 @@ public enum Reconciliation {
     public static func preview(_ ledger: Ledger, actual: [UUID: Int64], now: Date) -> Result {
         let gap = gap(in: ledger, now: now)
         let missing = rows(in: ledger, now: now).reduce(Int64(0)) { total, row in total + (actual[row.id].map { row.book - $0 } ?? 0) }
+        let from = gap?.from ?? Dates.day(now)
+        let before = Finance.spendableBreakdown(ledger, now: now)
+        if missing == 0 {
+            return Result(missing: missing, from: from, through: Dates.day(now), floor: before.balanceGap, spendableAfter: before)
+        }
         var projected = ledger
-        projected.periodReconciliations.removeAll { abs($0.cycleStart.timeIntervalSince(Finance.cycle(in: ledger, now: now).start)) <= 36 * 3600 }
+        projected.periodReconciliations.removeAll { abs($0.cycleStart.timeIntervalSince(before.cycleStart)) <= 36 * 3600 }
         let base = Finance.funds(projected, now: now)
-        let real = base.cash - base.debt - missing
+        let real = base.cash - missing
         let need = max(0, base.fixedSavingsTotal + base.savingTarget) + base.dueRest + base.available
         let floor = max(0, need - real)
         projected.periodReconciliations.append(PeriodReconciliation(cycleStart: base.cycleStart, date: now, floor: floor, entryIDs: []))
-        return Result(missing: missing, from: gap?.from ?? Dates.day(now), through: Dates.day(now), floor: floor,
+        return Result(missing: missing, from: from, through: Dates.day(now), floor: floor,
                       spendableAfter: Finance.spendableBreakdown(projected, now: now))
     }
     @discardableResult public static func apply(_ ledger: inout Ledger, actual: [UUID: Int64], now: Date) throws -> [UUID] {

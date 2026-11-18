@@ -63,6 +63,23 @@ extension FixedFlows {
         if frequency != edit.frequency || Dates.day(date) != edit.date || (monthlyDay != nil && monthlyDay != old.monthlyDay) {
             plan.dueDate = Dates.day(date)
             plan.monthlyDay = frequency == .monthly ? monthlyDay ?? Dates.calendar.component(.day, from: date) : nil
+            if let monthlyDay, frequency == .monthly {
+                let calendar = Dates.calendar
+                let oldDay = old.monthlyDay ?? calendar.component(.day, from: old.dueDate)
+                let month = calendar.dateInterval(of: .month, for: now)!
+                let dateFromDayPicker = calendar.isDate(date, equalTo: edit.date, toGranularity: .month)
+                if Payday.isSalaryPlan(old), monthlyDay != oldDay, dateFromDayPicker, old.dueDate < month.end {
+                    let oldOccurrence = Payday.nominalDate(day: oldDay, inMonthOf: now)
+                    let received = ledger.entries.contains {
+                        $0.deletedAt == nil && $0.planID == old.id &&
+                            $0.occurrence.map { old.originalOccurrenceDate(on: $0) == oldOccurrence } == true
+                    }
+                    let start = received ? month.end : month.start
+                    plan.dueDate = Payday.nominalDate(day: monthlyDay, inMonthOf: start)
+                } else {
+                    plan.dueDate = Payday.nominalDate(day: monthlyDay, inMonthOf: date)
+                }
+            }
         }
         plan = try replacement(plan, replacing: old, amountChanged: amount != edit.amount || plan.currency != old.currency, in: ledger, now: now)
         var change = ChangeSet(source: "用户操作", reason: "修改安排「\(plan.title)」", items: [.updatePlan(plan)])
@@ -95,15 +112,20 @@ extension FixedFlows {
         }
     }
 
-    private static func replacement(_ proposed: Plan, replacing old: Plan, amountChanged: Bool, in ledger: Ledger, now: Date) throws -> Plan {
+    static func replacement(_ proposed: Plan, replacing old: Plan, amountChanged: Bool, in ledger: Ledger, now: Date) throws -> Plan {
         try validateUpdate(proposed, replacing: old, in: ledger)
         var plan = proposed; plan.title = plan.title.trimmingCharacters(in: .whitespacesAndNewlines)
         let payments = FixedFlowPayments(in: ledger, now: now)
-        let linked = payments.plans.keys.filter { $0.id == old.id && old.occurrenceIndex(on: $0.day) != nil }
+        let linked = Set(ledger.entries.compactMap { entry -> FixedFlowPaymentKey? in
+            guard entry.deletedAt == nil, entry.planID == old.id, let date = entry.occurrence,
+                  old.occurrenceIndex(on: date) != nil else { return nil }
+            return FixedFlowPaymentKey(id: old.id, day: Dates.day(date))
+        })
         plan.settledOccurrences = Array(Set(old.settledOccurrences + linked.filter {
-            !old.isSkipped(on: $0.day) && payments.remaining(for: old, on: $0.day) == 0
+            !old.isSkipped(on: $0.day) && payments.plans[$0, default: 0] > 0 && payments.remaining(for: old, on: $0.day) == 0
         }.map(\.day))).sorted()
-        let rescheduled = Dates.day(plan.dueDate) != Dates.day(old.dueDate) || plan.frequency != old.frequency || plan.monthlyDay != old.monthlyDay
+        let rescheduled = Dates.day(plan.dueDate) != Dates.day(old.dueDate) || plan.frequency != old.frequency ||
+            plan.monthlyDay != old.monthlyDay && (plan.frequency != .monthly || plan.monthlyDay != Dates.calendar.component(.day, from: old.dueDate) || old.monthlyDay != nil)
         if rescheduled { plan.occurrenceDateOverrides = nil }
         plan.previousOccurrences = rescheduled ? Array(Set(old.previousOccurrences + linked.map(\.day))).sorted() : old.previousOccurrences
         if let total = plan.installments {
