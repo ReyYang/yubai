@@ -476,11 +476,11 @@ enum UITestSupport {
         guard let i = args.firstIndex(of: "--test-ledger"), args.indices.contains(i + 1),
               UUID(uuidString: args[i + 1]) != nil,
               let name = launchEnvironment["YUBAI_UI_TEST_SCRIPT"],
-              (revision47Scripts.contains(name) || butler47Scripts.contains(name) || savings47Scripts.contains(name) || home47Scripts.contains(name) || galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
+              (revision47Scripts.contains(name) || butler47Scripts.contains(name) || savings47Scripts.contains(name) || home47Scripts.contains(name) || galleryScripts.contains(name) || billGalleryScripts.contains(name) || v46Scripts.contains(name) || screenshotScripts.contains(name) || ["round40", "empty", "acceptance", "import", "restrain", "ask", "profile", "memory", "manual", "entries", "bills", "bills-overdue", "bills-auto", "bills-estimated", "bills-clarity", "bills-multiple", "wish-bought", "overview-xl", "butler-deck"].contains(name) || v45Scripts.contains(name) || secondBatchScripts.contains(name)) else { return nil }
         return name
     }()
     static var statementURL: URL? {
-        guard ["import", "v45-import-merge"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
+        guard ["import", "v45-import-merge", "acceptance"].contains(script ?? ""), let i = ProcessInfo.processInfo.arguments.firstIndex(of: "--test-ledger") else { return nil }
         return FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("YubaiUITests/" + ProcessInfo.processInfo.arguments[i + 1])
             .appendingPathComponent("合成账单.csv")
@@ -502,7 +502,7 @@ enum UITestSupport {
             try save(Ledger(), reason: "合成截图夹具")
             return
         }
-        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty" else { return }
+        guard !FileManager.default.fileExists(atPath: repository.file.path), script != "empty", script != "acceptance" else { return }
         let now = Dates.now
         if revision47Scripts.contains(script) {
             let value = try revision47Ledger(script, now: now)
