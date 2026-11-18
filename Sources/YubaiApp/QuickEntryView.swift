@@ -41,6 +41,8 @@ struct QuickEntryView: View {
     @State private var previewAvailable: Int64 = 0
     @State private var previewSoftLine: SoftLineUsage?
     @State private var big: BigPurchase?
+    /// 退款冲的那笔支出：从带过来的那笔开始，可点掉。
+    @State private var relatedEntryID: UUID?
     @FocusState private var purposeFocused: Bool
     private var accounts: [Account] { store.accounts.filter { !$0.archived || $0.id == prefill?.accountID || $0.id == prefill?.otherAccountID } }
     private var transferAccounts: [Account] { accounts.filter { $0.id != accountID } }
@@ -69,9 +71,19 @@ struct QuickEntryView: View {
     }
     private var sheetHeight: CGFloat {
         if inlinePanel == .categories { return YubaiSize.entrySheet }
-        if isBig { return YubaiSize.entrySheetBig }
-        if purposeFocused || nature == .income { return YubaiSize.entrySheetCompact }
-        return nature == .transfer ? YubaiSize.entrySheetTransfer : YubaiSize.entrySheet
+        // The expression line and the refund link push the category grid down;
+        // grow the sheet by their height so the grid stays above the tray.
+        let expression = keypad.expressionText != nil ? YubaiFont.amount.lineHeight + YubaiSpace.space16 : YubaiSpace.none
+        let link = refundOriginal != nil ? YubaiSize.tapMin + YubaiSpace.gapGroup : YubaiSpace.none
+        if isBig { return YubaiSize.entrySheetBig + expression }
+        if nature == .income { return YubaiSize.entrySheetCompact + expression }
+        return (nature == .transfer ? YubaiSize.entrySheetTransfer : YubaiSize.entrySheet) + expression + link
+    }
+    /// 带过来要冲的那笔支出，仍在账上才显示。
+    private var refundOriginal: Entry? {
+        guard nature == .refund, editingEntry == nil, let id = prefill?.relatedEntryID,
+              let entry = store.entriesByID[id], entry.deletedAt == nil, entry.nature == .expense else { return nil }
+        return entry
     }
 
     var body: some View {
@@ -116,13 +128,19 @@ struct QuickEntryView: View {
         }
     }
     private var composer: some View {
-        EntryForm(title: editingEntry == nil ? "记一笔" : "改一笔", actionTitle: editingEntry != nil ? "好" : wishInHeader ? "放心愿单" : "导入", primary: false,
-                  enabled: editingEntry != nil ? canSave : wishInHeader ? canWish : true,
-                  actionIdentifier: editingEntry != nil ? "saveSessionEdit" : wishInHeader ? "saveEntryWish" : "importFromEntry",
-                  cancelTitle: editingEntry != nil || session.entryIDs.isEmpty ? "取消" : "完成",
-                  cancelIdentifier: "cancelManualSheet", cancel: cancel, save: headerAction,
-                  headerSubtitle: editingEntry == nil ? sessionSummary : nil, subtitleAction: toggleAdded, compactHeader: true) {
-            formContent
+        ScrollViewReader { scroll in
+            EntryForm(title: editingEntry == nil ? "记一笔" : "改一笔", actionTitle: editingEntry != nil ? "好" : wishInHeader ? "放心愿单" : "导入", primary: false,
+                      enabled: editingEntry != nil ? canSave : wishInHeader ? canWish : true,
+                      actionIdentifier: editingEntry != nil ? "saveSessionEdit" : wishInHeader ? "saveEntryWish" : "importFromEntry",
+                      cancelTitle: editingEntry != nil || session.entryIDs.isEmpty ? "取消" : "完成",
+                      cancelIdentifier: "cancelManualSheet", cancel: cancel, save: headerAction,
+                      headerSubtitle: editingEntry == nil ? sessionSummary : nil, subtitleAction: toggleAdded, compactHeader: true) {
+                formContent
+            }
+            .onChange(of: keypad.expressionText != nil) { _, shown in
+                guard shown, !purposeFocused else { return }
+                withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { scroll.scrollTo("entryCategorySection", anchor: .bottom) }
+            }
         }
         .fixedBottomBar() {
             VStack(spacing: YubaiSpace.none) {
@@ -143,24 +161,25 @@ struct QuickEntryView: View {
             natureControl
             amountDisplay
             if showsDestination { destinationBlock }
-            if !purposeFocused {
-                ZStack(alignment: .top) {
-                    VStack(spacing: YubaiSpace.gapGroup) {
-                        resultBar
-                        categorySection
-                    }
-                    if showingAdded {
-                        EntryAddedList(entries: sessionEntries, edit: editRecorded, remove: deleteRecorded)
-                            .frame(maxHeight: YubaiSize.inlineListMaximum).zIndex(1)
-                    }
+            if let refundOriginal { refundChip(refundOriginal) }
+            // Stay visible while typing the purpose: amount, category and the
+            // result keep their place instead of leaving an empty sheet.
+            ZStack(alignment: .top) {
+                VStack(spacing: YubaiSpace.gapGroup) {
+                    resultBar
+                    categorySection.id("entryCategorySection")
+                }
+                if showingAdded {
+                    EntryAddedList(entries: sessionEntries, edit: editRecorded, remove: deleteRecorded)
+                        .frame(maxHeight: YubaiSize.inlineListMaximum).zIndex(1)
                 }
             }
             if editingEntry == nil, let suggestion { matchChip(suggestion) }
         }
     }
     @ViewBuilder private var natureControl: some View {
-        if [.expense, .income, .transfer].contains(nature) {
-            Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: Binding(get: { nature }, set: { interact(); nature = $0 }),
+        if [.expense, .income, .refund, .transfer].contains(nature) {
+            Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.refund, "退款"), (.transfer, "转账")], selection: Binding(get: { nature }, set: { interact(); nature = $0 }),
                           identifier: { "entryNature_" + $0.rawValue })
         } else {
             Text(nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
@@ -169,7 +188,7 @@ struct QuickEntryView: View {
     private var amountDisplay: some View {
         EditableAmountDisplay(amount: keypad.resultText, keypad: keypad, presented: true, selected: false,
                               identifier: "entryKeypadAmount", open: { interact(); purposeFocused = false; inlinePanel = .none },
-                              hide: store.preferences.hideAmounts, ink: amountCents == 0 ? YubaiColor.labelSecondary : nature.inflow ? YubaiColor.brandInk : nil)
+                              hide: false, ink: amountCents == 0 ? YubaiColor.labelSecondary : nature.inflow ? YubaiColor.brandInk : nil)
             #if os(iOS)
             .contextMenu { Button("粘贴") { pasteAmount() }.accessibilityIdentifier("pasteEntryAmount") }
             #endif
@@ -216,7 +235,7 @@ struct QuickEntryView: View {
         }
     }
     @ViewBuilder private var categorySection: some View {
-        if nature == .expense {
+        if nature == .expense || nature == .refund {
             EntryCategoryGrid(nature: nature, selection: currentAssignment, hint: categoryHint?.category,
                               choose: chooseCategory, more: openCategories)
         } else if nature == .income {
@@ -230,13 +249,46 @@ struct QuickEntryView: View {
     private var bottomTray: some View {
         Group {
             if !accounts.isEmpty {
-                EntryKeyboardTray(purpose: Binding(get: { purpose }, set: { interact(); purpose = $0 }), focus: $purposeFocused, compact: true) { trayControls } keys: {
-                    if inlinePanel == .calendar {
-                        AddEntryCalendar(date: $date, done: { inlinePanel = .none })
-                    } else { keypadBlock }
+                VStack(spacing: YubaiSpace.none) {
+                    if purposeFocused { focusedSummaryBar }
+                    EntryKeyboardTray(purpose: Binding(get: { purpose }, set: { interact(); purpose = $0 }), focus: $purposeFocused, compact: true) { trayControls } keys: {
+                        if inlinePanel == .calendar {
+                            AddEntryCalendar(date: $date, done: { inlinePanel = .none })
+                        } else { keypadBlock }
+                    }
                 }
             }
         }
+    }
+    private var focusedSummaryText: String {
+        var parts = [Money.text(amountCents)]
+        if nature == .transfer {
+            parts.append("转账")
+        } else if !category.isEmpty {
+            let main = Classification.displayCategory(category)
+            parts.append(subcategory.map { "\(main) · \($0)" } ?? main)
+        } else if nature == .refund {
+            parts.append("退款")
+        }
+        parts.append(ManualBookkeeping.dayLabel(date))
+        return parts.joined(separator: " · ")
+    }
+    private var focusedSummaryBar: some View {
+        Button { purposeFocused = false } label: {
+            HStack(spacing: YubaiSpace.space8) {
+                Text(focusedSummaryText).yubaiFont(YubaiFont.callout, weight: .medium)
+                    .foregroundStyle(YubaiColor.label).lineLimit(1)
+                Spacer(minLength: YubaiSpace.space8)
+                Image(systemName: "chevron.down")
+                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            }.padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin)
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) }
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+        }.buttonStyle(PressButtonStyle())
+            .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space8)
+            .accessibilityLabel("收起键盘").accessibilityValue(focusedSummaryText)
+            .accessibilityIdentifier("entryFocusedSummary")
     }
     @ViewBuilder private var trayControls: some View {
         if purposeFocused {
@@ -301,7 +353,14 @@ struct QuickEntryView: View {
             fromReserve = nature == .expense && prefill.fromReserve
             purpose = prefill.purpose ?? ""
             if let day = prefill.date { date = day }
-            if let amount = prefill.amount { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
+            relatedEntryID = nature == .refund ? prefill.relatedEntryID : nil
+            if category.isEmpty, let original = refundOriginal {
+                let normalized = store.current.normalizedCategory(for: original)
+                if !Classification.isPending(normalized.category) {
+                    category = normalized.category; subcategory = normalized.subcategory
+                }
+            }
+            if let amount = prefill.amount, amount > 0 { keypad.reset(); Money.input(amount).forEach { keypad.press(String($0)) } }
         }
         previewAvailable = store.funds.available
         refreshBalances()
@@ -350,6 +409,22 @@ struct QuickEntryView: View {
         keypad = EntryKeypad(amount: entry.amount)
         purposeFocused = false
     }
+    private func refundChip(_ original: Entry) -> some View {
+        let selected = relatedEntryID == original.id
+        let label = original.displayTitle + " · " + Dates.monthDay(original.date) + " · " + amount2(original.amount, hide: store.preferences.hideAmounts)
+        return Button { interact(); purposeFocused = false; relatedEntryID = selected ? nil : original.id } label: {
+            HStack(spacing: YubaiSpace.space8) {
+                Image(systemName: selected ? "checkmark" : "arrow.uturn.backward").accessibilityHidden(true)
+                Text(label).lineLimit(1)
+            }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
+                .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
+                .background(selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
+                .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.separator) } }
+                .frame(minHeight: YubaiSize.tapMin).contentShape(Capsule())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("refundOriginalChip")
+            .accessibilityLabel("冲的支出").accessibilityValue(label)
+            .accessibilityAddTraits(selected ? .isSelected : []).accessibilityHint(selected ? "再点取消关联" : "关联这笔支出")
+    }
     private func matchChip(_ match: Occurrence) -> some View {
         let selected = selectedMatchID == match.id
         let question: String = selected ? "已选 · \(match.title)这期" : "是\(match.title)这期吗"
@@ -373,12 +448,12 @@ struct QuickEntryView: View {
         var expression: String; var nature: Nature; var purpose: String; var category: String
         var subcategory: String?
         var date: Date; var accountID: UUID?; var otherAccountID: UUID?
-        var selectedMatchID: String?; var intoFixedSavings: Bool; var fromReserve: Bool; var ledgerUpdatedAt: Date
+        var selectedMatchID: String?; var intoFixedSavings: Bool; var fromReserve: Bool; var relatedEntryID: UUID?; var ledgerUpdatedAt: Date
     }
     private var previewInput: PreviewInput {
         PreviewInput(expression: keypad.expression, nature: nature, purpose: purpose, category: category, subcategory: subcategory, date: date,
                      accountID: accountID, otherAccountID: otherAccountID, selectedMatchID: selectedMatchID,
-                     intoFixedSavings: intoFixedSavings, fromReserve: fromReserve, ledgerUpdatedAt: store.current.updatedAt)
+                     intoFixedSavings: intoFixedSavings, fromReserve: fromReserve, relatedEntryID: relatedEntryID, ledgerUpdatedAt: store.current.updatedAt)
     }
     @MainActor private func refreshPreview() async {
         // No ledger work runs in body or the key action. Cancellation coalesces
@@ -457,6 +532,12 @@ struct QuickEntryView: View {
                 draft.subcategory = chosen.subcategory; draft.categoryUserEdited = known
                 return .addEntry(draft)
             }
+            // A refund linked to its expense offsets that spending instead of
+            // counting as income; Core copies the original's category.
+            if nature == .refund, let original = relatedEntryID, refundOriginal?.id == original,
+               case .addEntry(let draft)? = change.items.first {
+                change.items.append(.linkRefund(refund: draft.id, original: original))
+            }
         }
         return change
     }
@@ -477,6 +558,7 @@ struct QuickEntryView: View {
             let change = try draftChange(now: Dates.now)
             guard store.apply(change, label: "记一笔", silently: true, finishing: { ledger in
                 for case .addEntry(let draft) in change.items where draft.categoryUserEdited == true && !Classification.isPending(draft.category) {
+                    if let entry = ledger.entries.first(where: { $0.id == draft.id }), entry.relatedEntryID != nil { continue }
                     let choice = CategoryAssignment(category: draft.category, subcategory: draft.subcategory)
                     if SubcategoryClassifier.valid(choice, in: ledger, nature: draft.nature) { try CategoryModel.confirm(choice, entryIDs: [draft.id], in: &ledger) }
                 }
@@ -492,7 +574,7 @@ struct QuickEntryView: View {
         session.saved(ids, at: Date(), explicitFinish: requiresExplicitFinish)
         showingAdded = false; inlinePanel = .none
         keypad.reset(); purpose = ""; selectedMatchID = nil; suggestion = nil
-        categoryHint = nil; big = nil; fromReserve = false; intoFixedSavings = false
+        categoryHint = nil; big = nil; fromReserve = false; intoFixedSavings = false; relatedEntryID = nil
         previewAvailable = store.funds.available
         #if os(iOS)
         AccessibilityNotification.Announcement("已记 \(sessionEntries.count) 笔").post()
@@ -532,12 +614,12 @@ struct QuickEntryView: View {
         session.interact(); showingAdded = false; purposeFocused = false
         suspendedDraft = AddEntryDraftState(keypad: keypad, nature: nature, category: category, subcategory: subcategory,
                                             purpose: purpose, accountID: accountID, otherAccountID: otherAccountID, date: date,
-                                            fromReserve: fromReserve, intoFixedSavings: intoFixedSavings, suggestion: suggestion, selectedMatchID: selectedMatchID)
+                                            fromReserve: fromReserve, intoFixedSavings: intoFixedSavings, relatedEntryID: relatedEntryID, suggestion: suggestion, selectedMatchID: selectedMatchID)
         editingEntry = entry
         if nature != entry.nature { skipNatureReset = true; nature = entry.nature }
         keypad = EntryKeypad(amount: entry.amount); category = entry.category; subcategory = entry.subcategory
         purpose = entry.displayTitle; date = entry.date; accountID = entry.accountID; otherAccountID = entry.otherAccountID
-        fromReserve = entry.fromReserve; intoFixedSavings = entry.intoFixedSavings
+        fromReserve = entry.fromReserve; intoFixedSavings = entry.intoFixedSavings; relatedEntryID = entry.relatedEntryID
         inlinePanel = .none; suggestion = nil; selectedMatchID = nil
     }
     private func makeRecordedEdit(_ original: Entry, now: Date) -> Entry {
@@ -551,6 +633,7 @@ struct QuickEntryView: View {
         entry.category = effectiveCategory.category; entry.subcategory = effectiveCategory.subcategory
         entry.subcategoryUserEdited = true
         entry.partID = nil; entry.fromReserve = useReserve; entry.intoFixedSavings = nature == .income && intoFixedSavings
+        if nature != .refund { entry.relatedEntryID = nil }
         return entry
     }
     private func saveRecordedEdit() {
@@ -565,7 +648,7 @@ struct QuickEntryView: View {
         if nature != draft.nature { skipNatureReset = true; nature = draft.nature }
         keypad = draft.keypad; category = draft.category; subcategory = draft.subcategory; purpose = draft.purpose
         accountID = draft.accountID; otherAccountID = draft.otherAccountID; date = draft.date
-        fromReserve = draft.fromReserve; intoFixedSavings = draft.intoFixedSavings
+        fromReserve = draft.fromReserve; intoFixedSavings = draft.intoFixedSavings; relatedEntryID = draft.relatedEntryID
         suggestion = draft.suggestion; selectedMatchID = draft.selectedMatchID
         editingEntry = nil; suspendedDraft = nil; inlinePanel = .none; showingAdded = true
         previewAvailable = store.funds.available
@@ -588,6 +671,6 @@ struct QuickEntryView: View {
 private struct AddEntryDraftState {
     var keypad: EntryKeypad; var nature: Nature; var category: String; var subcategory: String?
     var purpose: String; var accountID: UUID?; var otherAccountID: UUID?; var date: Date
-    var fromReserve: Bool; var intoFixedSavings: Bool
+    var fromReserve: Bool; var intoFixedSavings: Bool; var relatedEntryID: UUID?
     var suggestion: Occurrence?; var selectedMatchID: String?
 }

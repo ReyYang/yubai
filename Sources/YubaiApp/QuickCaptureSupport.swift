@@ -17,6 +17,8 @@ struct QuickEntryPrefill {
     var fromReserve = false
     /// 补记某一天；`nil` 为今天。
     var date: Date? = nil
+    /// 退款冲的那笔支出；只在 `nature == .refund` 时生效。
+    var relatedEntryID: UUID? = nil
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
