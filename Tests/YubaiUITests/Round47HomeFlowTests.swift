@@ -60,6 +60,34 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("openSaving").label.contains("已存"))
         XCTAssertTrue(element("openSaving").label.contains("¥"))
     }
+    func testCaptureSelectsBambooRootPaperAndPlainPushedOrSheetPaper() {
+        func check(_ required: Bool, context: String) {
+            let capture = waitForBambooCapture(in: app, deadline: required ? nil : Date().addingTimeInterval(15))
+            let diagnostics = "\(context): \(capture) \(windowMetricsReadReport)"
+            XCTAssertTrue(capture.ready, diagnostics)
+            XCTAssertEqual(capture.surface?.required, required, diagnostics)
+            XCTAssertEqual(capture.surface?.key != nil, required, diagnostics)
+        }
+        for dark in [false, true] {
+            launch(dark: dark)
+            for tab in ["ledger", "insights", "yubai", "ledger"] {
+                tap("tab_" + tab)
+                check(true, context: "dark=\(dark) root=\(tab)")
+            }
+            for (link, page) in [("fundsFormula", "formulaPage"), ("openSaving", "savingTabScroll")] {
+                tap(link)
+                XCTAssertTrue(element(page).waitForExistence(timeout: 5))
+                check(false, context: "dark=\(dark) page=\(page)")
+                tap("BackButton")
+            }
+            tap("addEntry")
+            XCTAssertTrue(element("cancelManualSheet").waitForExistence(timeout: 5))
+            check(false, context: "dark=\(dark) entry sheet")
+            tap("cancelManualSheet")
+            check(true, context: "dark=\(dark) returned ledger")
+            app.terminate()
+        }
+    }
     func testBambooRendersOffMainAndBodyUpdatesReuseBothCachedAppearances() {
         for (dark, reduceMotion) in [(false, false), (true, false), (false, true), (true, true)] {
             launch(dark: dark, reduceMotion: reduceMotion)

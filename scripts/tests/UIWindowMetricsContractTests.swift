@@ -232,6 +232,52 @@ final class UIWindowMetricsContractTests: XCTestCase {
         let clipped = SurfaceNode(frame: CGRect(x: 0, y: 0, width: 440, height: 100), clips: true, children: [paper])
         XCTAssertNil(surface(SurfaceNode(children: [clipped])))
     }
+    private final class RegisteredSurfaceNode {
+        weak var parent: RegisteredSurfaceNode?
+        var children: [RegisteredSurfaceNode]
+        var frame = CGRect(x: 0, y: 0, width: 440, height: 956)
+        var hidden = false
+        var clips = false
+        var paper: [String: Any]?
+        init(paper: [String: Any]? = nil, children: [RegisteredSurfaceNode] = []) {
+            self.paper = paper; self.children = children
+            for child in children { child.parent = self }
+        }
+    }
+    private func registeredSurfaceSample(_ root: RegisteredSurfaceNode, markers: [RegisteredSurfaceNode]) -> UITestPaperSurfaceSelection.Sample {
+        UITestPaperSurfaceSelection.sample(in: root, markers: markers, parent: { $0.parent },
+            viewport: CGRect(x: 0, y: 0, width: 440, height: 956), children: { $0.children },
+            visible: { !$0.hidden }, frame: { $0.frame }, clips: { $0.clips }, surface: { $0.paper })
+    }
+    func testRegisteredPaperPathsIgnoreLargeUnrelatedContentAndKeepFrontmostClipping() {
+        let bamboo = RegisteredSurfaceNode(paper: ["required": true, "key": "light@3.0"])
+        let plain = RegisteredSurfaceNode(paper: ["required": false, "key": NSNull()])
+        let foreground = RegisteredSurfaceNode(children: [plain])
+        let unrelated = RegisteredSurfaceNode(children: (0..<3000).map { _ in RegisteredSurfaceNode() })
+        let root = RegisteredSurfaceNode(children: [bamboo, foreground, unrelated])
+        // Registry order must not replace UIKit's back-to-front sibling order.
+        let markers = [plain, bamboo]
+        let sample = registeredSurfaceSample(root, markers: markers)
+        XCTAssertEqual(sample.value?["required"] as? Bool, false)
+        XCTAssertEqual(sample.visited, 3)
+        XCTAssertFalse(sample.exhausted)
+        foreground.frame = .zero
+        XCTAssertEqual(registeredSurfaceSample(root, markers: markers).value?["required"] as? Bool, false)
+        foreground.clips = true
+        XCTAssertEqual(registeredSurfaceSample(root, markers: markers).value?["key"] as? String, "light@3.0")
+        foreground.clips = false; foreground.hidden = true
+        XCTAssertEqual(registeredSurfaceSample(root, markers: markers).value?["key"] as? String, "light@3.0")
+    }
+    func testAbsentOrDetachedRegisteredPaperDoesNotWalkContentOrBypassTheGate() {
+        let root = RegisteredSurfaceNode(children: (0..<3000).map { _ in RegisteredSurfaceNode() })
+        let detached = RegisteredSurfaceNode(paper: ["required": false])
+        for markers in [[], [detached]] {
+            let sample = registeredSurfaceSample(root, markers: markers)
+            XCTAssertNil(sample.value)
+            XCTAssertEqual(sample.visited, 0)
+            XCTAssertFalse(sample.exhausted)
+        }
+    }
     func testExistingGalleryTelemetryExclusionCoversOnlyTheProbeNamespace() throws {
         let packet = try UITestMetricsPayload.encode(fixture())
         XCTAssertTrue(UIWindowMetrics.isProbeIdentifier(UITestMetricsPayload.identifier))
