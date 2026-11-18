@@ -92,8 +92,10 @@ public enum ManualBookkeeping {
     public static func guessCategory(_ purpose: String, nature: Nature, in ledger: Ledger) -> String? {
         CategoryGuesser.guess(purpose, nature: nature, in: ledger)?.category
     }
-    public static func defaultAccount(in ledger: Ledger) -> Account? {
-        let accounts = ledger.accounts.filter { !$0.archived }
+    public static func defaultAccount(in ledger: Ledger, nature: Nature = .expense) -> Account? {
+        let active = ledger.accounts.filter { !$0.archived }
+        let cash = active.filter { $0.kind == .cash || $0.kind == .bank }
+        let accounts = (nature == .income || nature == .refund) && !cash.isEmpty ? cash : active
         let ids = Set(accounts.map(\.id))
         if let recent = ledger.entries.lazy.filter({ $0.deletedAt == nil && $0.recordedAt != nil && ids.contains($0.accountID) }).max(by: { $0.recordedAt! < $1.recordedAt! }) {
             return accounts.first { $0.id == recent.accountID }
@@ -123,6 +125,7 @@ public enum ManualBookkeeping {
     }
     public static func available(after change: ChangeSet, in ledger: Ledger, now: Date = Dates.now) throws -> Int64 {
         guard change.items.count == 1, case .addEntry(let draft) = change.items[0],
+              !(change.source == "手动" && draft.nature == .income && ledger.cycleAnchor != .calendarMonth),
               !ledger.entries.contains(where: { $0.id == draft.id }) else {
             var preview = ledger; try change.apply(to: &preview)
             return Finance.funds(preview, now: now).available

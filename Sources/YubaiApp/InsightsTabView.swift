@@ -95,15 +95,15 @@ struct InsightsTabView: View {
                         cashNumber(FixedFlowPresentation.monthDay(model.end) + "大约", model.closing)
                     }
                     if !hide { CashCurve(history: model.history, forecast: model.forecast, start: model.start, end: model.end) }
-                    ChipFlow {
-                        Text(FixedFlowPresentation.monthDay(model.start))
-                        Text("今天")
+                    CashAxisLabels {
+                        Text(FixedFlowPresentation.monthDay(model.start)).lineLimit(1).layoutValue(key: CashAxisFraction.self, value: 0)
                         if let bill = model.bill {
                             TabNavigationLink(.billDetail(bill.planID)) { BillDetailView(planID: bill.planID) } label: {
                                 Text(FixedFlowPresentation.monthDay(bill.date) + " " + bill.title).lineLimit(1)
                             }.buttonStyle(TextLinkStyle()).accessibilityIdentifier("cashMonthBill")
+                                .layoutValue(key: CashAxisFraction.self, value: model.fraction(bill.date))
                         }
-                        Text(FixedFlowPresentation.monthDay(model.end))
+                        Text(FixedFlowPresentation.monthDay(model.end)).lineLimit(1).layoutValue(key: CashAxisFraction.self, value: 1)
                     }.yubaiFont(YubaiFont.chartLabel).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }
@@ -119,6 +119,43 @@ struct InsightsTabView: View {
         let index: Int
         let value: CashFlowSlice
         var id: String { value.title }
+    }
+}
+
+/// Share of the period a label stands for: 0 is the period start, 1 its end.
+private struct CashAxisFraction: LayoutValueKey { static let defaultValue = 0.0 }
+
+/// X-axis under CashCurve: each label sits at the same x as its date on the
+/// curve, kept inside the card and apart from its neighbours.
+private struct CashAxisLabels: Layout {
+    var gap: CGFloat = YubaiSpace.space8
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let sizes = subviews.map { $0.sizeThatFits(.unspecified) }
+        let natural = sizes.reduce(CGFloat.zero) { $0 + $1.width } + gap * CGFloat(max(0, sizes.count - 1))
+        return CGSize(width: proposal.width ?? natural, height: sizes.map(\.height).max() ?? .zero)
+    }
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let order = subviews.indices.sorted { subviews[$0][CashAxisFraction.self] < subviews[$1][CashAxisFraction.self] }
+        guard !order.isEmpty else { return }
+        let sizes = order.map { subviews[$0].sizeThatFits(.unspecified) }
+        // Shrink only the longest labels when the row is too narrow for all of them.
+        var widths = sizes.map(\.width)
+        var room = max(.zero, bounds.width - gap * CGFloat(order.count - 1)), left = order.count
+        for index in widths.indices.sorted(by: { widths[$0] < widths[$1] }) {
+            widths[index] = min(widths[index], room / CGFloat(left)); room -= widths[index]; left -= 1
+        }
+        var lefts = order.indices.map { k in
+            min(max(.zero, bounds.width * subviews[order[k]][CashAxisFraction.self] - widths[k] / 2), max(.zero, bounds.width - widths[k]))
+        }
+        for k in lefts.indices.dropFirst() { lefts[k] = max(lefts[k], lefts[k - 1] + widths[k - 1] + gap) }
+        for k in lefts.indices.reversed() {
+            let limit = k == lefts.count - 1 ? bounds.width : lefts[k + 1] - gap
+            lefts[k] = max(.zero, min(lefts[k], limit - widths[k]))
+        }
+        for k in order.indices {
+            subviews[order[k]].place(at: CGPoint(x: bounds.minX + lefts[k], y: bounds.midY), anchor: .leading,
+                                     proposal: ProposedViewSize(width: widths[k], height: sizes[k].height))
+        }
     }
 }
 
@@ -157,25 +194,67 @@ struct CashMonthModel: Sendable {
     var history: [CashCurvePoint]
     var forecast: [CashCurvePoint]
     var bill: Bill?
+    /// Same x mapping as CashCurve.
+    func fraction(_ date: Date) -> Double {
+        min(1, max(0, date.timeIntervalSince(start) / max(1, end.timeIntervalSince(start))))
+    }
     static func make(_ ledger: Ledger, now: Date) -> Self? {
         let accounts = ledger.accounts.filter { $0.kind == .cash || $0.kind == .bank }
         guard !accounts.isEmpty else { return nil }
         let funds = Finance.funds(ledger, now: now)
         let today = Dates.day(now), start = funds.cycleStart, end = funds.cycleEnd
         let count = max(0, Dates.calendar.dateComponents([.day], from: start, to: today).day ?? 0)
-        let history = (0...count).map { offset -> CashCurvePoint in
+        let days = (0...count).map { offset -> (day: Date, at: Date) in
             let day = Dates.addDays(offset, to: start)
-            let at = min(now, Dates.addDays(1, to: day).addingTimeInterval(-0.001))
-            return CashCurvePoint(date: day, amount: accounts.reduce(0) { $0 + Finance.balance($1, in: ledger, at: at) })
+            return (day, min(now, Dates.addDays(1, to: day).addingTimeInterval(-0.001)))
+        }
+        let billRow = funds.occurrences.filter { !$0.inflow && $0.planID != nil && $0.date <= end }.max { $0.amount < $1.amount }
+        let bill = billRow.flatMap { row in row.planID.map { Bill(planID: $0, title: row.title, date: row.date) } }
+        if usesFlowBudget(ledger, funds: funds) {
+            return flowBudget(ledger, funds: funds, today: today, days: days, bill: bill)
+        }
+        let history = days.map { day in
+            CashCurvePoint(date: day.day, amount: accounts.reduce(0) { $0 + Finance.balance($1, in: ledger, at: day.at) })
         }
         let current = history.last?.amount ?? funds.cash
         let baseline = funds.points.first?.conservative ?? current
         let forecast = [CashCurvePoint(date: today, amount: current)] + funds.points.filter { $0.date > today && $0.date <= end }.map {
             CashCurvePoint(date: $0.date, amount: current + $0.conservative - baseline)
         }
-        let bill = funds.occurrences.filter { !$0.inflow && $0.planID != nil && $0.date <= end }.max { $0.amount < $1.amount }
         return Self(start: start, end: end, current: current, closing: forecast.last?.amount ?? current,
-                    history: history, forecast: forecast,
-                    bill: bill.flatMap { row in row.planID.map { Bill(planID: $0, title: row.title, date: row.date) } })
+                    history: history, forecast: forecast, bill: bill)
+    }
+    /// Never reconciled, and every live cash/bank account still sits on its zero
+    /// opening anchor: the balance is only the recorded flows, so it says nothing
+    /// about money on hand. Follow the period budget that 还能花 shows instead.
+    private static func usesFlowBudget(_ ledger: Ledger, funds: Funds) -> Bool {
+        let live = ledger.accounts.filter { !$0.archived && ($0.kind == .cash || $0.kind == .bank) }
+        return ledger.lastReconciledAt == nil && funds.spendable.offersFormula && !live.isEmpty
+            && live.allSatisfy { !$0.reconciled && $0.anchorBalance == 0 }
+    }
+    /// Today = 还能花 + bills still to pay this period; each earlier day removes
+    /// the income received and adds back the spending recorded after it; the
+    /// forecast pays the remaining bills on their dates and closes at 还能花.
+    private static func flowBudget(_ ledger: Ledger, funds: Funds, today: Date, days: [(day: Date, at: Date)], bill: Bill?) -> Self {
+        let breakdown = funds.spendable
+        let closing = breakdown.rawR, current = closing + breakdown.billsRest
+        let entries = Dictionary(ledger.entries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        func ids(_ kind: SpendableRow.Kind) -> [UUID] { breakdown.rows.first { $0.kind == kind }?.entryIDs ?? [] }
+        let moves = ids(.income).compactMap { entries[$0].map { (date: $0.date, delta: $0.amount) } }
+            + ids(.spent).compactMap { entries[$0].map { (date: $0.date, delta: -Finance.spendingAmount($0, ledger: ledger)) } }
+        let history = days.map { day in
+            CashCurvePoint(date: day.day, amount: current - moves.filter { $0.date > day.at }.reduce(0) { $0 + $1.delta })
+        }
+        let bills = breakdown.rows.first { $0.kind == .bills }?.occurrences ?? []
+        let due = Dictionary(grouping: bills) { max(today, Dates.day($0.date)) }
+        var forecast = [CashCurvePoint(date: today, amount: current)], left = current
+        for day in due.keys.sorted() {
+            forecast.append(CashCurvePoint(date: day, amount: left))
+            left -= due[day, default: []].reduce(0) { $0 + $1.amount }
+            forecast.append(CashCurvePoint(date: day, amount: left))
+        }
+        forecast.append(CashCurvePoint(date: funds.cycleEnd, amount: closing))
+        return Self(start: funds.cycleStart, end: funds.cycleEnd, current: current, closing: closing,
+                    history: history, forecast: forecast, bill: bill)
     }
 }

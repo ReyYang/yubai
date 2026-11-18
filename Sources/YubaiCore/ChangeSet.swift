@@ -179,6 +179,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
             var next = ledger
             let entry = try addedEntry(draft, in: ledger)
             next.entries.append(entry)
+            recordManualPayday(entry, in: &next)
             if source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(entry, in: &next) }
             try next.validate(); ledger = next; return []
         }
@@ -300,7 +301,13 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 next.plans.append(p)
             case .updatePlan(let p):
                 guard let i = next.plans.firstIndex(where: { $0.id == p.id }) else { throw YubaiError.invalid("找不到要修改的安排。") }
-                try FixedFlows.validateUpdate(p, replacing: next.plans[i], in: next)
+                let old = next.plans[i]
+                try FixedFlows.validateUpdate(p, replacing: old, in: next)
+                if next.cycleAnchor == .payday, let since = next.paydayConfirmSince,
+                   Payday.isSalaryPlan(p), p.monthlyDay != old.monthlyDay, p.dueDate != old.dueDate,
+                   Finance.anchorPlan(in: next, now: createdAt)?.id == p.id {
+                    next.paydayConfirmSince = min(since, Dates.day(p.dueDate))
+                }
                 next.plans[i] = p
             case .skipOccurrence(let id, let date):
                 guard validDate(date), let i = next.plans.firstIndex(where: { $0.id == id }),
@@ -350,6 +357,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 let e = try addedEntry(draft, in: next)
                 entryIndex[e.id] = next.entries.count
                 next.entries.append(e)
+                recordManualPayday(e, in: &next)
                 if source == "手动" || draft.categoryUserEdited == true { CategoryMemory.remember(e, in: &next) }
             case .profile(let change):
                 switch change {
@@ -419,7 +427,22 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
                 e.source = source; e.classificationReason = stamp; e.userEdited = true
                 SubcategoryClassifier.classify(&e, ledger: next)
+        // The form supplies its final subcategory after constructing the change.
+        // Match at application time against the current ledger and final draft.
+        if draft.planID == nil, source == "手动", next.cycleAnchor != .calendarMonth,
+           Payday.isSalary(e), let plan = Finance.anchorPlan(in: next, now: e.date), Payday.isSalaryPlan(plan),
+           let occurrence = Payday.receiptOccurrence(for: e, plan: plan, in: next) {
+            e.planID = plan.id; e.occurrence = occurrence
+        }
         return e
+    }
+    private func recordManualPayday(_ entry: Entry, in ledger: inout Ledger) {
+        guard source == "手动", ledger.cycleAnchor != .calendarMonth, let id = entry.planID,
+              let index = ledger.plans.firstIndex(where: { $0.id == id && Payday.isSalaryPlan($0) }),
+              Finance.anchorPlan(in: ledger, now: entry.date)?.id == id else { return }
+        Payday.recordReceipt(entry, planIndex: index, in: &ledger)
+        guard entry.date <= createdAt, Finance.cycleInfo(in: ledger, now: createdAt).start == Dates.day(entry.date) else { return }
+        Savings.closeCycles(&ledger, now: createdAt)
     }
     private static func month(_ date: Date) -> Date { Dates.calendar.dateInterval(of: .month, for: date)?.start ?? Dates.day(date) }
 }

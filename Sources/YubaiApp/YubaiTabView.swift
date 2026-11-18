@@ -13,29 +13,31 @@ struct YubaiTabView: View {
             askArea
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
+                    paydayEntry
+                    EntryFormDivider()
+                    destination(.saving, "存钱", detail: savingStatus, id: "openSaving")
+                    EntryFormDivider()
+                    destination(.fixedFlows, "会回来的账单", detail: billStatus, id: "openFixedFlows")
+                }
+            }
+            Card(style: .list) {
+                VStack(spacing: YubaiSpace.none) {
                     destination(.wishlist, "心愿单", detail: wishStatus, id: "openWishlist")
                     EntryFormDivider()
                     destination(.weekly(nil), "每周来信", detail: latestLetter, id: "openWeekly")
                     EntryFormDivider()
-                    destination(.profile, "消费观", detail: store.profile.restrain.isEmpty ? "" : "盯住 \(store.profile.restrain.count) 类", id: "openProfile")
+                    destination(.profile, "消费观", detail: restraintStatus, id: "openProfile")
                     EntryFormDivider()
                     destination(.memories, "余白记得的", detail: "\(store.settingsSummary.memoryCount) 条", id: "openMemories")
                 }
             }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
+                    destination(.frequent, "常用", detail: "\(repeatCount) 个", id: "openFrequentEntries")
+                    EntryFormDivider()
                     destination(.accounts, "账户", detail: accountStatus, id: "openAccounts")
                     EntryFormDivider()
-                    destination(.fixedFlows, "会回来的账单", detail: billStatus, id: "openFixedFlows")
-                    EntryFormDivider()
-                    destination(.frequent, "常用", detail: "\(repeatCount) 个", id: "openFrequentEntries")
-                }
-            }
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
                     destination(.imports, "导入账单", id: "openImports")
-                    EntryFormDivider()
-                    destination(.backup, "备份", detail: store.preferences.lastBackupAt.map(dayText) ?? "", id: "openBackup")
                     EntryFormDivider()
                     destination(.settings, "设置", id: "openSettings")
                 }
@@ -60,16 +62,27 @@ struct YubaiTabView: View {
             } accessory: { EmptyView() }
             ChipFlow {
                 ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
-                    CategoryChoiceChip(title: text) {
-                        if index == 1 { store.tabRouteRequest = .askQuestion(text) }
-                        else { input = text; focused = true }
-                    }.accessibilityIdentifier("askSuggestion_\(index)")
+                    CategoryChoiceChip(title: text) { openQuestion(text) }
+                        .accessibilityIdentifier("askSuggestion_\(index)")
                 }
             }
         }.padding(.bottom, YubaiSpace.space4)
     }
+    private var paydayEntry: some View {
+        var ledger = store.current
+        ledger.plans.removeAll { $0.frequency != .monthly }
+        let plan = Finance.anchorPlan(in: ledger, now: store.financialNow)
+        let day = plan.map { $0.monthlyDay ?? Dates.calendar.component(.day, from: $0.dueDate) }
+        return hubRow("发薪日与工资", detail: day.map { "每月 \($0) 号" } ?? "未设置", id: "openPaydaySetup") {
+            if let plan { store.tabRouteRequest = .billDetail(plan.id) }
+            else { store.sheetSource = nil; store.sheet = .paydaySetup }
+        }
+    }
     private func destination(_ route: TabRoute, _ title: String, detail: String = "", id: String) -> some View {
-        Button { focused = false; store.tabRouteRequest = route } label: {
+        hubRow(title, detail: detail, id: id) { store.tabRouteRequest = route }
+    }
+    private func hubRow(_ title: String, detail: String, id: String, action: @escaping () -> Void) -> some View {
+        Button { focused = false; action() } label: {
             AdaptiveValueRow {
                 Text(title).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
             } value: {
@@ -94,22 +107,28 @@ struct YubaiTabView: View {
     private var latestLetter: String {
         store.cards.filter { $0.kind == .weeklyLetter }.map(\.createdAt).max().map(FixedFlowPresentation.monthDay) ?? ""
     }
+    private var restraintStatus: String {
+        let count = store.current.profile.restrain.count
+        return count == 0 ? "" : "盯住 \(count) 类"
+    }
+    private var savingStatus: String {
+        LedgerHomeModel.make(store).savedTotal.map { amount2($0, hide: store.preferences.hideAmounts) } ?? ""
+    }
     private var accountStatus: String {
-        let date = store.current.lastReconciledAt
-        return "对一下余额" + (date.map { " · 上次 " + HomeTaskCopy.monthDay($0) } ?? "")
+        "\(store.accounts.filter { !$0.archived }.count) 个"
     }
     private var billStatus: String {
         let count = store.formula.billCount
         return "这一期还有 \(count) 样"
     }
-    private func dayText(_ date: Date) -> String {
-        if Dates.calendar.isDate(date, inSameDayAs: store.financialNow) { return "今天" }
-        if Dates.calendar.isDate(date, inSameDayAs: Dates.addDays(-1, to: store.financialNow)) { return "昨天" }
-        return FixedFlowPresentation.monthDay(date)
-    }
     private func ask() {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
-        input = ""; focused = false; store.tabRouteRequest = .askQuestion(text)
+        input = ""
+        openQuestion(text)
+    }
+    private func openQuestion(_ text: String) {
+        focused = false
+        store.tabRouteRequest = .askQuestion(text)
     }
 }

@@ -27,7 +27,11 @@ struct BudgetView: View {
         let suggested = proposal ?? []
         Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.gapGroup) {
             if parts.isEmpty && !manual {
-                EmptyState(.restraint, actionIdentifier: "watchCategory", onAction: { store.tabRouteRequest = .profile })
+                if store.softLineUsage.isEmpty {
+                    EmptyState(.restraint, actionIdentifier: "watchCategory", onAction: { store.tabRouteRequest = .profile })
+                } else {
+                    SoftLineSection(editable: true)
+                }
             } else if parts.isEmpty && !suggested.isEmpty { proposalContent(suggested) }
             else { regularContent }
         }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("spendingPartsPage")

@@ -45,21 +45,18 @@ struct QuickCaptureSettingsView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
                 SectionHeading(title: "其他入口")
                 Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        Link(destination: URL(string: "shortcuts://")!) {
-                            line("Siri", detail: "「余白记一笔，午饭 32」", thumbnail: .siri, navigates: true)
-                        }.accessibilityHint("打开快捷指令 App，查看余白的动作")
-                        EntryFormDivider()
-                        line("小组件", thumbnail: .widget)
-                            .accessibilityLabel("锁屏和主屏小组件，设置图示暂不可用")
-                        EntryFormDivider()
-                        line("控制中心", thumbnail: .control)
-                            .accessibilityLabel("控制中心和操作按钮，设置图示暂不可用")
-                        EntryFormDivider()
-                        line("轻点背面", thumbnail: .backTap)
-                            .accessibilityLabel("轻点背面截图记，设置图示暂不可用")
-                    }
+                    Link(destination: URL(string: "shortcuts://")!) {
+                        line("Siri", detail: "「余白记一笔，午饭 32」", thumbnail: .siri, navigates: true)
+                    }.accessibilityHint("打开快捷指令 App，查看余白的动作")
                 }
+                ChipFlow {
+                    infoBadge("小组件", systemImage: "square.grid.2x2")
+                        .accessibilityLabel("锁屏和主屏小组件")
+                    infoBadge("控制中心", systemImage: "plus.circle")
+                        .accessibilityLabel("控制中心和操作按钮")
+                    infoBadge("轻点背面", systemImage: "iphone")
+                        .accessibilityLabel("轻点背面截图记")
+                }.padding(.top, YubaiSpace.space4)
             }
             Card(style: .list) {
                 NavigationLink { ImportView() } label: { line("支付宝、微信付款", detail: "截图记", navigates: true) }
@@ -91,6 +88,15 @@ struct QuickCaptureSettingsView: View {
             Text("\(count) 笔").yubaiFont(YubaiFont.amountAccount)
         }
     }
+    private func infoBadge(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: YubaiSpace.space6) {
+            Image(systemName: systemImage).yubaiFont(YubaiFont.meta).accessibilityHidden(true)
+            Text(title).yubaiFont(YubaiFont.caption)
+        }.foregroundStyle(YubaiColor.labelSecondary)
+            .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
+            .background(YubaiColor.card, in: Capsule())
+            .accessibilityElement(children: .combine)
+    }
     private func line(_ title: String, detail: String? = nil, thumbnail: CaptureThumbnail.Kind? = nil, navigates: Bool = false) -> some View {
         HStack(spacing: YubaiSpace.gapGroup) {
             if let thumbnail { CaptureThumbnail(kind: thumbnail) }
@@ -107,7 +113,7 @@ struct QuickCaptureSettingsView: View {
 }
 
 private struct CaptureThumbnail: View {
-    enum Kind { case siri, widget, control, backTap }
+    enum Kind { case siri }
     let kind: Kind
     var body: some View {
         ZStack {
@@ -115,19 +121,6 @@ private struct CaptureThumbnail: View {
             switch kind {
             case .siri:
                 AssistantMark(size: YubaiSize.barMax)
-            case .widget:
-                VStack(alignment: .leading, spacing: YubaiSpace.space2) {
-                    Capsule().fill(YubaiColor.labelSecondary).frame(width: YubaiSpace.gapGroup, height: YubaiSpace.space2)
-                    Capsule().fill(YubaiColor.label).frame(width: YubaiSpace.insetCard, height: YubaiSpace.space4)
-                    Capsule().fill(YubaiColor.brand).frame(height: YubaiSpace.space8)
-                }.padding(YubaiSpace.space8)
-            case .control:
-                Image(systemName: "plus").yubaiFont(YubaiFont.caption)
-                    .foregroundStyle(YubaiColor.onBrand).frame(width: YubaiSize.barMax, height: YubaiSize.barMax)
-                    .background(YubaiColor.brand, in: Circle())
-            case .backTap:
-                Image(systemName: "iphone").yubaiFont(YubaiFont.lead).foregroundStyle(YubaiColor.label)
-                    .overlay { Circle().fill(YubaiColor.brand).frame(width: YubaiSpace.space4, height: YubaiSpace.space4) }
             }
         }.frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon).accessibilityHidden(true)
     }

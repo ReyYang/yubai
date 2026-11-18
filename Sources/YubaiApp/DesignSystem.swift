@@ -65,6 +65,8 @@ enum YubaiColor {
     static let toggleOn = adaptive(0x557f53, 0x86a884)
     static let iconTile = adaptive(0xede6d3, 0xede6d3)
     static let iconInk = adaptive(0x3e3224, 0x3e3224)
+    /// Native swipe-action fill for delete: white UIKit labels stay ≥ 4.8:1 in both appearances.
+    static let swipeDelete = adaptive(0x9e3f2c, 0xb85440)
 
     fileprivate static func adaptive(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
         #if os(macOS)
@@ -233,6 +235,10 @@ enum YubaiSpace {
     static let gapAction = space12
     /// Clear space above a sheet's manual header so it sits below the system grabber.
     static let sheetHeaderTop: CGFloat = 20
+    /// Compact clear space at the top of short sheets.
+    static let sheetTopCompact: CGFloat = 12
+    /// Bottom scroll clearance of a Page, so its last row never rests on the viewport edge.
+    static let pageBottomSafe: CGFloat = 52
     static let emptyTop: CGFloat = 100
     static let messageIndent = space20 * 2
     // H1 已完成；滑动操作保留原有内缩与标签几何，不参与 4/8 网格归一。
@@ -268,7 +274,12 @@ enum YubaiSize {
     static let receiptLineDash: CGFloat = 5
     static let firstOpenMinimum: CGFloat = 480
     static let firstOpenBrand: CGFloat = 78
+    /// Brand seal under the vertical 余白: about half a brand glyph wide.
+    static let firstOpenSeal: CGFloat = 40
+    static let firstOpenSealGlyph: CGFloat = 26
     static let firstOpenRule: CGFloat = 170
+    static let pageFadeTop: CGFloat = 24
+    static let pageFadeBottom: CGFloat = 40
     static let firstOpenBottom: CGFloat = 128
     static let sidebarMinimumWidth: CGFloat = 180
     static let sidebarIdealWidth: CGFloat = 210
@@ -1173,10 +1184,13 @@ extension View {
     }
     func rootPageHeader<Header: View>(@ViewBuilder _ header: () -> Header) -> some View {
         VStack(spacing: 0) {
+            // No fill of its own: the content below is a clipped sibling slot,
+            // so the header never covers rows. A solid canvas bar painted over
+            // the lit paper drew a hard seam; the paper now runs continuously
+            // and the scroll edge fades into it (MeasuredRootScroll).
             header().padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.space8)
                 .frame(maxWidth: .infinity)
-                .background(YubaiColor.canvas.ignoresSafeArea(edges: .top))
                 .contentShape(Rectangle())
                 .accessibilityElement(children: .contain).accessibilityIdentifier("rootHeaderRegion")
                 .zIndex(1)
@@ -1225,7 +1239,8 @@ extension View {
 
 struct PrimaryButtonStyle: ButtonStyle {
     var compact = false
-    var disabledBackground = Color.clear
+    /// Disabled keeps the capsule, muted: never brand green, never a bare label.
+    var disabledBackground = YubaiColor.neutralSoft
     @Environment(\.isEnabled) private var isEnabled
     func makeBody(configuration: Configuration) -> some View {
         configuration.label.fixedSize(horizontal: false, vertical: true).yubaiFont(compact ? YubaiFont.callout : YubaiFont.button)
@@ -1246,7 +1261,10 @@ struct SecondaryButtonStyle: ButtonStyle {
             .padding(.horizontal, compact ? YubaiSpace.space16 : YubaiSpace.gapSection).padding(.vertical, compact ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .frame(maxWidth: .infinity, minHeight: compact ? YubaiSize.rowIcon : YubaiSize.buttonHeight)
             .foregroundStyle(isEnabled ? YubaiColor.label : YubaiColor.labelSecondary)
-            .background(isEnabled ? background : Color.clear, in: Capsule()).yubaiHitTarget().contentShape(Capsule())
+            .background(isEnabled ? background : Color.clear, in: Capsule())
+            // The fill alone matches card/paperSheet in Dark Mode; the rim keeps the capsule.
+            .overlay { if isEnabled { Capsule().strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) } }
+            .yubaiHitTarget().contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }
@@ -1258,7 +1276,24 @@ struct PageFade: View {
     var body: some View {
         LinearGradient(colors: edge == .top ? [YubaiColor.canvas, YubaiColor.canvas.opacity(0)] : [YubaiColor.canvas.opacity(0), YubaiColor.canvas],
                        startPoint: .top, endPoint: .bottom)
-            .frame(height: edge == .top ? 24 : 40).allowsHitTesting(false).accessibilityHidden(true)
+            .frame(height: edge == .top ? YubaiSize.pageFadeTop : YubaiSize.pageFadeBottom).allowsHitTesting(false).accessibilityHidden(true)
+    }
+}
+
+/// Fades a scroll viewport's own pixels at its edges, revealing whatever paper
+/// lies beneath. Unlike a canvas-coloured PageFade, it cannot draw a band over
+/// the lit paper or the bamboo shadow.
+struct ScrollEdgeMask: View {
+    var fadesTop: Bool
+    var fadesBottom: Bool
+    var body: some View {
+        VStack(spacing: YubaiSpace.none) {
+            LinearGradient(colors: [Color.black.opacity(fadesTop ? 0 : 1), Color.black], startPoint: .top, endPoint: .bottom)
+                .frame(height: YubaiSize.pageFadeTop)
+            Color.black
+            LinearGradient(colors: [Color.black, Color.black.opacity(fadesBottom ? 0 : 1)], startPoint: .top, endPoint: .bottom)
+                .frame(height: YubaiSize.pageFadeBottom)
+        }.allowsHitTesting(false).accessibilityHidden(true)
     }
 }
 
@@ -1275,7 +1310,7 @@ struct Page<Content: View>: View {
         ScrollView {
             VStack(alignment: .leading, spacing: spacing) { content }
                 .padding(.horizontal, YubaiSpace.insetPage).padding(.top, topPadding)
-                .padding(.bottom, YubaiSpace.gapSection)
+                .padding(.bottom, YubaiSpace.pageBottomSafe)
                 .frame(maxWidth: 1080).frame(maxWidth: .infinity)
         }.rootTabScroll(rootTab).accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
             .modifier(ScrollContentViewport()).scrollDismissesKeyboard(.interactively).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
@@ -2211,7 +2246,7 @@ struct EmptyAccountState: View {
 }
 
 extension Nature {
-    var entryLabel: String { paired ? "转账" : (inflow ? "收入" : "支出") }
+    var entryLabel: String { self == .refund ? "退款" : paired ? "转账" : (inflow ? "收入" : "支出") }
 }
 
 struct HomeEntryPill: View {
@@ -3987,12 +4022,14 @@ private struct EntrySaveReceipt: View {
 
 /// 月历：今天描边，未来日期变灰但仍可选；拆分可传入原差额的日期范围。
 struct EntryCalendarView: View {
+    @Environment(\.dynamicTypeSize) private var textSize
     @Binding var selection: Date
     let today: Date
     var bounds: ClosedRange<Date>? = nil
     var identifier = "entryCalendar"
     var customHeader: ((Binding<Date>) -> AnyView)? = nil
     @State private var month: Date
+    @State private var width: CGFloat = 0
     @ScaledMetric(relativeTo: .callout) private var dayWidth = YubaiSize.tapMin
 
     init(selection: Binding<Date>, today: Date, bounds: ClosedRange<Date>? = nil, identifier: String = "entryCalendar",
@@ -4004,23 +4041,38 @@ struct EntryCalendarView: View {
     private var monthTitle: String {
         "\(Dates.calendar.component(.year, from: month))年\(Dates.calendar.component(.month, from: month))月"
     }
-    private var leading: Int { (Dates.calendar.component(.weekday, from: month) + 5) % 7 }
+    /// Unified Sunday-first week across the app, matching BillCalendar.
+    private static let weekdays = ["日", "一", "二", "三", "四", "五", "六"]
+    private var leading: Int { (Dates.calendar.component(.weekday, from: month) - 1) % 7 }
     private var count: Int { Dates.calendar.range(of: .day, in: .month, for: month)?.count ?? 0 }
+    private var cell: CGFloat { max(dayWidth, YubaiSize.tapMin) }
+    /// Seven full columns fit: spread them edge to edge. Otherwise (accessibility
+    /// sizes, narrow cards) keep fixed targets and scroll horizontally.
+    private var spreads: Bool { !textSize.isAccessibilitySize && (width == 0 || width >= cell * 7 + YubaiSpace.space4 * 6) }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
             if let customHeader { customHeader($month) } else { monthHeader }
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(dayWidth), spacing: YubaiSpace.space4), count: 7), spacing: YubaiSpace.space4) {
-                    ForEach(Array(["一", "二", "三", "四", "五", "六", "日"].enumerated()), id: \.offset) { _, day in
-                        Text(day).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(width: dayWidth).frame(minHeight: YubaiSize.tapMin)
-                    }
-                    ForEach(0..<(leading + count), id: \.self) { index in
-                        if index < leading { Color.clear.frame(width: dayWidth, height: dayWidth).accessibilityHidden(true) }
-                        else { dayButton(Dates.addDays(index - leading, to: month)) }
-                    }
-                }.frame(minWidth: dayWidth * 7 + YubaiSpace.space4 * 6)
+            if spreads {
+                grid(GridItem(.flexible(minimum: cell), spacing: YubaiSpace.space4)).frame(maxWidth: .infinity)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    grid(GridItem(.fixed(cell), spacing: YubaiSpace.space4)).frame(minWidth: cell * 7 + YubaiSpace.space4 * 6)
+                }
             }
-        }.accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+            .accessibilityElement(children: .contain).accessibilityIdentifier(identifier)
+    }
+    private func grid(_ column: GridItem) -> some View {
+        LazyVGrid(columns: Array(repeating: column, count: 7), spacing: YubaiSpace.space4) {
+            ForEach(Array(Self.weekdays.enumerated()), id: \.offset) { _, day in
+                Text(day).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).frame(maxWidth: .infinity).frame(minHeight: YubaiSize.tapMin)
+            }
+            ForEach(0..<(leading + count), id: \.self) { index in
+                if index < leading { Color.clear.frame(height: dayWidth).accessibilityHidden(true) }
+                else { dayButton(Dates.addDays(index - leading, to: month)) }
+            }
+        }
     }
     private var monthHeader: some View {
         HStack(spacing: YubaiSpace.space8) {
@@ -4045,10 +4097,12 @@ struct EntryCalendarView: View {
         return Button { choose(day) } label: {
             Text("\(Dates.calendar.component(.day, from: day))").yubaiFont(YubaiFont.row)
                 .foregroundStyle(selected ? YubaiColor.canvas : future || !allowed ? YubaiColor.labelSecondary : YubaiColor.label)
-                .frame(width: dayWidth, height: dayWidth)
+                // The column may be wider than a day: Circle insets to the
+                // shorter side, so the mark stays a dayWidth circle, centred.
+                .frame(maxWidth: .infinity).frame(height: dayWidth)
                 .background { if selected { Circle().fill(YubaiColor.label) } }
                 .overlay { if current { Circle().strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
-                .contentShape(Circle())
+                .contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).disabled(!allowed).opacity(allowed ? 1 : 0.4)
             .accessibilityLabel(FixedFlowPresentation.monthDay(day)).accessibilityValue(future ? "未来" : "")
             .accessibilityAddTraits(selected ? .isSelected : []).accessibilityIdentifier(identifier + "Day_" + Dates.text(day))
@@ -4209,15 +4263,19 @@ private struct EntryDateSheet: View {
     let latestDate: Date
     var body: some View {
         ScrollView {
-            if time {
-                DatePicker("时间", selection: $date, in: Date.distantPast...(allowsFuture ? Date.distantFuture : latestDate), displayedComponents: .hourAndMinute)
-                    .labelsHidden().accessibilityIdentifier("entryTimePicker")
-            } else {
-                EntryCalendarView(selection: $date, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
-            }
-        }.padding(YubaiSpace.insetCard).transaction { $0.animation = nil }
+            Group {
+                if time {
+                    DatePicker("时间", selection: $date, in: Date.distantPast...(allowsFuture ? Date.distantFuture : latestDate), displayedComponents: .hourAndMinute)
+                        .labelsHidden().accessibilityIdentifier("entryTimePicker")
+                } else {
+                    EntryCalendarView(selection: $date, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
+                }
+            }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, YubaiSpace.insetCard).padding(.bottom, YubaiSpace.gapSection)
+        }.transaction { $0.animation = nil }
             .manualSheetHeader(time ? "时间" : "日期", actionTitle: "好", actionIdentifier: "entryDateDone", cancel: { dismiss() }, action: { dismiss() })
-            .yubaiSheetBackground().presentationDetents([.medium, .large])
+            // 68 header + 16 + 44 month + 8 + 7 × 44 rows + 6 × 4 + 24 = 492 ≤ 520:
+            // a six-week month's last row is never cut at the default text size.
+            .yubaiSheetBackground().presentationDetents(time ? [.medium, .large] : [.height(YubaiSize.sheet520), .large])
     }
 }
 
@@ -4400,6 +4458,18 @@ struct FirstWindowWall: View {
                     p.addLine(to: CGPoint(x: size.width * 0.35, y: size.height * 0.79))
                 }.stroke(YubaiColor.keypadTray.opacity(0.9), lineWidth: 9).clipShape(pane)
             }.blur(radius: 1.4)
+            // Sunlight has no ruled edge: feather the pane's right, top and
+            // bottom borders (x 0.77, y 0.15–0.24, y 0.72–0.81) to zero alpha
+            // inside the polygon so no straight cut crosses the page.
+            .mask {
+                LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
+                                       .init(color: .clear, location: 0.75)], startPoint: .leading, endPoint: .trailing)
+            }
+            .mask {
+                LinearGradient(stops: [.init(color: .clear, location: 0.24), .init(color: .black, location: 0.38),
+                                       .init(color: .black, location: 0.54), .init(color: .clear, location: 0.73)],
+                               startPoint: .top, endPoint: .bottom)
+            }
     }
 }
 
@@ -4504,8 +4574,7 @@ private struct MeasuredRootScroll: ViewModifier {
             .deferredScrollGeometryChange(for: Bool.self, of: { geometry in
                 geometry.contentOffset.y <= -geometry.contentInsets.top + 1
             }) { atTop = $0 }
-            .overlay(alignment: .top) { PageFade(edge: .top).opacity(atTop ? 0 : 1) }
-            .overlay(alignment: .bottom) { PageFade(edge: .bottom).opacity(atEnd ? 0 : 1) }
+            .mask { ScrollEdgeMask(fadesTop: !atTop, fadesBottom: !atEnd) }
             .padding(.bottom, bottom)
     }
 }
@@ -4537,6 +4606,8 @@ struct WaterBar: View {
     @ScaledMetric(relativeTo: .caption2) private var labelWidth = YubaiSize.waterLabelWidth
     private var height: CGFloat { textSize.isAccessibilitySize ? YubaiSize.waterHeightAccessible : YubaiSize.waterHeight }
     private var tickHeight: CGFloat { textSize.isAccessibilitySize ? YubaiSize.waterTickHeightAccessible : YubaiSize.waterTickHeight }
+    /// The tick is centred on the bar; the label starts a clear gap below the tick's foot.
+    private var labelTop: CGFloat { height / 2 + tickHeight / 2 + YubaiSpace.space4 }
     var body: some View {
         GeometryReader { geometry in
             let x = min(max(0, tick), 1) * geometry.size.width
@@ -4548,9 +4619,9 @@ struct WaterBar: View {
                     .frame(width: textSize.isAccessibilitySize ? YubaiSize.waterTickWidthAccessible : YubaiSize.waterTickWidth, height: tickHeight)
                     .position(x: x, y: height / 2)
                 Text("今天").yubaiFont(YubaiFont.waterToday).foregroundStyle(YubaiColor.labelSecondary)
-                    .fixedSize().position(x: min(max(labelWidth / 2, x), geometry.size.width - labelWidth / 2), y: tickHeight / 2 + labelHeight / 2 + YubaiSpace.space4)
+                    .fixedSize().position(x: min(max(labelWidth / 2, x), geometry.size.width - labelWidth / 2), y: labelTop + labelHeight / 2)
             }
-        }.frame(height: tickHeight / 2 + labelHeight + YubaiSpace.space4)
+        }.frame(height: labelTop + labelHeight + YubaiSpace.space8)
             .accessibilityElement(children: .ignore).accessibilityLabel(hide ? "金额已隐藏" : "已经花了 \(Int(fill * 100))%，日子过了 \(Int(tick * 100))%")
             .accessibilityValue(fast ? "花得比日子快" : "")
             .accessibilityIdentifier("ledgerWaterBar")

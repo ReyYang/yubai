@@ -127,7 +127,7 @@ extension FixedFlows {
         guard let plan = ledger.plans.first(where: { $0.id == planID && $0.active }), plan.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("找不到这期固定收付。") }
         let payments = FixedFlowPayments(in: ledger, now: now); let remaining = payments.remaining(for: plan, on: occurrence)
         guard remaining > 0 else { throw YubaiError.invalid(plan.inflow ? "这期已经收到了。" : "这期已经付了。") }
-        guard let account = accountID ?? plan.accountID ?? ManualBookkeeping.defaultAccount(in: ledger)?.id else { throw YubaiError.invalid("先添加一个收付款账户。") }
+        guard let account = accountID ?? plan.accountID ?? ManualBookkeeping.defaultAccount(in: ledger, nature: plan.nature)?.id else { throw YubaiError.invalid("先添加一个收付款账户。") }
         let day = Dates.day(occurrence); let today = Dates.day(now)
         let draft = EntryDraft(date: ManualBookkeeping.entryDate(for: min(day, today), now: now), amount: amount ?? remaining,
                                amountConfirmed: true, nature: plan.nature, accountID: account, title: plan.title, category: plan.category,
@@ -263,6 +263,9 @@ extension FixedFlows {
         return !name.isEmpty && !title.isEmpty && (name.contains(title) || title.contains(name))
     }
     private static func matches(_ entry: Entry, plan: Plan, occurrence: Date, amount: Int64, allowEstimateWithoutName: Bool = false) -> Bool {
+        if Payday.isSalaryPlan(plan) {
+            return Payday.isSalary(entry) && Payday.isWithinArrivalWindow(entry.date, occurrence: occurrence)
+        }
         let distance = abs(Dates.calendar.dateComponents([.day], from: Dates.day(entry.date), to: Dates.day(occurrence)).day ?? Int.max)
         return distance <= 3 && entry.nature == plan.nature &&
             (entry.amount == amount || (overlap(entry, plan) && (plan.estimated || abs(entry.amount - amount) <= amount / 10)) || (allowEstimateWithoutName && plan.estimated))
@@ -300,7 +303,11 @@ extension FixedFlows {
         var next = ledger
         next.entries[e].planID = planID; next.entries[e].occurrence = Dates.day(occurrence)
         if next.plans[p].intoFixedSavings { next.entries[e].intoFixedSavings = true }
-        if !next.plans[p].settledOccurrences.contains(where: { Dates.day($0) == Dates.day(occurrence) }) { next.plans[p].settledOccurrences.append(Dates.day(occurrence)) }
+        if Payday.isSalaryPlan(next.plans[p]), Finance.anchorPlan(in: next, now: next.entries[e].date)?.id == planID {
+            Payday.recordReceipt(next.entries[e], planIndex: p, in: &next)
+        } else if !next.plans[p].settledOccurrences.contains(where: { Dates.day($0) == Dates.day(occurrence) }) {
+            next.plans[p].settledOccurrences.append(Dates.day(occurrence))
+        }
         try next.validate(); ledger = next
     }
     public static func unlink(entryID: UUID, in ledger: inout Ledger) throws {
@@ -318,6 +325,14 @@ extension FixedFlows {
         var candidates: [UUID: [FixedFlowPaymentKey]] = [:], owners: [FixedFlowPaymentKey: Set<UUID>] = [:]
         let end = Dates.addDays(4, to: Dates.day(now)).addingTimeInterval(-0.001)
         for plan in ledger.plans where plan.active {
+            if Payday.isSalaryPlan(plan) {
+                for entry in entries where Payday.isSalary(entry) {
+                    guard let day = Payday.receiptOccurrence(for: entry, plan: plan, in: ledger) else { continue }
+                    let key = FixedFlowPaymentKey(id: plan.id, day: day)
+                    candidates[entry.id, default: []].append(key); owners[key, default: []].insert(entry.id)
+                }
+                continue
+            }
             let amount = payments.amount(for: plan)
             for item in plan.schedule(through: end) where !plan.isSkipped(on: item.date) {
                 let key = FixedFlowPaymentKey(id: plan.id, day: Dates.day(item.date))

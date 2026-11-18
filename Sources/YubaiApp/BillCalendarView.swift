@@ -5,7 +5,7 @@ struct BillBrandIcon: View {
     let title: String
     var category = Classification.pendingCategory
     var inflow = false
-    var size: CGFloat = 32
+    var size: CGFloat = YubaiSize.headerIconMax
     @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var scheme
     private var symbol: String {
@@ -16,7 +16,8 @@ struct BillBrandIcon: View {
             if let icon = BrandIcons.match(title) {
                 Image("Brand-" + icon.slug).resizable().renderingMode(.original).scaledToFit().padding(YubaiSpace.space4)
             } else {
-                Image(systemName: symbol).yubaiFont(YubaiFont.row).foregroundStyle(scheme == .dark ? YubaiColor.label : YubaiColor.iconInk)
+                Image(systemName: symbol).symbolRenderingMode(.monochrome)
+                    .yubaiFont(YubaiFont.row).foregroundStyle(scheme == .dark ? YubaiColor.label : YubaiColor.iconInk)
             }
         }.frame(width: size, height: size).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
             .accessibilityHidden(true)
@@ -37,20 +38,27 @@ struct FixedFlowsView: View {
     private var snapshot: BillCalendarMonth { BillCalendarMonth(containing: date, in: store.current, now: store.financialNow) }
     var body: some View {
         let month = snapshot
-        Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
-            if !store.current.plans.contains(where: { $0.active && $0.stoppedAt == nil }) && store.current.rents.isEmpty {
-                EmptyState(.bills, onAction: { store.sheet = .addPlan })
-                stoppedBills
-            } else {
-            monthHeader(month)
-            calendar(month)
-            if let day = selectedDay {
-                dayCard(day, rows: month.days.first { Dates.day($0.date) == Dates.day(day) }?.bills ?? [])
-            } else {
-                upcoming(month)
-                YearlyBillsStrip(month: month)
-                stoppedBills
-            }
+        ScrollViewReader { scroll in
+            Page(spacing: YubaiSpace.gapGroup, topPadding: YubaiSpace.space8) {
+                if !store.current.plans.contains(where: { $0.active && $0.stoppedAt == nil }) && store.current.rents.isEmpty {
+                    EmptyState(.bills, onAction: { store.sheet = .addPlan })
+                    stoppedBills
+                } else {
+                    monthHeader(month).id("billsMonthHeader")
+                    calendar(month)
+                    if let day = selectedDay {
+                        dayCard(day, rows: month.days.first { Dates.day($0.date) == Dates.day(day) }?.bills ?? [])
+                    } else {
+                        upcoming(month)
+                        YearlyBillsStrip(month: month) { value in
+                            let current = Dates.calendar.component(.month, from: month.month)
+                            shownMonth = Dates.addMonths(value - current, to: month.month)
+                            selectedDay = nil
+                            scroll.scrollTo("billsMonthHeader", anchor: .top)
+                        }
+                        stoppedBills
+                    }
+                }
             }
         }.navigationTitle("账单").yubaiNavigation().amountPrivacy(store.preferences.hideAmounts)
             .accessibilityIdentifier("fixedFlowsScroll")
@@ -106,12 +114,13 @@ struct FixedFlowsView: View {
                 }
             }
             LazyVGrid(columns: columns, spacing: YubaiSpace.space8) {
-                ForEach(0..<month.leadingDays, id: \.self) { _ in Color.clear.frame(height: YubaiSize.calendarCell).accessibilityHidden(true) }
+                ForEach(0..<month.leadingDays, id: \.self) { _ in Color.clear.frame(height: cellHeight).accessibilityHidden(true) }
                 ForEach(month.days) { day in dayCell(day) }
             }
         }
     }
     private var columns: [GridItem] { Array(repeating: GridItem(.flexible(minimum: YubaiSpace.none), spacing: YubaiSpace.space4), count: 7) }
+    private var cellHeight: CGFloat { textSize.isAccessibilitySize ? YubaiSize.calendarCellLarge : YubaiSize.calendarCell }
     private func dayCell(_ day: BillCalendarDay) -> some View {
         let today = Dates.day(day.date) == Dates.day(store.financialNow)
         let selected = selectedDay.map(Dates.day) == Dates.day(day.date)
@@ -121,36 +130,61 @@ struct FixedFlowsView: View {
                     Text("\(Dates.calendar.component(.day, from: day.date))").yubaiFont(YubaiFont.meta, weight: today ? .semibold : .regular)
                     if day.yearly { Text("年").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.canvas).padding(.horizontal, YubaiSpace.space2).background(YubaiColor.label, in: Capsule()) }
                 }
-                if day.payday && day.bills.count == 1 {
-                    Text("工资").yubaiFont(YubaiFont.meta, weight: .semibold).foregroundStyle(YubaiColor.brandInk).fixedSize()
-                } else if let first = day.bills.first {
-                    cellIcon(first, more: day.bills.count - 1)
-                    if day.payday { Text("工资").yubaiFont(YubaiFont.meta, weight: .semibold).foregroundStyle(YubaiColor.brandInk).fixedSize() }
-                } else { Color.clear.frame(height: YubaiSize.pillHeight) }
-            }.frame(maxWidth: .infinity, minHeight: textSize.isAccessibilitySize ? YubaiSize.calendarCellLarge : YubaiSize.calendarCell)
-                .background(day.payday ? YubaiColor.brandTint : selected ? YubaiColor.raised : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(today ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline) }
+                dayMarker(day)
+            }.frame(maxWidth: .infinity)
+                .frame(height: cellHeight)
+                .background(selected ? YubaiColor.raised : day.payday ? YubaiColor.brandTint : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(today || selected ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline) }
         }.buttonStyle(PressButtonStyle()).accessibilityElement(children: .ignore)
             .accessibilityLabel(Dates.text(day.date) + (today ? "，今天" : "") + (day.payday ? "，工资" : "") + (day.yearly ? "，年付" : "") + "，\(day.bills.count) 笔账单")
             .accessibilityAddTraits(selected ? .isSelected : [])
             .accessibilityIdentifier("billsDay_" + Dates.text(day.date))
     }
+    @ViewBuilder private func dayMarker(_ day: BillCalendarDay) -> some View {
+        if day.payday {
+            HStack(spacing: YubaiSpace.calendarGap) {
+                Text("工资").yubaiFont(YubaiFont.meta, weight: .semibold)
+                if day.bills.count > 1 { Text("+\(day.bills.count - 1)").yubaiFont(YubaiFont.meta) }
+            }.foregroundStyle(YubaiColor.brandInk).lineLimit(1)
+                .frame(minHeight: YubaiSize.smallBadge)
+        } else if let first = day.bills.first {
+            cellIcon(first, more: day.bills.count - 1)
+        } else {
+            Color.clear.frame(height: YubaiSize.smallBadge)
+        }
+    }
     private func cellIcon(_ row: FixedFlowOccurrence, more: Int) -> some View {
         let plan = row.planID.flatMap { id in store.plans.first { $0.id == id } }
-        let layout = textSize.isAccessibilitySize || more >= 10 ? AnyLayout(VStackLayout(spacing: YubaiSpace.calendarGap)) : AnyLayout(HStackLayout(spacing: YubaiSpace.calendarGap))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(spacing: YubaiSpace.calendarGap)) : AnyLayout(HStackLayout(spacing: YubaiSpace.calendarGap))
         return layout {
-            BillBrandIcon(title: row.title, category: plan?.category ?? "居住", inflow: row.inflow, size: YubaiFont.amountLarge.size)
+            BillBrandIcon(title: row.title, category: plan?.category ?? "居住", inflow: row.inflow, size: YubaiSize.smallBadge)
                 .opacity(row.state == .paid ? 0.35 : 1)
-            if more > 0 { Text("+\(more)").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).fixedSize() }
+            if more > 0 { Text("+\(more)").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1) }
         }
     }
     private func upcoming(_ month: BillCalendarMonth) -> some View {
-        let rows = Array(month.days.flatMap(\.bills).filter { $0.state != .paid && $0.date >= Dates.day(store.financialNow) }.prefix(2))
+        let now = store.financialNow
+        let currentMonth = Dates.calendar.isDate(month.month, equalTo: now, toGranularity: .month)
+        let rows = upcomingRows(month, now: now, currentMonth: currentMonth)
         return VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-            SectionHeading(title: "接下来").padding(.horizontal, YubaiSpace.space4)
+            SectionHeading(title: currentMonth ? "未来 30 天" : "接下来").padding(.horizontal, YubaiSpace.space4)
             if rows.isEmpty { EmptyState(.bills, onAction: { store.sheet = .addPlan }) }
             else { CardRows(rows) { BillCalendarRow(row: $0, includesDate: true) } }
         }.padding(.top, YubaiSpace.space8)
+    }
+    private func upcomingRows(_ month: BillCalendarMonth, now: Date, currentMonth: Bool) -> [FixedFlowOccurrence] {
+        let today = Dates.day(now)
+        var rows = month.days.flatMap(\.bills)
+        guard currentMonth else { return rows.filter { $0.state != .paid && $0.date >= today } }
+
+        let end = Dates.addDays(30, to: today)
+        var nextMonth = Dates.addMonths(1, to: month.month)
+        // Use the same occurrence projection as the calendar, including moved dates and partial payments.
+        while nextMonth <= end {
+            rows += FixedFlows.month(containing: nextMonth, in: store.current, asOf: now).occurrences
+            nextMonth = Dates.addMonths(1, to: nextMonth)
+        }
+        return rows.filter { $0.state != .paid && (today...end).contains(Dates.day($0.date)) }
     }
     private func dayCard(_ day: Date, rows: [FixedFlowOccurrence]) -> some View {
         let currencies = Array(Set(rows.compactMap { row in store.plans.first { $0.id == row.planID }?.currency }.filter { $0 != .cny })).sorted { $0.rawValue < $1.rawValue }
@@ -274,7 +308,10 @@ struct BillCalendarRow: View {
                     Text("上次实付").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                 }
             }
-        } else { AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, role: .amount).fixedSize(horizontal: false, vertical: true) }
+        } else {
+            AmountLabel(cents: row.amount, hide: store.preferences.hideAmounts, role: .amount,
+                        sign: row.inflow ? .inflow : .outflow, ink: row.inflow ? YubaiColor.brandInk : YubaiColor.label)
+        }
     }
 }
 
@@ -282,26 +319,36 @@ struct YearlyBillsStrip: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dynamicTypeSize) private var textSize
     let month: BillCalendarMonth
+    let selectMonth: (Int) -> Void
     var body: some View {
-        TabNavigationLink(.yearlyBills) { YearlyBillsView() } label: {
-            Card(style: .compact) {
-                VStack(spacing: YubaiSpace.space8) {
-                    ViewThatFits(in: .horizontal) {
-                        HStack { title; Spacer() }
-                        VStack(alignment: .leading, spacing: YubaiSpace.space4) { title }
-                    }
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space4), count: textSize.isAccessibilitySize ? 4 : 12), spacing: YubaiSpace.space8) {
-                        ForEach(1...12, id: \.self) { value in
+        Card(style: .compact) {
+            VStack(spacing: YubaiSpace.space8) {
+                TabNavigationLink(.yearlyBills) { YearlyBillsView() } label: {
+                    HStack(spacing: YubaiSpace.space8) {
+                        title
+                        Spacer(minLength: YubaiSpace.none)
+                        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).accessibilityHidden(true)
+                    }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("yearlyBillsStrip")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: YubaiSpace.space4), count: textSize.isAccessibilitySize ? 4 : 12), spacing: YubaiSpace.space8) {
+                    ForEach(1...12, id: \.self) { value in
+                        let selected = Dates.calendar.component(.month, from: month.month) == value
+                        let hasBills = month.yearlyMonths.contains(value)
+                        Button { selectMonth(value) } label: {
                             VStack(spacing: YubaiSpace.space4) {
-                                RoundedRectangle(cornerRadius: YubaiRadius.messageTail).fill(month.yearlyMonths.contains(value) ? YubaiColor.label : YubaiColor.neutralSoft).frame(height: YubaiSize.tagHeight)
-                                    .overlay { RoundedRectangle(cornerRadius: YubaiRadius.messageTail).strokeBorder(Dates.calendar.component(.month, from: month.month) == value ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline).padding(-YubaiSpace.space4) }
+                                RoundedRectangle(cornerRadius: YubaiRadius.messageTail)
+                                    .fill(hasBills ? YubaiColor.label : YubaiColor.neutralSoft).frame(height: YubaiSize.tagHeight)
+                                    .overlay { RoundedRectangle(cornerRadius: YubaiRadius.messageTail).strokeBorder(selected ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline).padding(-YubaiSpace.space4) }
                                 Text("\(value)").yubaiFont(YubaiFont.meta)
-                            }.accessibilityLabel("\(value)月" + (month.yearlyMonths.contains(value) ? "，有年付账单" : ""))
-                        }
+                            }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                        }.buttonStyle(PressButtonStyle())
+                            .accessibilityLabel("\(value)月" + (hasBills ? "，有年付账单" : ""))
+                            .accessibilityAddTraits(selected ? .isSelected : [])
+                            .accessibilityIdentifier("yearlyBillsMonth_\(value)")
                     }
                 }
             }
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("yearlyBillsStrip")
+        }
     }
     private var title: some View {
         Text("一年付一次的 · \(store.plans.filter { $0.active && $0.stoppedAt == nil && !$0.inflow && $0.frequency == .yearly }.count) 样")

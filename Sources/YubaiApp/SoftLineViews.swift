@@ -38,9 +38,12 @@ struct SoftLineSection: View {
                 } else { choosing = true }
             } label: {
                 Label(category.map { "盯住整个" + Classification.displayCategory($0) } ?? "盯住某个分类", systemImage: "plus")
-                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-                    .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("addSoftLine")
+                    .yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
+                    .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin)
+                    .background(YubaiColor.raised, in: Capsule())
+                    .overlay { Capsule().strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) }
+                    .contentShape(Capsule())
+            }.buttonStyle(PressButtonStyle()).padding(.leading, YubaiSpace.space4).accessibilityIdentifier("addSoftLine")
         }.sheet(isPresented: $choosing, onDismiss: {
             if let area = pendingArea { pendingArea = nil; edit(area, mode: .amount) }
         }) {

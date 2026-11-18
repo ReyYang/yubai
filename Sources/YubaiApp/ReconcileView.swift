@@ -49,13 +49,14 @@ struct ReconcileView: View {
                     ResultBar(label: "还能花变成", value: amount2(preview.spendableAfter.available, hide: store.preferences.hideAmounts),
                               amber: true, identifier: "reconcileSpendableAfter")
                 }
+                actions.padding(.top, YubaiSpace.gapGroup)
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup)
+                .padding(.bottom, YubaiSpace.pageBottomSafe)
         }.scrollDismissesKeyboard(.interactively).paperBackground()
             .safeAreaInset(edge: .top, spacing: YubaiSpace.none) {
                 ManualSheetHeader(title: "对一下余额", showsAction: false, cancel: { dismiss() }, action: {})
                     .padding(.horizontal, YubaiSpace.insetPage)
             }
-            .fixedBottomBar() { actions }
             .accessibilityIdentifier("reconcileSheet")
             .onAppear(perform: load)
             #if os(iOS)
@@ -93,13 +94,13 @@ struct ReconcileView: View {
         let title: String
         if missing > 0 { title = "记成调整 " + amount2(-missing, hide: store.preferences.hideAmounts) }
         else if missing < 0 { title = "记成调整 " + (store.preferences.hideAmounts ? "••••" : AmountLabel.text(-missing, sign: .inflow)) }
-        else { title = "好" }
+        else { title = "余额一致" }
         return VStack(spacing: YubaiSpace.space8) {
             Button(title, action: apply).buttonStyle(PrimaryButtonStyle()).disabled(hasInvalidInput)
                 .accessibilityIdentifier("reconcileApply")
             Button("一笔笔补上", action: addByHand).buttonStyle(SecondaryButtonStyle())
                 .accessibilityIdentifier("reconcileByHand")
-        }.padding(.horizontal, YubaiSpace.insetPage).padding(.vertical, YubaiSpace.space8)
+        }
     }
 
     private func apply() {
