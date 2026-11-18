@@ -9,15 +9,9 @@ struct SettingsView: View {
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "settingsScroll") {
             group("账本") {
-                TabNavigationLink(.accounts) { AccountsView() } label: { SettingsRow(title: "账户", detail: "\(store.accounts.filter { !$0.archived }.count) 个") }.accessibilityIdentifier("openAccounts")
-                EntryFormDivider()
-                TabNavigationLink(.fixedFlows) { FixedFlowsView() } label: { SettingsRow(title: "固定账单", detail: "\(store.plans.filter { $0.active }.count) 项") }.accessibilityIdentifier("openFixedFlows")
-                EntryFormDivider()
-                TabNavigationLink(.budget) { BudgetView() } label: { SettingsRow(title: "预算", detail: "\(store.current.spendingParts.count) 项") }.accessibilityIdentifier("openSpendingParts")
+                TabNavigationLink(.budget) { BudgetView() } label: { SettingsRow(title: "预算", detail: "\(store.current.profile.restrain.count) 项") }.accessibilityIdentifier("openSpendingParts")
                 EntryFormDivider()
                 TabNavigationLink(.categories) { CategoriesView() } label: { SettingsRow(title: "分类") }.accessibilityIdentifier("openCategories")
-                EntryFormDivider()
-                TabNavigationLink(.weekly(nil)) { WeeklyReviewView() } label: { SettingsRow(title: "周回顾", detail: "每周一") }.accessibilityIdentifier("openSettingsWeekly")
             }
             group("记账") {
                 TabNavigationLink(.quickCapture) { QuickCaptureSettingsView() } label: { SettingsRow(title: "快速记账", detail: "Apple Pay 后自动记") }.accessibilityIdentifier("openQuickCapture")
@@ -57,7 +51,7 @@ struct NoticeSettingsView: View {
     var body: some View {
         Page {
             ButlerNoticeSettings()
-            Card(style: .list) { WeeklyLetterReminder() }
+            Card(style: .list) { WeeklyLetterReminder().accessibilityIdentifier("openSettingsWeekly") }
         }.navigationTitle("通知").yubaiNavigation()
     }
 }
@@ -107,7 +101,7 @@ struct IntelligencePrivacyView: View {
                         separator
                         featureToggle("回答你问的问题", feature: .answers)
                         separator
-                        featureToggle("写周回顾", feature: .weeklyReview)
+                        featureToggle("写每周来信", feature: .weeklyReview)
                         separator
                         featureToggle("拍小票、认截图", feature: .receiptRecognition)
                         separator

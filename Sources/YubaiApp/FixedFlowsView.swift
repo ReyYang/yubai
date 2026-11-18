@@ -95,7 +95,7 @@ enum FixedFlowCheck {
     }
 }
 
-// MARK: - Round 45 · 固定账单：勾、菜单、付了、对上了、加一项、详情
+// MARK: - Round 45 · 账单勾选、菜单、付款、关联和详情
 
 /// 在「付了」「这笔对上了」「不是，另记一笔」之间来回时，记住用户已经给过的选择（只在内存里）。
 @MainActor enum BillSession {
@@ -532,7 +532,7 @@ private struct BillDayPicker: View {
     }
 }
 
-// MARK: 一项固定账单
+// MARK: 账单详情
 
 struct BillDetailView: View {
     @Environment(AppStore.self) private var store
@@ -637,11 +637,11 @@ struct BillDetailView: View {
             .disabled(plan.accountID == nil).frame(minHeight: YubaiSize.rowDouble).accessibilityIdentifier("billDetailAutoPay")
     }
 
-    // MARK: 付过的
+    // MARK: 收付历史
     private func historyBlock(_ plan: Plan, _ history: FixedFlows.History) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
             HStack(alignment: .firstTextBaseline) {
-                Text("付过的").yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
+                Text(plan.inflow ? "收到的" : "付过的").yubaiFont(YubaiFont.caption, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                 Spacer(minLength: YubaiSpace.space8)
                 Text("平均 " + amount2(history.average, hide: store.preferences.hideAmounts))
                     .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
@@ -656,12 +656,14 @@ struct BillDetailView: View {
                 Text(FixedFlowPresentation.monthDay(entry.date)).yubaiFont(YubaiFont.row)
                 if !note.isEmpty { Text("· " + note).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1) }
                 Spacer(minLength: YubaiSpace.space8)
-                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: plan.inflow ? .inflow : .outflow)
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small,
+                            sign: plan.inflow ? .inflow : .outflow, ink: plan.inflow ? YubaiColor.brandInk : YubaiColor.label)
                     .fixedSize(horizontal: false, vertical: true)
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                 Text(FixedFlowPresentation.monthDay(entry.date) + (note.isEmpty ? "" : " · " + note)).yubaiFont(YubaiFont.row)
-                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small, sign: plan.inflow ? .inflow : .outflow)
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, role: .small,
+                            sign: plan.inflow ? .inflow : .outflow, ink: plan.inflow ? YubaiColor.brandInk : YubaiColor.label)
             }.padding(.vertical, YubaiSpace.space8)
         }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             .contextMenu {
@@ -674,20 +676,19 @@ struct BillDetailView: View {
     }
 
     private var stopButton: some View {
-        Button { confirmingStop = true } label: {
-            Text("以后都没有这项了").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
-                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("billDetailStop")
+        Button("以后都没有这项了") { confirmingStop = true }
+            .buttonStyle(DestructiveButtonStyle()).accessibilityIdentifier("billDetailStop")
     }
 
     private func changeDay(_ day: Int) {
-        guard let edit = FixedFlows.edit(planID: planID, in: store.current) else { return }
+        guard let plan, day != monthlyDay(plan),
+              let edit = FixedFlows.edit(planID: planID, in: store.current) else { return }
         let calendar = Dates.calendar
-        var parts = calendar.dateComponents([.year, .month], from: edit.date)
-        parts.day = 1
-        guard let month = calendar.date(from: parts) else { return }
-        let last = calendar.range(of: .day, in: .month, for: month)!.count
+        // A single moved occurrence may be in a different month than its recurring period.
+        let scheduled = plan.occurrenceDateOverrides?.first { Dates.day($0.value) == edit.date }?.key ?? edit.date
+        guard let month = calendar.dateInterval(of: .month, for: scheduled)?.start,
+              let last = calendar.range(of: .day, in: .month, for: month)?.count else { return }
         let date = Dates.addDays(min(day, last) - 1, to: month)
-        BillEditing.change(planID: planID, store: store, label: plan?.title ?? "") { $0.date = Dates.day(date); $0.monthlyDay = day }
+        BillEditing.change(planID: planID, store: store, label: plan.title) { $0.date = date; $0.monthlyDay = day }
     }
 }
