@@ -74,6 +74,12 @@ public struct SpendableBreakdown: Equatable, Sendable {
 extension Finance {
     public static func spendableBreakdown(_ ledger: Ledger, now: Date = Dates.now) -> SpendableBreakdown { funds(ledger, now: now).spendable }
 
+    static func plannedSaving(in ledger: Ledger, income: Int64, cycleStart: Date, now: Date) -> Int64 {
+        let rule = (ledger.savingRule?.target(income: income) ?? 0) +
+            Reserve.paybackAmounts(ledger, cycleStart: cycleStart, now: now).reduce(0) { $0 + $1.amount }
+        return ledger.effectiveSavingTarget(rule, cycleStart: cycleStart, now: now)
+    }
+
     static func makeSpendableBreakdown(_ ledger: Ledger, now: Date, cycle: CycleInfo, commitments: [Occurrence]) -> SpendableBreakdown {
         let entries = ledger.entries.filter { $0.deletedAt == nil && $0.date >= cycle.start && $0.date <= now }
         let incomeEntries = entries.filter { $0.kind != .adjustment && $0.nature == .income && !$0.intoFixedSavings }
@@ -90,9 +96,8 @@ extension Finance {
         let withdrawal = transfers.reduce(Int64(0)) { $0 + ($1.direction == .take ? $1.amount : -$1.amount) } + covers.reduce(0) { $0 + $1.amount }
         let carries = ledger.carryReleases.filter { $0.date >= cycle.start && $0.date <= now }
         let carry = carries.reduce(Int64(0)) { $0 + $1.amount }
-        let rule = (ledger.savingRule?.target(income: income) ?? 0) + Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).reduce(0) { $0 + $1.amount }
         // Existing explicit save-less decisions and releases retain their meaning.
-        let planned = ledger.effectiveSavingTarget(rule, cycleStart: cycle.start, now: now)
+        let planned = plannedSaving(in: ledger, income: income, cycleStart: cycle.start, now: now)
         // The portion released from a pending target is already represented by the
         // smaller saving row; count only the settled-money portion as an inflow.
         let released = transfers.filter { $0.direction == .take }.reduce(Int64(0)) { $0 + $1.fromSetAside }
@@ -118,7 +123,7 @@ extension Finance {
         if bills != 0 { rows.append(SpendableRow(kind: .bills, amount: -bills, originalAmount: bills, occurrences: commitments)) }
         rows.append(SpendableRow(kind: .spent, amount: -spent, originalAmount: spent, entryIDs: expenseEntries.map(\.id)))
         if netWithdrawal != 0 { rows.append(SpendableRow(kind: .withdrawal, amount: netWithdrawal, originalAmount: withdrawal, transferIDs: transfers.map(\.id), coverIDs: covers.map(\.id), date: transfers.last?.date ?? covers.last?.date)) }
-        if gap != 0 { rows.append(SpendableRow(kind: .balanceGap, amount: -gap, originalAmount: gap, entryIDs: reconciliation?.entryIDs ?? [], accountIDs: ledger.accounts.filter { $0.kind == .bank || $0.kind == .cash || $0.kind == .credit }.map(\.id), date: reconciliation?.date)) }
+        if gap != 0 { rows.append(SpendableRow(kind: .balanceGap, amount: -gap, originalAmount: gap, entryIDs: reconciliation?.entryIDs ?? [], accountIDs: ledger.accounts.filter { $0.kind == .bank || $0.kind == .cash }.map(\.id), date: reconciliation?.date)) }
         return SpendableBreakdown(cycleStart: cycle.start, cycleEnd: cycle.end, asOf: now, rows: rows, state: state, rawR: raw,
             income: income, carry: carry, plannedSaving: planned, effectiveSaving: effective, billsRest: bills, spent: spent,
             withdrawal: netWithdrawal, balanceGap: gap, headlineAmount: !known ? max(0, spent) : deficit > 0 ? deficit : max(0, raw),

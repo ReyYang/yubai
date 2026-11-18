@@ -1,17 +1,21 @@
 import SwiftUI
 import YubaiCore
 
-/// 首次只设发薪日和平时的金额；到账仍由用户确认。
 struct PaydaySetupSheet: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var textSize
-    @State private var day = 10
-    @State private var amount: Int64 = 0
+    @State private var day = Payday.defaultDay
+    @State private var amount: Int64 = .zero
+    @State private var currentAvailable = ""
     @State private var editingAmount = false
     @State private var keypad = EntryKeypad()
     @State private var accountID: UUID?
-    private var valid: Bool { amount > 0 && amount <= Money.limit && accountID != nil }
+    private var valid: Bool { amount > .zero && amount <= Money.limit && accountID != nil }
+    private var showsCurrentAvailable: Bool {
+        let now = store.financialNow
+        return Payday.nominalDate(day: day, inMonthOf: now) < Dates.day(now) &&
+            Finance.spendableBreakdown(store.current, now: now).income == .zero
+    }
 
     var body: some View {
         ScrollView {
@@ -27,17 +31,21 @@ struct PaydaySetupSheet: View {
                                     .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                             }.buttonStyle(PressButtonStyle()).accessibilityLabel("工资金额").accessibilityIdentifier("paydaySetupAmount")
                         }
+                        if showsCurrentAvailable {
+                            EntryFormDivider()
+                            MoneyInputRow(title: "这期还能花", text: $currentAvailable, identifier: "paydaySetupCurrentAvailable")
+                        }
                     }
                 }
                 days
             }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
                 .padding(.bottom, YubaiSpace.gapSection)
         }.paperBackground().accessibilityElement(children: .contain).accessibilityIdentifier("paydaySetupSheet")
-            .onAppear { if accountID == nil { accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id } }
+            .onAppear { if accountID == nil { accountID = ManualBookkeeping.defaultAccount(in: store.current, nature: .income)?.id } }
             .sheet(isPresented: $editingAmount) {
                 AmountEntrySheet(title: "工资", keypad: $keypad, primaryTitle: "好", primaryIdentifier: "paydaySetupAmountDone",
                                  canSave: keypad.canSave, save: {
-                    guard let value = keypad.resolve(), value > 0 else { return }
+                    guard let value = keypad.resolve(), value > .zero else { return }
                     amount = value; editingAmount = false
                 }).environment(store).yubaiSheetBackground().presentationDragIndicator(.visible)
             }
@@ -53,21 +61,12 @@ struct PaydaySetupSheet: View {
     private var days: some View { MonthDayChoices(selection: $day, identifier: "paydaySetupDay_") }
     private func save() {
         guard valid, let accountID else { return }
-        let now = Dates.now, calendar = Dates.calendar
-        let today = Dates.day(now)
-        let month = calendar.dateInterval(of: .month, for: today)!.start
-        func scheduled(in start: Date) -> Date {
-            let last = calendar.range(of: .day, in: .month, for: start)!.count
-            return Dates.addDays(min(day, last) - 1, to: start)
-        }
-        let thisMonth = scheduled(in: month)
-        let due = thisMonth < today ? scheduled(in: Dates.addMonths(1, to: month)) : thisMonth
-        var plan = Plan(title: "工资", amount: amount, dueDate: due, frequency: .monthly, inflow: true, category: "工资", nature: .income)
-        plan.monthlyDay = day; plan.accountID = accountID; plan.autoPay = false
-        let change = ChangeSet(source: "用户操作", reason: "哪天发工资", items: [.addPlan(plan)])
-        if store.apply(change, label: "哪天发工资", silently: true, finishing: { ledger in
-            ledger.cycleAnchor = .payday
-            Finance.enablePaydayConfirmation(&ledger, now: now)
+        let now = Dates.now
+        let available = showsCurrentAvailable ? try? Money.parse(currentAvailable) : nil
+        if store.update("哪天发工资", entryMotion: false, showToast: false, { ledger in
+            try Payday.configure(day: day, amount: amount, accountID: accountID,
+                                 currentPeriodAvailable: available.flatMap { $0 > .zero ? $0 : nil },
+                                 in: &ledger, now: now)
         }) { dismiss() }
     }
 }
