@@ -291,6 +291,35 @@ final class AcceptanceWalker {
         }
     }
 
+    func submitKeyboard() {
+        if app.keyboards.firstMatch.exists { app.typeText("\n"); settle(0.8) }
+    }
+
+    /// What a first-time importer has to answer before 导入 enables.
+    func resolveImportDecisions(capture: Bool) {
+        let creates = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'createImportCategory_'"))
+        for index in 0..<min(creates.count, 8) {
+            let e = creates.element(boundBy: index)
+            tapElement(e, name: "create category \(index)", timeout: 2, scrolls: 4, settle: 0.8)
+        }
+        if capture, tap(label: "添加缺少的账户", timeout: 2, scrolls: 4) {
+            shot("import-add-account")
+            let cancel = app.navigationBars.buttons["取消"]
+            if cancel.exists { cancel.tap(); settle() } else { app.swipeDown(); settle() }
+        }
+        let mappings = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'mapping_'"))
+        for index in 0..<min(mappings.count, 4) {
+            let e = mappings.element(boundBy: index)
+            guard tapElement(e, name: "account mapping \(index)", timeout: 2, scrolls: 4, settle: 1) else { continue }
+            if capture { shot("import-account-menu") }
+            let cash = app.buttons.matching(NSPredicate(format: "label == '现金'")).firstMatch
+            if !tapElement(cash, name: "menu 现金", timeout: 2, scrolls: 0, settle: 1) {
+                let any = app.descendants(matching: .any).matching(NSPredicate(format: "label == '现金'")).element(boundBy: 0)
+                tapElement(any, name: "menu 现金 (any)", timeout: 2, scrolls: 0, settle: 1)
+            }
+        }
+    }
+
     // MARK: Year import
 
     /// Brand-new user: first open → 已经有账单，导进来 → preview → commit → result.
@@ -302,6 +331,9 @@ final class AcceptanceWalker {
         guard commit.waitForExistence(timeout: 60) else { note("MISS commitImport after 60s"); shot("import-preview-missing"); return false }
         note("import preview ready in \(String(format: "%.1f", Date().timeIntervalSince(previewStart)))s")
         if capture { settle(1.5); scrollShots("import-preview", max: 6) }
+        resolveImportDecisions(capture: capture)
+        note("commit enabled=\(commit.isEnabled) label=\(commit.label)")
+        if capture { shot("import-preview-decided") }
         let begin = Date()
         guard tapElement(commit, name: "commitImport", timeout: 5, scrolls: 8, settle: 0.5) else { shot("commit-missing"); return false }
         let result = element("importResultPage")

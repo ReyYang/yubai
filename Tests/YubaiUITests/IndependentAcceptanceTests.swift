@@ -36,7 +36,7 @@ final class IAFirstUseTests: YubaiUITestCase {
         // 第一笔：午饭 25.5
         if w.tap("addEntry") {
             w.shot("add-entry-open")
-            w.keys("25.5"); w.type("午饭 黄焖鸡", into: "entryPurpose"); w.shot("add-entry-filled")
+            w.keys("25.5"); w.type("午饭 黄焖鸡", into: "entryPurpose"); w.submitKeyboard(); w.shot("add-entry-filled")
             w.tap("saveQuickEntry"); w.shot("add-entry-saved")
             // 第二笔：打车 18（不填用途）
             if w.element("keypad_1").exists { w.keys("18"); w.shot("second-entry-no-purpose"); w.tap("saveQuickEntry"); w.shot("second-entry-saved") }
@@ -45,7 +45,7 @@ final class IAFirstUseTests: YubaiUITestCase {
         // 收入：兼职 1200
         if w.tap("addEntry") {
             w.tap("entryNature_income"); w.shot("income-mode")
-            w.keys("1200"); w.type("兼职稿费", into: "entryPurpose"); w.shot("income-filled")
+            w.keys("1200"); w.type("兼职稿费", into: "entryPurpose"); w.submitKeyboard(); w.shot("income-filled")
             w.tap("saveQuickEntry"); w.shot("income-saved"); w.home()
         }
         // 退款与转账两种性质看一眼
@@ -172,7 +172,6 @@ final class IAYearYubaiTests: YubaiUITestCase {
         let w = yearWalker(self, tag: "E1-yubai")
         w.root("yubai"); w.scrollShots("yubai", max: 8)
         w.crawl("yubai") { w.root("yubai") }
-        w.crawl("yubai-lower") { w.root("yubai"); w.drag(up: true); w.drag(up: true) }
         // 问余白（没有配置 key）
         w.root("yubai")
         if w.tap("askYubai") { w.app.typeText("这个月咖啡花了多少？\n"); w.settle(3); w.shot("ask-no-key"); w.home() }
@@ -199,14 +198,14 @@ final class IAYearDailyTests: YubaiUITestCase {
         w.note("availableFunds before: \(funds.exists ? funds.label : "-")")
         if w.tap("addEntry") {
             w.shot("add-open-with-history")
-            w.keys("38"); w.type("咖啡", into: "entryPurpose"); w.settle(1); w.shot("add-coffee-suggestion")
+            w.keys("38"); w.type("咖啡", into: "entryPurpose"); w.submitKeyboard(); w.settle(1); w.shot("add-coffee-suggestion")
             w.tap("saveQuickEntry"); w.shot("add-coffee-saved"); w.home()
         }
         w.note("availableFunds after +38 expense: \(funds.exists ? funds.label : "-")")
         w.shot("after-expense")
         // 大额：笔记本 6999
         if w.tap("addEntry") {
-            w.keys("6999"); w.type("笔记本电脑", into: "entryPurpose"); w.shot("big-purchase-filled")
+            w.keys("6999"); w.type("笔记本电脑", into: "entryPurpose"); w.submitKeyboard(); w.shot("big-purchase-filled")
             w.tap("saveQuickEntry"); w.settle(2); w.shot("big-purchase-saved"); w.home()
         }
         w.note("availableFunds after +6999 expense: \(funds.exists ? funds.label : "-")")
@@ -229,10 +228,18 @@ final class IAYearDailyTests: YubaiUITestCase {
         w.note("availableFunds after delete: \(funds.exists ? funds.label : "-")")
         w.shot("after-delete")
         // 对一下余额
-        for id in ["openReconcile", "reconcileByHand", "balanceMismatchCard"] where w.element(id).exists { w.note("reconcile entry: \(id)") }
-        if w.tap(label: "对一下余额", timeout: 2, scrolls: 0) || w.tap("reconcileByHand", timeout: 2) {
-            w.shot("reconcile-open"); w.home()
+        w.root("yubai")
+        if w.tap("openAccounts") {
+            w.scrollShots("accounts-after-import", max: 3)
+            if w.tap(label: "对一下余额", timeout: 3, scrolls: 2) {
+                w.shot("reconcile-open")
+                w.keys("20000"); w.shot("reconcile-typed")
+                if w.tap("reconcileApply", timeout: 3, scrolls: 3) { w.shot("reconcile-applied") }
+            }
+            w.home()
         }
+        w.root("ledger"); w.shot("home-after-reconcile")
+        w.note("availableFunds after reconcile: \(funds.exists ? funds.label : "-")")
         // 长按 ＋
         w.root("ledger")
         let add = w.element("addEntry")
@@ -255,7 +262,8 @@ final class IAYearDisplayTests: YubaiUITestCase {
         w.root("yubai"); w.scrollShots("large-yubai", max: 4)
         // 切深色（设置 → 外观）
         w.root("yubai")
-        if w.tap("openSettings") {
+        if w.tap("openSettings"), w.tap("openDeviceSettings", scrolls: 8) {
+            w.shot("device-settings")
             if w.tap(label: "外观", timeout: 2, scrolls: 0) || w.tapElement(w.app.buttons.matching(NSPredicate(format: "label BEGINSWITH '外观'")).firstMatch, name: "外观 picker") {
                 w.shot("appearance-menu")
                 if !w.tap(label: "深色", timeout: 3) { w.tapElement(w.app.descendants(matching: .any).matching(NSPredicate(format: "label == '深色'")).firstMatch, name: "深色") }
