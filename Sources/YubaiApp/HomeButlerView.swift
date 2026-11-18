@@ -89,7 +89,7 @@ struct HomeTaskCard: View {
     }
     private func weeklyCard(_ card: ButlerCard) -> some View {
         QuestionCard(eyebrow: NowFormat.monthDay(card.createdAt), title: HomeButler.privacyText(card.title, hidden: hide), more: more,
-                     yesTitle: "周回顾", noTitle: "", yesIdentifier: "openWeeklyCard", yes: {
+                     yesTitle: "每周来信", noTitle: "", yesIdentifier: "openWeeklyCard", yes: {
             store.answerHome(item); store.tabRouteRequest = .weekly(card.id)
         }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissWeeklyCard")
             .accessibilityIdentifier("weeklyHomeCard")

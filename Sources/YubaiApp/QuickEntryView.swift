@@ -341,7 +341,8 @@ struct QuickEntryView: View {
         if store.accounts.isEmpty || !store.preferences.onboardingComplete {
             _ = store.update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Dates.now) }
         }
-        accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
+        let initialNature = prefill?.nature ?? nature
+        accountID = ManualBookkeeping.defaultAccount(in: store.current, nature: initialNature)?.id
         if let prefill {
             skipNatureReset = (prefill.nature ?? .expense) != nature
             nature = prefill.nature ?? .expense
@@ -368,6 +369,10 @@ struct QuickEntryView: View {
     private func natureChanged(_ value: Nature) {
         if value != .income { intoFixedSavings = false }
         if value != .expense { fromReserve = false; big = nil }
+        if value == .income || value == .refund,
+           accounts.first(where: { $0.id == accountID })?.kind == .credit {
+            accountID = ManualBookkeeping.defaultAccount(in: store.current, nature: value)?.id
+        }
         if skipNatureReset { skipNatureReset = false; return }
         category = ""; categoryHint = nil; subcategory = nil
         if value == .transfer { otherAccountID = accounts.first { $0.id != accountID }?.id }

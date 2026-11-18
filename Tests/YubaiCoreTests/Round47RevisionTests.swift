@@ -144,13 +144,13 @@ final class Round47RevisionTests: XCTestCase {
         Savings.closeCycles(&l, now: d("2026-12-10 12:00"))
         XCTAssertEqual(l.savingHistory.last?.settlementAdjustment, 41_200)
     }
-    func testReconcileFloorAlsoUsesCreditDebtAndDoesNotLoseDirectSavingsIncome() throws {
+    func testReconcileFloorIgnoresCreditDebtAndDoesNotLoseDirectSavingsIncome() throws {
         var l = ledger(); l.entries.append(Entry(date: now.addingTimeInterval(-1), amount: 5000, nature: .income, accountID: l.accounts[0].id, title: "存入", intoFixedSavings: true))
         l.accounts.append(Account(name: "信用卡", kind: .credit, balance: -10_000, at: now))
         let saved = l.fixedSavingsTotal(now: now)
         try Reconciliation.apply(&l, actual: [l.accounts[0].id: 1_027_400], now: now)
         XCTAssertEqual(l.fixedSavingsTotal(now: now), saved)
-        XCTAssertEqual(value(l).balanceGap, 5000)
+        XCTAssertEqual(value(l).balanceGap, 0)
     }
     func testReconcileUsesSavingBufferThenDeficitWithoutNegativeHeadline() throws {
         for (cash, less, deficit) in [(Int64(801_000), Int64(30_000), Int64(0)), (500_000, 200_000, 131_000)] {

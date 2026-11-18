@@ -268,9 +268,9 @@ struct EntryEditForm: View {
         let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         let refundPurpose = (clean.isEmpty ? original.displayTitle : clean) + " 退款"
         let category = Classification.isPending(draft.category) ? nil : draft.category
-        // TODO(merge): pass relatedEntryID: original.id once entry-sheet merges QuickEntryPrefill.
         store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: category, amount: nil, purpose: refundPurpose,
-                                                                    nature: .refund, subcategory: draft.subcategory, accountID: draft.accountID)))
+                                                                    nature: .refund, subcategory: draft.subcategory, accountID: draft.accountID,
+                                                                    relatedEntryID: original.id)))
     }
     private var fixedSavingsTotals: (current: Int64, new: Int64)? {
         guard draft.nature == .income, draft.intoFixedSavings, let projectedFixedSavings else { return nil }

@@ -550,9 +550,8 @@ struct LedgerEntryRow: View {
             .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .accessibilityValue(isFuture ? "未来" : acknowledged ? "已记下" : "")
             .nativeSwipeActions(edge: .trailing, allowsFullSwipe: true) {
-                // TODO-TOKEN: switch tint to YubaiColor.swipeDelete (with YubaiColor.white label) once ds-ui merges.
-                Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.canvas) }
-                    .tint(YubaiColor.amberStrong).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
+                Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.white) }
+                    .tint(YubaiColor.swipeDelete).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
                 Button(action: onSortCategory) { Text("改分类").foregroundStyle(YubaiColor.label) }
                     .tint(YubaiColor.keyFn).accessibilityIdentifier("sortLedgerEntry_" + entry.id.uuidString)
                 if savedEntry?.nature == .expense {
@@ -588,9 +587,9 @@ struct LedgerEntryRow: View {
     /// A refund linked to this expense offsets its category and the period spending.
     private func refund() {
         guard let saved = store.entriesByID[entry.id] else { return }
-        // TODO(merge): pass relatedEntryID: saved.id once entry-sheet merges QuickEntryPrefill.
         store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: saved.category, amount: nil, purpose: saved.displayTitle + " 退款",
-                                                                    nature: .refund, subcategory: saved.subcategory, accountID: saved.accountID)))
+                                                                    nature: .refund, subcategory: saved.subcategory, accountID: saved.accountID,
+                                                                    relatedEntryID: saved.id)))
     }
     private func duplicate() {
         guard let saved = store.entriesByID[entry.id] else { return }
