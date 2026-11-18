@@ -84,16 +84,17 @@ struct NewCycleCard: View {
     }
 }
 
-/// 几天没记：对一下余额最省事。
+/// 几天没记：先补记那几天的开销，记不清再对余额。
 struct GapCard: View {
     @Environment(AppStore.self) private var store
     let gap: Reconciliation.Gap
     var more = 0
     var body: some View {
         QuestionCard(eyebrow: "上次记账 · " + NowFormat.monthDay(gap.lastRecorded), title: "\(gap.days) 天没记了", more: more,
-                     yesTitle: "对一下余额", noTitle: "导入账单", yesIdentifier: "openReconcile", noIdentifier: "importFromGap",
-                     yes: { store.sheetSource = nil; store.sheet = .reconcileAll },
-                     no: { store.sheetSource = nil; store.sheet = .imports })
+                     yesTitle: "补记一笔", noTitle: "对一下余额", yesIdentifier: "addEntryFromGap", noIdentifier: "openReconcile",
+                     yes: { store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: nil, amount: nil, purpose: nil,
+                                                                                        date: Dates.addDays(1, to: gap.lastRecorded)))) },
+                     no: { store.sheetSource = nil; store.sheet = .reconcileAll })
             .accessibilityIdentifier("gapCard")
     }
 }
@@ -109,11 +110,19 @@ struct OverspendRows: View {
         let bill = value.rows.first { $0.kind == .bills }?.occurrences.first
         let kicker = bill.map { "还要付 · " + $0.title + " " + NowFormat.monthDay($0.date) } ?? "还要付"
         let amount = min(options.overBy, max(0, store.reserve.total))
-        QuestionCard(eyebrow: kicker, title: "要付的账单差 " + amount2(options.overBy, hide: store.preferences.hideAmounts), more: more, titleIdentifier: "deficitRescueText",
-                     yesTitle: "拿出来用 " + (store.preferences.hideAmounts ? "¥••••" : Money.text(amount)), noTitle: "先不动",
-                     yesIdentifier: "coverFromReserve", noIdentifier: "deficitKeep", yesEnabled: amount > 0, yes: {
-            _ = store.update("拿出来用", entryMotion: false) { try HomeButler.rescueDeficit(in: &$0, now: store.financialNow) }
-        }, no: { store.answerHome(.overspend(options)) }).accessibilityIdentifier("deficitRescueCard")
+        let title = "要付的账单差 " + amount2(options.overBy, hide: store.preferences.hideAmounts)
+        if amount > 0 {
+            QuestionCard(eyebrow: kicker, title: title, more: more, titleIdentifier: "deficitRescueText",
+                         yesTitle: "拿出来用 " + (store.preferences.hideAmounts ? "¥••••" : Money.text(amount)), noTitle: "先不动",
+                         yesIdentifier: "coverFromReserve", noIdentifier: "deficitKeep", yes: {
+                _ = store.update("拿出来用", entryMotion: false) { try HomeButler.rescueDeficit(in: &$0, now: store.financialNow) }
+            }, no: { store.answerHome(.overspend(options)) }).accessibilityIdentifier("deficitRescueCard")
+        } else {
+            // Nothing saved to draw from: no dead「拿出来用 ¥0.00」button.
+            QuestionCard(eyebrow: kicker, title: title, more: more, titleIdentifier: "deficitRescueText",
+                         yesTitle: "先不动", noTitle: "", yesIdentifier: "deficitKeep",
+                         yes: { store.answerHome(.overspend(options)) }, no: {}).accessibilityIdentifier("deficitRescueCard")
+        }
     }
 }
 
