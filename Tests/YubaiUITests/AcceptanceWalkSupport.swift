@@ -300,12 +300,27 @@ final class AcceptanceWalker {
         let creates = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'createImportCategory_'"))
         for index in 0..<min(creates.count, 8) {
             let e = creates.element(boundBy: index)
-            tapElement(e, name: "create category \(index)", timeout: 2, scrolls: 4, settle: 0.8)
+            tapElement(e, name: "create category \(index)", timeout: 2, scrolls: 4, settle: 3)
         }
         if capture, tap(label: "添加缺少的账户", timeout: 2, scrolls: 4) {
             shot("import-add-account")
             let cancel = app.navigationBars.buttons["取消"]
             if cancel.exists { cancel.tap(); settle() } else { app.swipeDown(); settle() }
+        }
+        // Rows whose source category is 没分类 still need a target category.
+        if tap("importCategoryMapping", timeout: 3, scrolls: 6, settle: 2) {
+            if capture { shot("import-category-mapping") }
+            let pending = element("importCategory_没分类")
+            if tapElement(pending, name: "importCategory_没分类", timeout: 3, scrolls: 12, settle: 1.5) {
+                if capture { shot("import-category-picker") }
+                var picked = false
+                for label in ["其他支出", "其他", "购物"] where !picked {
+                    let option = app.buttons.matching(NSPredicate(format: "label == %@ OR identifier ENDSWITH %@", label, "_" + label)).firstMatch
+                    picked = tapElement(option, name: "pick " + label, timeout: 2, scrolls: 3, settle: 2)
+                }
+                if capture { shot("import-category-picked") }
+            }
+            back(); settle(2)
         }
         let mappings = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'mapping_'"))
         for index in 0..<min(mappings.count, 4) {
@@ -332,7 +347,13 @@ final class AcceptanceWalker {
         note("import preview ready in \(String(format: "%.1f", Date().timeIntervalSince(previewStart)))s")
         if capture { settle(1.5); scrollShots("import-preview", max: 6) }
         resolveImportDecisions(capture: capture)
+        settle(3)
         note("commit enabled=\(commit.isEnabled) label=\(commit.label)")
+        if !commit.isEnabled {
+            // Last resort, like a person would: look at what is still waiting.
+            let waiting = app.buttons.matching(NSPredicate(format: "identifier == 'importPreviewFilter' AND label BEGINSWITH '要你选'")).firstMatch
+            if tapElement(waiting, name: "filter 要你选", timeout: 2, scrolls: 6, settle: 2) { shot("import-still-waiting") }
+        }
         if capture { shot("import-preview-decided") }
         let begin = Date()
         guard tapElement(commit, name: "commitImport", timeout: 5, scrolls: 8, settle: 0.5) else { shot("commit-missing"); return false }
