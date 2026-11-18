@@ -56,12 +56,15 @@ struct CategoriesView: View {
         }.paperBackground().foregroundStyle(YubaiColor.label).navigationTitle(sorting ? "排序" : "分类").yubaiNavigation()
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button(sorting ? "完成" : "排序") { sorting.toggle() }
-                        .accessibilityIdentifier("sortCategories")
+                    Button { sorting.toggle() } label: {
+                        Text(sorting ? "完成" : "排序").fixedSize(horizontal: true, vertical: false)
+                    }.accessibilityIdentifier("sortCategories")
                 }
                 if !sorting {
                     ToolbarItem(placement: .primaryAction) {
-                        Button("新分类") { adding = true }.accessibilityIdentifier("addMainCategory")
+                        Button { adding = true } label: {
+                            Text("新分类").fixedSize(horizontal: true, vertical: false)
+                        }.accessibilityIdentifier("addMainCategory")
                     }
                 }
             }

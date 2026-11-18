@@ -42,6 +42,13 @@ struct WishlistView: View {
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
         }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("心愿单").yubaiNavigation().accessibilityIdentifier("wishlistPage").task(id: store.ledgerRevision) { now = Dates.now }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { addingWish = true } label: {
+                        Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
+                    }.buttonStyle(TextLinkStyle()).accessibilityLabel("写一个心愿").accessibilityIdentifier("addWishButton")
+                }
+            }
             .sheet(isPresented: $addingWish) { NavigationStack { WishEditor() }.environment(store).appErrors().yubaiSheetBackground() }
             .onChange(of: phase) { _, value in if value == .active { now = Dates.now } }
     }
@@ -99,10 +106,10 @@ struct WishlistView: View {
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
                 else if let due = wish.followUpAt, due <= Dates.now { WishFollowUpView(wishID: wish.id) }
             }
-        }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("wish_" + wish.id.uuidString)
+        }.buttonStyle(WishActionButtonStyle()).accessibilityIdentifier("wish_" + wish.id.uuidString)
     }
     private func wishHeading(_ wish: WishItem) -> some View {
-        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.gapGroup))
+        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup))
         return layout {
             Text(wish.title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
             if wish.status == .bought { Pill(text: "已买", variant: .brand, showsDot: false) }
@@ -175,5 +182,19 @@ private struct WishFollowUpView: View {
                 else { _ = save() }
             }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).frame(minHeight: YubaiSize.tapMin).disabled(text.count > 3900)
         }
+    }
+}
+
+private struct WishActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.yubaiFont(YubaiFont.callout, weight: .regular)
+            .padding(.horizontal, YubaiSpace.space16).padding(.vertical, YubaiSpace.space8)
+            .frame(maxWidth: .infinity, minHeight: YubaiSize.rowIcon)
+            .foregroundStyle(isEnabled ? YubaiColor.label : YubaiColor.labelSecondary)
+            .background(isEnabled ? YubaiColor.paperInset : Color.clear, in: Capsule())
+            .overlay { if isEnabled { Capsule().strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) } }
+            .yubaiHitTarget().contentShape(Capsule())
+            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
     }
 }

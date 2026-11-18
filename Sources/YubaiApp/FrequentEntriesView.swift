@@ -22,7 +22,7 @@ struct FrequentEntriesView: View {
     var body: some View {
         Page(spacing: YubaiSpace.gapGroup, identifier: "frequentEntriesPage") {
             if items.isEmpty && hidden.isEmpty {
-                EmptyState(.frequent, onAction: { adding = true })
+                EmptyState(.frequent, onAction: { purpose = ""; keypad = EntryKeypad(); adding = true })
             }
             if !items.isEmpty {
                 SectionHeading(title: "显示的")
@@ -35,6 +35,13 @@ struct FrequentEntriesView: View {
                 CardRows(hidden) { row in hiddenRow(row) }
             }
         }.navigationTitle("常用").yubaiNavigation()
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { purpose = ""; keypad = EntryKeypad(); adding = true } label: {
+                        Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
+                    }.buttonStyle(TextLinkStyle()).accessibilityLabel("新建常用").accessibilityIdentifier("addFrequentButton")
+                }
+            }
             .sheet(isPresented: $adding) { addForm }
             .task(id: store.ledgerRevision) { await refresh() }
             #if os(iOS)
