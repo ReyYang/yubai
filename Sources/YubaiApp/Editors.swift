@@ -61,16 +61,20 @@ struct AccountEditor: View {
         } catch { store.error = error.localizedDescription }
     }
 
+    private var availableKinds: [AccountKind] {
+        guard let account, ![AccountKind.bank, .cash].contains(account.kind) else { return [.bank, .cash] }
+        return [.bank, .cash, account.kind]
+    }
     private var accountSection: some View {
         Section("账户") {
             CardTextFieldRow(title: "名称", text: $name, identifier: "accountName", autofocus: true)
             if !name.isEmpty { InlineFieldError(message: nameError) }
-            SuggestionChips(values: ["微信零钱", "支付宝", "招行储蓄卡", "信用卡"], selected: name) { name = $0 }
-            Picker("账户类型", selection: $kind) { ForEach(AccountKind.allCases) { Text($0.label).tag($0) } }.disabled(account != nil)
+            SuggestionChips(values: ["微信零钱", "支付宝", "招行储蓄卡"], selected: name) { name = $0 }
+            Picker("账户类型", selection: $kind) { ForEach(availableKinds) { Text($0.label).tag($0) } }.disabled(account != nil)
         }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
     }
     private var balanceSection: some View {
-        Section(kind == .credit ? "当前待还款" : kind == .investment ? "当前市值" : "对一下余额") {
+        Section(kind == .credit ? "欠款" : kind == .investment ? "当前市值" : "对一下余额") {
             if account != nil { Toggle("本次重新核对真实余额", isOn: $reconcileNow).tint(YubaiColor.toggleOn) }
             MoneyInputRow(title: kind == .credit ? "当前待还款" : "余额", text: $amount, identifier: "accountBalance", allowNegative: kind != .credit)
                 .disabled(account != nil && !reconcileNow)
@@ -110,13 +114,20 @@ struct AccountsView: View {
     var body: some View {
         let hand = handAccounts, other = otherAccounts
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            if store.accounts.isEmpty { EmptyState("creditcard", "还没有账户", action: "添加账户", onAction: { store.sheet = .account(nil) }) }
+            if store.accounts.isEmpty { EmptyState("creditcard", "还没有账户", action: "添加账户", actionIdentifier: "addAccount", onAction: { store.sheet = .account(nil) }) }
             if !hand.isEmpty { totalBlock(hand) }
             if !hand.isEmpty { accountGroup(hand, heading: nil) }
             if !other.isEmpty { accountGroup(other, heading: "不算在手上的") }
             actions(hasHand: !hand.isEmpty)
         }.amountPrivacy(store.preferences.hideAmounts).accessibilityIdentifier("accountsPage")
             .navigationTitle("手上的钱").yubaiNavigation().manualSheetHeader("手上的钱", cancelTitle: "关闭", showsAction: false)
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button { store.sheetSource = nil; store.sheet = .account(nil) } label: {
+                        Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
+                    }.buttonStyle(TextLinkStyle()).accessibilityLabel("添加账户").accessibilityIdentifier("addAccountToolbar")
+                }
+            }
     }
     private func totalBlock(_ hand: [Account]) -> some View {
         let names = ["零", "一", "两", "三", "四", "五", "六", "七", "八", "九", "十"]
@@ -150,15 +161,17 @@ struct AccountsView: View {
             VStack(alignment: .leading, spacing: YubaiSpace.space8) { accountName(a); balance }
         }
     }
-    private func actions(hasHand: Bool) -> some View {
-        VStack(spacing: YubaiSpace.space8) {
-            if hasHand {
-                Button("对一下余额") { store.sheetSource = nil; store.sheet = .reconcileAll }
-                    .buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("reconcileAll")
-            }
-            if !store.accounts.isEmpty {
-                NavigationLink { AccountEditor(account: nil) } label: { Text("加一个账户") }
-                    .buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("addAccount")
+    @ViewBuilder private func actions(hasHand: Bool) -> some View {
+        if hasHand || !store.accounts.isEmpty {
+            ChipFlow {
+                if hasHand {
+                    Button("对一下余额") { store.sheetSource = nil; store.sheet = .reconcileAll }
+                        .buttonStyle(SecondaryButtonStyle(compact: true)).accessibilityIdentifier("reconcileAll")
+                }
+                if !store.accounts.isEmpty {
+                    NavigationLink { AccountEditor(account: nil) } label: { Text("加一个账户") }
+                        .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("addAccount")
+                }
             }
         }
     }

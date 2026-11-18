@@ -311,18 +311,18 @@ private struct ProfilePrincipleEditor: View {
     @FocusState private var focused: Bool
     private var clean: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapSection) {
-            Card(style: .list) {
-                CardTextFieldRow(title: "", text: $text, placeholder: "超过多少钱要等一等？", identifier: "principleText", multiline: true, focus: $focused, autofocus: true)
-            }
-            VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                ForEach(["超过 2,000 等 48 小时", "每天用得上的，愿意多花", "买之前先看看家里有没有"], id: \.self) { value in
-                    CategoryChoiceChip(title: value) { text = value }.accessibilityIdentifier("principleSuggestion_" + value)
+        ScrollView {
+            VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
+                Card(style: .list) {
+                    CardTextFieldRow(title: "原则", text: $text, placeholder: "超过多少钱要等一等？", identifier: "principleText", multiline: true, focus: $focused, autofocus: true)
                 }
-            }.frame(maxWidth: .infinity, alignment: .leading)
-            Spacer(minLength: YubaiSpace.none)
-        }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup)
-            .paperBackground().yubaiNavigation().navigationTitle(original == nil ? "加一条原则" : "原则")
+                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+                    ForEach(["超过 2,000 等 48 小时", "每天用得上的，愿意多花", "买之前先看看家里有没有"], id: \.self) { value in
+                        CategoryChoiceChip(title: value) { text = value }.accessibilityIdentifier("principleSuggestion_" + value)
+                    }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.gapGroup).padding(.bottom, YubaiSpace.gapSection)
+        }.paperBackground().yubaiNavigation().navigationTitle(original == nil ? "加一条原则" : "原则")
             .onAppear { text = original ?? ""; focused = true }
             .manualSheetHeader(original == nil ? "加一条原则" : "原则", actionTitle: "保存", enabled: !clean.isEmpty,
                                actionIdentifier: "savePrinciple", action: {
@@ -333,6 +333,9 @@ private struct ProfilePrincipleEditor: View {
                     ledger.profile.stamp(changedFrom: old, at: Dates.now)
                 }) { dismiss() }
             })
+            #if os(iOS)
+            .presentationDetents([.medium, .large])
+            #endif
     }
 }
 
