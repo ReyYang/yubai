@@ -15,9 +15,7 @@ struct YubaiTabView: View {
                 VStack(spacing: YubaiSpace.none) {
                     paydayEntry
                     EntryFormDivider()
-                    destination(.saving, "存钱", id: "openSaving")
-                    EntryFormDivider()
-                    destination(.accounts, "账户", detail: accountStatus, id: "openAccounts")
+                    destination(.saving, "存钱", detail: savingStatus, id: "openSaving")
                     EntryFormDivider()
                     destination(.fixedFlows, "会回来的账单", detail: billStatus, id: "openFixedFlows")
                 }
@@ -36,6 +34,8 @@ struct YubaiTabView: View {
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     destination(.frequent, "常用", detail: "\(repeatCount) 个", id: "openFrequentEntries")
+                    EntryFormDivider()
+                    destination(.accounts, "账户", detail: accountStatus, id: "openAccounts")
                     EntryFormDivider()
                     destination(.imports, "导入账单", id: "openImports")
                     EntryFormDivider()
@@ -111,9 +111,11 @@ struct YubaiTabView: View {
         let count = store.current.profile.restrain.count
         return count == 0 ? "" : "盯住 \(count) 类"
     }
+    private var savingStatus: String {
+        LedgerHomeModel.make(store).savedTotal.map { amount2($0, hide: store.preferences.hideAmounts) } ?? ""
+    }
     private var accountStatus: String {
-        let date = store.current.lastReconciledAt
-        return "对一下余额" + (date.map { " · 上次 " + HomeTaskCopy.monthDay($0) } ?? "")
+        "\(store.accounts.filter { !$0.archived }.count) 个"
     }
     private var billStatus: String {
         let count = store.formula.billCount

@@ -100,7 +100,7 @@ struct WishlistView: View {
                         .accessibilityLabel("\(Dates.text(due)) 问你用得怎么样")
                         .accessibilityIdentifier("wishFollowUpDate_" + wish.id.uuidString)
                 }
-                if let id = wish.boughtEntryID, store.entriesByID[id].map { $0.deletedAt == nil } == true {
+                if let id = wish.boughtEntryID, store.entriesByID[id].map({ $0.deletedAt == nil }) == true {
                     NavigationLink("购买记录") { EntryDetailView(entryID: id) }.accessibilityIdentifier("wishBoughtEntry_" + wish.id.uuidString)
                 }
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
