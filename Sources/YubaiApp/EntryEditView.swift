@@ -42,8 +42,15 @@ struct EntryEditForm: View {
         _amount = State(initialValue: Money.input(entry.amount))
         _purpose = State(initialValue: entry.displayTitle)
     }
-    private var standardNature: Bool { [.expense, .income, .transfer].contains(draft.nature) }
+    private var standardNature: Bool { [.expense, .income, .refund, .transfer].contains(draft.nature) }
     private var accounts: [Account] { store.accounts.filter { !$0.archived || $0.id == draft.accountID || $0.id == draft.otherAccountID } }
+    private var refundCandidates: [Entry] {
+        let cents = currentAmount
+        return store.sortedEntries.filter { row in
+            row.deletedAt == nil && row.nature == .expense && row.id != draft.id && row.date <= draft.date
+                && (cents <= 0 || row.amount >= cents)
+        }.prefix(6).map { $0 }
+    }
     private var canSave: Bool {
         guard let cents = amountKeypadPresented ? keypad.amount : (try? Money.parse(amount)), cents > 0 else { return false }
         return purpose.count <= 4000 && (draft.nature != .transfer || (draft.otherAccountID != nil && draft.otherAccountID != draft.accountID))
@@ -56,7 +63,7 @@ struct EntryEditForm: View {
                             Pill(text: "来自 Apple Pay · " + (draft.quickCapture?.card ?? "") + " · " + (draft.quickCapture?.transactionDate ?? draft.date).formatted(.dateTime.hour().minute()), variant: .neutral, height: YubaiSize.smallBadge, showsDot: false)
                         }
                         if standardNature && draft.source != "Apple Pay" {
-                            Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.transfer, "转账")], selection: $draft.nature,
+                            Segmented(choices: [(Nature.expense, "支出"), (.income, "收入"), (.refund, "退款"), (.transfer, "转账")], selection: $draft.nature,
                                           identifier: { "entryNature_" + $0.rawValue })
                         } else if !standardNature {
                             Text(draft.nature.entryLabel).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
@@ -78,18 +85,15 @@ struct EntryEditForm: View {
                                 draft.subcategoryUserEdited = true; choseCategory = true; categoryIsSuggestion = false; remembered = false; purposeFocused = false
                             }
                         }
+                        if draft.nature == .refund { relatedExpenseCard }
                         if onSave == nil && draft.source != "Apple Pay" {
                             provenanceRow
-                            askRow
+                            if draft.nature == .expense { expenseActionCard }
                         }
-                        EntryFormFields(purpose: $purpose, purposeError: purpose.count > 4000 ? "用途最多 4,000 字" : nil, nature: draft.nature, accounts: accounts, balances: balances,
-                                        accountID: Binding(get: { draft.accountID }, set: { if let id = $0 { draft.accountID = id } }),
-                                        otherAccountID: $draft.otherAccountID, date: $draft.date, showsTime: true, showsRecent: false,
-                                        focus: $purposeFocused, recall: { entry in
-                            draft.category = entry.category; draft.subcategory = entry.subcategory; draft.subcategoryUserEdited = true; choseCategory = true; categoryIsSuggestion = false
-                            if accounts.contains(where: { $0.id == entry.accountID }) { draft.accountID = entry.accountID }
-                            purposeFocused = false
-                        }) {}
+                        InlineFieldError(message: purpose.count > 4000 ? "用途最多 4,000 字" : nil)
+                        if draft.nature == .transfer || (draft.nature.paired && draft.otherAccountID != nil) {
+                            transferAccountsCard
+                        }
                         if let merchant = draft.quickCapture?.merchant {
                             HStack(spacing: YubaiSpace.gapGroup) {
                                 Text("以后「\(merchant)」都记到 \(Classification.displayCategory(draft.category))").yubaiFont(YubaiFont.caption)
@@ -109,9 +113,11 @@ struct EntryEditForm: View {
             EntryKeyboardTray(purpose: $purpose, focus: $purposeFocused) {
                 ChipFlow {
                     EntryDateChip(date: $draft.date, inTray: true, allowsFuture: true, identifier: "editEntryDate")
-                    EntryAccountMenu(accounts: accounts, balances: balances, selection: Binding(get: { draft.accountID }, set: { if let value = $0 { draft.accountID = value } }), inTray: true)
-                    if draft.nature == .income { EntryFixedSavingsChip(selected: $draft.intoFixedSavings, action: { finishAmount(); purposeFocused = false }) }
                     if draft.nature != .transfer {
+                        EntryAccountMenu(accounts: accounts, balances: balances, selection: Binding(get: { draft.accountID }, set: { if let value = $0 { draft.accountID = value } }), inTray: true)
+                    }
+                    if draft.nature == .income { EntryFixedSavingsChip(selected: $draft.intoFixedSavings, action: { finishAmount(); purposeFocused = false }) }
+                    if draft.nature != .transfer && draft.nature != .refund {
                         EntryRepeatChip(selected: draft.planID != nil || repeatsMonthly, value: repeatValue, opensPlan: draft.planID != nil, inTray: true) {
                             finishAmount(); purposeFocused = false
                             if let id = draft.planID { store.sheetSource = nil; store.sheet = .editPlan(id) }
@@ -137,10 +143,20 @@ struct EntryEditForm: View {
             .task(id: previewInput) { await refreshPreview() }
             .onChange(of: purposeFocused) { _, focused in if focused { finishAmount() } else { openAmount() } }
             .onChange(of: draft.category) { _, _ in remembered = false; draft.partID = nil }
-            .onChange(of: draft.nature) { _, nature in
+            .onChange(of: draft.accountID) { _, id in
+                if draft.nature == .transfer && id == draft.otherAccountID {
+                    draft.otherAccountID = accounts.first { $0.id != id }?.id
+                }
+            }
+            .onChange(of: draft.nature) { oldNature, nature in
                 if nature != .income { draft.intoFixedSavings = false }
+                if nature != .refund { draft.relatedEntryID = nil }
+                if nature == .transfer || nature == .refund { repeatsMonthly = false }
                 if skipNatureReset { skipNatureReset = false; return }
                 draft.otherAccountID = nature == .transfer ? accounts.first { $0.id != draft.accountID }?.id : nil
+                if oldNature.categoryIncome == nature.categoryIncome && oldNature != .transfer && nature != .transfer && !Classification.isPending(draft.category) {
+                    return
+                }
                 let suggestion = EntryHistory.suggestion(purpose: purpose, nature: nature, in: store.current)
                 draft.category = suggestion?.category ?? Classification.pendingCategory
                 draft.subcategory = suggestion?.subcategory; draft.subcategoryUserEdited = true
@@ -171,20 +187,90 @@ struct EntryEditForm: View {
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("deleteEntry")
         }.frame(minHeight: YubaiSize.tapMin)
     }
+    private var transferAccountsCard: some View {
+        Card(style: .list) {
+            VStack(spacing: YubaiSpace.none) {
+                if draft.nature == .transfer {
+                    EntryFormRow(title: "转出") {
+                        EntryAccountMenu(accounts: accounts, balances: balances,
+                                         selection: Binding(get: { draft.accountID }, set: { if let id = $0 { draft.accountID = id } }),
+                                         identifier: "transferSourceAccount")
+                    }
+                    EntryFormDivider()
+                }
+                EntryFormRow(title: "转入") {
+                    EntryAccountMenu(accounts: accounts.filter { $0.id != draft.accountID }, balances: balances,
+                                     selection: $draft.otherAccountID, identifier: "transferDestinationAccount")
+                }
+            }
+        }
+    }
+    @ViewBuilder private var relatedExpenseCard: some View {
+        let candidates = refundCandidates
+        if draft.relatedEntryID != nil || !candidates.isEmpty {
+            let linked = draft.relatedEntryID.flatMap { store.entriesByID[$0] }
+            Card(style: .list) {
+                EntryFormRow(title: "对应支出") {
+                    Menu {
+                        Button("不对应") { draft.relatedEntryID = nil }
+                        ForEach(candidates) { item in
+                            Button(item.displayTitle + " · " + amount2(item.amount, hide: store.preferences.hideAmounts)) {
+                                draft.relatedEntryID = item.id
+                                if !Classification.isPending(item.category) {
+                                    draft.category = item.category; draft.subcategory = item.subcategory
+                                    draft.subcategoryUserEdited = true; choseCategory = true; categoryIsSuggestion = false
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(linked?.displayTitle ?? "不对应").yubaiFont(YubaiFont.row).lineLimit(1)
+                    }.accessibilityIdentifier("editEntryRelatedExpense")
+                }
+            }
+        }
+    }
+    private var expenseActionCard: some View {
+        Card(style: .list) {
+            VStack(spacing: YubaiSpace.none) {
+                askRow
+                EntryFormDivider()
+                refundRow
+            }
+        }
+    }
     private var askRow: some View {
         Button {
-            let question = "\(draft.displayTitle)，\(Money.text(draft.amount))，该不该买？"
+            let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+            let subject = clean.isEmpty ? draft.displayTitle : clean
+            let cents = currentAmount > 0 ? currentAmount : draft.amount
+            let question = "\(subject)，\(Money.text(cents))，该不该买？"
             store.sheetSource = nil; store.sheet = .ask(question)
         } label: {
-            Card(style: .list) {
-                HStack(spacing: YubaiSpace.space8) {
-                    AssistantMark(size: YubaiFont.navTitle.size, color: YubaiColor.brandInk)
-                    Text("该不该买").yubaiFont(YubaiFont.row)
-                    Spacer()
-                    Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                }.frame(minHeight: YubaiSize.rowSingle)
-            }
+            HStack(spacing: YubaiSpace.space8) {
+                AssistantMark(size: YubaiFont.navTitle.size, color: YubaiColor.brandInk)
+                Text("该不该买").yubaiFont(YubaiFont.row)
+                Spacer()
+                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle())
+    }
+    private var refundRow: some View {
+        Button { openRefund() } label: {
+            HStack(spacing: YubaiSpace.space8) {
+                Image(systemName: "arrow.uturn.backward").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk).accessibilityHidden(true)
+                Text("记退款").yubaiFont(YubaiFont.row)
+                Spacer()
+                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
+        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("editEntryRefund")
+    }
+    private func openRefund() {
+        let clean = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        let refundPurpose = (clean.isEmpty ? original.displayTitle : clean) + " 退款"
+        let category = Classification.isPending(draft.category) ? nil : draft.category
+        // TODO(merge): pass relatedEntryID: original.id once entry-sheet merges QuickEntryPrefill.
+        store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: category, amount: nil, purpose: refundPurpose,
+                                                                    nature: .refund, subcategory: draft.subcategory, accountID: draft.accountID)))
     }
     private var fixedSavingsTotals: (current: Int64, new: Int64)? {
         guard draft.nature == .income, draft.intoFixedSavings, let projectedFixedSavings else { return nil }
@@ -268,7 +354,7 @@ struct EntryEditForm: View {
                 // Read the saved value here so an older form cannot overwrite it.
                 var updated = edited
                 if let original = ledger.entries.first(where: { $0.id == updated.id }) { updated.note = original.note }
-                if repeatsMonthly && updated.planID == nil && updated.nature != .transfer {
+                if repeatsMonthly && updated.planID == nil && updated.nature != .transfer && updated.nature != .refund {
                     try FixedFlows.repeatMonthly(updated, in: &ledger)
                 } else { try ManualBookkeeping.edit(updated, in: &ledger, now: now) }
                 if choseCategory && !Classification.isPending(updated.category) {

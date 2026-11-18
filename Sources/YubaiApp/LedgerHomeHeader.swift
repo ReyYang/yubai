@@ -5,6 +5,7 @@ struct LedgerHomeHeader: View {
     @Environment(AppStore.self) private var store
     let model: LedgerHomeModel
     private var hide: Bool { store.preferences.hideAmounts }
+    private var salaryLate: Bool { store.funds.cycleIsPayday && (store.funds.salaryLateDays ?? 0) > 0 }
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.none) {
             if model.showsFormula {
@@ -31,15 +32,23 @@ struct LedgerHomeHeader: View {
                     .accessibilityIdentifier("ledgerHeroLabel")
             } value: {
                 if let fact = model.gapBillText ?? (model.periodLine.isEmpty ? nil : model.periodLine) {
-                    Text(HomeButler.privacyText(fact, hidden: hide)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                        .accessibilityIdentifier(model.gapBillText == nil ? "ledgerPeriod" : "ledgerGapBill")
+                    if model.gapBillText == nil, salaryLate {
+                        // The period line already reads「工资晚了 N 天」; show it as a calm amber state.
+                        Text(fact).yubaiFont(YubaiFont.caption, weight: .medium).foregroundStyle(YubaiColor.amberInk)
+                            .padding(.horizontal, YubaiSpace.space8).frame(minHeight: YubaiSize.headerIcon)
+                            .background(YubaiColor.amberTint, in: Capsule()).fixedSize()
+                            .accessibilityIdentifier("ledgerPeriod")
+                    } else {
+                        Text(HomeButler.privacyText(fact, hidden: hide)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                            .accessibilityIdentifier(model.gapBillText == nil ? "ledgerPeriod" : "ledgerGapBill")
+                    }
                 }
             }
-            HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space6) {
+            HStack(alignment: .center, spacing: YubaiSpace.space8) {
                 AmountLabel(cents: model.headlineAmount, hide: hide, role: .hero, currency: true,
                             ink: model.headlineIsAmber ? YubaiColor.amberStrong : YubaiColor.label)
                     .accessibilityIdentifier("availableFunds")
-                if disclosure { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary) }
+                if disclosure { Image(systemName: "chevron.right").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary) }
             }
             if let status = model.statusLine {
                 Text(HomeButler.privacyText(status, hidden: hide)).yubaiFont(YubaiFont.callout)

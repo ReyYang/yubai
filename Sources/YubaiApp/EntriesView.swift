@@ -39,8 +39,8 @@ struct EntriesView: View {
     var body: some View {
         // Cached once per ledger revision/query. List creates the display rows
         // lazily, including when thousands of entries span many months.
-        let timeline = categoryScope == nil && entryIDsScope == nil ? store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
-            : categoryTimeline ?? store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
+        let base = store.entryTimeline(month: month, search: search, filter: filter, allMonths: true)
+        let timeline = categoryScope == nil && entryIDsScope == nil ? base : categoryTimeline ?? base
         let hideAmounts = store.preferences.hideAmounts
         let groups = scoped(displayMonths(timeline))
         ScrollViewReader { proxy in
@@ -48,7 +48,7 @@ struct EntriesView: View {
                 if (categoryScope != nil || entryIDsScope != nil) && categoryTimeline == nil {
                     ProgressView().listRowBackground(Color.clear).listRowSeparator(.hidden)
                 } else {
-                    headerBlock(groups: groups, hide: hideAmounts)
+                    headerBlock(groups: groups, categories: showsFilters || searching ? filterCategories(base) : [], hide: hideAmounts)
                         .id("entriesTop")
                         .listRowInsets(EdgeInsets(top: YubaiSpace.none, leading: YubaiSpace.none, bottom: YubaiSpace.space12, trailing: YubaiSpace.none))
                         .listRowBackground(Color.clear).listRowSeparator(.hidden)
@@ -107,62 +107,139 @@ struct EntriesView: View {
 
     // MARK: 页首
 
-    @ViewBuilder private func headerBlock(groups: [EntryTimeline.Month], hide: Bool) -> some View {
+    private var isScoped: Bool { scope != nil || entryIDsScope != nil || categoryScope != nil || categoryTimeline != nil }
+    @ViewBuilder private func headerBlock(groups: [EntryTimeline.Month], categories: [String], hide: Bool) -> some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-            if !searching && !showsFilters && filter == .all && categoryScope == nil && scope == nil {
+            if !searching && !showsFilters && filter == .all && !isScoped {
                 LedgerHomeHeader(model: LedgerHomeModel.make(store))
             }
-            if searching || showsFilters { filters }
-            if let categoryScope {
-                Button { self.categoryScope = nil; categoryTimeline = nil; scope = nil } label: {
-                    Label(Classification.displayCategory(categoryScope), systemImage: "xmark.circle")
-                        .yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin)
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("清掉分类筛选").accessibilityIdentifier("clearLedgerCategory")
-            }
+            if isScoped || filter != .all { scopeBar }
+            if searching || showsFilters { filters(categories) }
             summary(groups, hide: hide)
         }.padding(.top, YubaiSpace.space20)
     }
+    /// Any jump into a narrowed ledger (formula rows, category pages, filters)
+    /// keeps one visible way back to every entry.
+    private var scopeBar: some View {
+        HStack(spacing: YubaiSpace.space8) {
+            if let categoryScope {
+                Button { clearCategory() } label: {
+                    Label(Classification.displayCategory(categoryScope), systemImage: "xmark.circle")
+                        .yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("清掉分类筛选").accessibilityIdentifier("clearLedgerCategory")
+            }
+            if let title = scopeTitle ?? (categoryScope == nil ? "已筛选" : nil) {
+                Text(title).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).lineLimit(1)
+                    .accessibilityIdentifier("entriesScopeTitle")
+            }
+            Spacer(minLength: YubaiSpace.space8)
+            Button { clearScope() } label: {
+                Text("显示全部").yubaiFont(YubaiFont.callout, weight: .medium).foregroundStyle(YubaiColor.brandInk)
+                    .fixedSize().yubaiHitTarget(alignment: .trailing)
+            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("clearEntriesScope")
+        }.padding(.horizontal, YubaiSpace.space4)
+    }
+    private var scopeTitle: String? {
+        var parts: [String] = []
+        if let scope { parts.append(NowFormat.range(scope.start, scope.end.addingTimeInterval(-1))) }
+        if filter != .all { parts.append(filter.rawValue) }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+    private func clearCategory() { categoryScope = nil; categoryTimeline = nil; scope = nil }
+    private func clearScope() {
+        scope = nil; entryIDsScope = nil; categoryScope = nil; categoryTimeline = nil; filter = .all; showsFilters = false
+    }
+    /// Spending categories present in the unscoped timeline, most used first.
+    private func filterCategories(_ timeline: EntryTimeline.Snapshot) -> [String] {
+        var counts: [String: Int] = [:]
+        for row in timeline.months.lazy.flatMap(\.days).flatMap(\.entries) where !row.inflow && !row.uncategorized {
+            guard let entry = store.entriesByID[row.id], entry.nature == .expense, !Classification.isPending(entry.category) else { continue }
+            counts[entry.category, default: 0] += 1
+        }
+        var names = counts.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map(\.key)
+        if let categoryScope, !names.contains(categoryScope) { names.insert(categoryScope, at: 0) }
+        return names
+    }
     @ViewBuilder private var topBar: some View {
         if searching { searchField }
-        else {
+        else if textSize.isAccessibilitySize {
             HStack(spacing: YubaiSpace.space8) {
                 AmountVisibilityButton()
                 Spacer(minLength: YubaiSpace.none)
                 monthButton(month)
                 Spacer(minLength: YubaiSpace.none)
-                HeaderIconButton {
-                    savedOffset = currentOffset; searchExpanded = true; scrollToTop = true
-                } icon: { size in Image(systemName: "magnifyingglass").font(.system(size: size)) }
-                    .accessibilityLabel("搜索").accessibilityIdentifier("openLedgerSearch")
-                HeaderIconButton { showsFilters.toggle(); scrollToTop = true } icon: { size in Image(systemName: "line.3.horizontal.decrease").font(.system(size: size)) }
-                    .accessibilityLabel("筛选").accessibilityIdentifier("openLedgerFilters")
+                searchButton
+                filterButton
             }.frame(minHeight: YubaiSize.headerHeight)
+        } else {
+            // One button leading, two trailing: the month is centred on the
+            // screen, not in the space left between them.
+            HStack(spacing: YubaiSpace.space8) {
+                AmountVisibilityButton()
+                Spacer(minLength: YubaiSpace.none)
+                searchButton
+                filterButton
+            }.frame(minHeight: YubaiSize.headerHeight)
+                .overlay { monthButton(month) }
         }
+    }
+    private var searchButton: some View {
+        HeaderIconButton {
+            savedOffset = currentOffset; searchExpanded = true; scrollToTop = true
+        } icon: { size in Image(systemName: "magnifyingglass").font(.system(size: size)) }
+            .accessibilityLabel("搜索").accessibilityIdentifier("openLedgerSearch")
+    }
+    private var filterButton: some View {
+        HeaderIconButton { showsFilters.toggle(); scrollToTop = true } icon: { size in Image(systemName: "line.3.horizontal.decrease").font(.system(size: size)) }
+            .accessibilityLabel("筛选").accessibilityIdentifier("openLedgerFilters")
     }
     private var searchField: some View {
         SearchInput(text: $search, placeholder: "搜名字、金额、备注", identifier: "entriesSearch", label: "搜索账目",
                     focus: $searchFocused, autofocus: true, showsCancel: true, cancelIdentifier: "entriesSearchCancel", cancel: endSearch)
     }
-    private var filters: some View {
-        ChipFlow {
-            ForEach(EntryTimeline.Filter.allCases, id: \.self) { choice in
-                Button { filter = choice } label: {
-                    Text(choice == .all ? "全部时间" : choice.rawValue).yubaiFont(YubaiFont.callout, weight: filter == choice ? .medium : .regular)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .foregroundStyle(filter == choice ? YubaiColor.canvas : YubaiColor.label)
-                        .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.chipHeight)
-                        .background(filter == choice ? YubaiColor.label : YubaiColor.raised, in: Capsule())
-                        .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(filter == choice ? .isSelected : [])
-                    .accessibilityIdentifier("entriesFilter_" + choice.rawValue)
+    private func filters(_ categories: [String]) -> some View {
+        VStack(alignment: .leading, spacing: YubaiSpace.space8) {
+            ChipFlow {
+                ForEach(EntryTimeline.Filter.allCases, id: \.self) { choice in
+                    let selected = choice == .all ? filter == .all && !isScoped : filter == choice
+                    Button {
+                        // 「全部」also leaves any scope a jump left behind.
+                        if choice == .all { clearScope(); showsFilters = true } else { filter = choice }
+                    } label: { filterChipLabel(choice == .all ? "全部时间" : choice.rawValue, selected: selected) }
+                        .buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+                        .accessibilityIdentifier("entriesFilter_" + choice.rawValue)
+                }
+            }
+            if !categories.isEmpty {
+                ChipFlow {
+                    ForEach(categories, id: \.self) { name in
+                        let selected = categoryScope == name
+                        Button {
+                            if selected { clearCategory() } else {
+                                if filter == .income || filter == .uncategorized { filter = .all }
+                                categoryScope = name; categoryTimeline = nil; entryIDsScope = nil
+                            }
+                        } label: { filterChipLabel(Classification.displayCategory(name), selected: selected) }
+                            .buttonStyle(PressButtonStyle()).accessibilityAddTraits(selected ? .isSelected : [])
+                            .accessibilityIdentifier("entriesCategory_" + name)
+                    }
+                }
             }
         }.accessibilityElement(children: .contain).accessibilityLabel("筛选账目")
+    }
+    private func filterChipLabel(_ title: String, selected: Bool) -> some View {
+        Text(title).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
+            .fixedSize(horizontal: false, vertical: true)
+            .foregroundStyle(selected ? YubaiColor.canvas : YubaiColor.label)
+            .padding(.horizontal, YubaiSpace.space16).frame(minHeight: YubaiSize.chipHeight)
+            .background(selected ? YubaiColor.label : YubaiColor.raised, in: Capsule())
+            .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
     }
     @ViewBuilder private func summary(_ groups: [EntryTimeline.Month], hide: Bool) -> some View {
         let days = groups.flatMap(\.days)
         let count = days.reduce(0) { $0 + $1.entries.count }
-        let net = days.reduce(Int64(0)) { $0 + $1.income - $1.spending }
-        if searching || scope != nil || (filter != .all && filter != .uncategorized) {
+        let net = summaryNet(days)
+        if searching || isScoped || (filter != .all && filter != .uncategorized) {
             summaryLine(left: "\(count) 笔", hide: hide, net: net)
         } else if filter == .uncategorized, count > 0 {
             let ids = days.flatMap { $0.entries.map(\.id) }
@@ -177,24 +254,37 @@ struct EntriesView: View {
             }.padding(.horizontal, YubaiSpace.space4)
         }
     }
+    /// Adjustments sit outside day income/spending; a list of only adjustments
+    /// still totals to their signed sum rather than 0.00.
+    private func summaryNet(_ days: [EntryTimeline.Day]) -> Int64 {
+        let flow = days.reduce(Int64(0)) { $0 + $1.income - $1.spending }
+        guard days.allSatisfy({ $0.income == 0 && $0.spending == 0 }) else { return abs(flow) }
+        return days.flatMap(\.entries).reduce(Int64(0)) { total, row in
+            switch store.entriesByID[row.id]?.nature {
+            case .adjustmentIn?: total + row.amount
+            case .adjustmentOut?: total - row.amount
+            default: total
+            }
+        }
+    }
     private func summaryLine(left: String, hide: Bool, net: Int64) -> some View {
         HStack {
             Text(left).yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary)
                 .accessibilityIdentifier("activeEntryCount")
             Spacer(minLength: YubaiSpace.space8)
-            HStack(spacing: YubaiSpace.space4) { Text("共").yubaiFont(YubaiFont.callout); AmountLabel(cents: abs(net), hide: hide, role: .small) }
+            HStack(spacing: YubaiSpace.space4) { Text("共").yubaiFont(YubaiFont.callout); AmountLabel(cents: net, hide: hide, role: .small) }
                 .fixedSize(horizontal: false, vertical: true).accessibilityElement(children: .combine).accessibilityIdentifier("entriesSearchTotal")
         }.padding(.horizontal, YubaiSpace.space4)
     }
     @ViewBuilder private var emptyRow: some View {
-        if store.sortedEntries.allSatisfy({ $0.deletedAt != nil }) && search.isEmpty && scope == nil {
+        if store.sortedEntries.allSatisfy({ $0.deletedAt != nil }) && search.isEmpty && !isScoped && filter == .all {
             EmptyState(.ledger, actionIdentifier: "emptyLedgerAdd", secondaryIdentifier: "emptyLedgerImport",
                        onAction: { store.requestCaptureSheet(.addEntry) }, onSecondary: { store.sheet = .imports })
                 .listRowBackground(Color.clear).listRowSeparator(.hidden)
         } else {
             EmptyState(.search, title: search.isEmpty ? "没有找到" : "没有找到「\(search)」",
-                       onAction: { searchFocused = false; search = ""; filter = .all; categoryScope = nil; categoryTimeline = nil },
-                       onSecondary: { scope = nil; scrollMonth = nil; month = Dates.calendar.dateInterval(of: .month, for: store.financialNow)!.start })
+                       onAction: { searchFocused = false; searchExpanded = false; search = ""; clearScope() },
+                       onSecondary: { clearScope(); scrollMonth = nil; month = Dates.calendar.dateInterval(of: .month, for: store.financialNow)!.start })
                 .listRowBackground(Color.clear).listRowSeparator(.hidden)
         }
     }
@@ -225,12 +315,20 @@ struct EntriesView: View {
             }
         }
     }
+    /// The add button follows the date so day totals share the month totals' right edge.
     private func dayHeader(_ day: EntryTimeline.Day, hide: Bool) -> some View {
-        HStack(spacing: YubaiSpace.space8) {
-            ViewThatFits(in: .horizontal) {
-                HStack { Text(dayLabel(day.date)).fixedSize(); Spacer(minLength: YubaiSpace.space8); dayTotal(day, hide: hide) }
-                VStack(alignment: .leading, spacing: YubaiSpace.space4) { Text(dayLabel(day.date)).fixedSize(); dayTotal(day, hide: hide) }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space8) {
+                Text(dayLabel(day.date)).fixedSize(); dayAddButton(day)
+                Spacer(minLength: YubaiSpace.space8); dayTotal(day, hide: hide)
             }
+            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
+                HStack(spacing: YubaiSpace.space8) { Text(dayLabel(day.date)).fixedSize(); dayAddButton(day) }
+                dayTotal(day, hide: hide)
+            }
+        }.yubaiFont(YubaiFont.callout, weight: .semibold).textCase(nil).padding(.top, YubaiSpace.space8)
+    }
+    private func dayAddButton(_ day: EntryTimeline.Day) -> some View {
             Button {
                 store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: nil, amount: nil, purpose: nil, date: day.date)))
             } label: {
@@ -239,7 +337,6 @@ struct EntriesView: View {
                     .controlSurface(in: Circle()).yubaiHitTarget()
             }.buttonStyle(PressButtonStyle()).accessibilityLabel("补记到" + FixedFlowPresentation.monthDay(day.date))
                 .accessibilityIdentifier("addEntryOnDay_" + Dates.text(day.date))
-        }.yubaiFont(YubaiFont.callout, weight: .semibold).textCase(nil).padding(.top, YubaiSpace.space8)
     }
     private func entryRow(_ entry: EntryTimeline.Row, hide: Bool, context: RowContext) -> some View {
         LedgerEntryRow(entry: entry, subtitle: subtitle(entry, context), hideAmounts: hide, isFresh: store.freshEntryIDs.contains(entry.id),
@@ -247,11 +344,20 @@ struct EntriesView: View {
             .listRowInsets(EdgeInsets(top: YubaiSpace.space4, leading: YubaiSpace.space16, bottom: YubaiSpace.space4, trailing: YubaiSpace.space16))
             .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
     }
+    /// Category facts the title does not already show: an entry without a
+    /// purpose is titled by its category, so only the subcategory remains.
+    private func categoryText(_ row: EntryTimeline.Row, _ entry: Entry) -> String {
+        let sub = entry.subcategory.flatMap { $0.isEmpty ? nil : $0 }
+        let titledByCategory = entry.displayTitle == row.categoryName || entry.displayTitle == Classification.displayCategory(entry.category)
+        if titledByCategory { return sub ?? "" }
+        return sub.map { row.categoryName + " · " + $0 } ?? row.categoryName
+    }
+    private func joined(_ parts: String...) -> String { parts.filter { !$0.isEmpty }.joined(separator: " · ") }
     private func subtitle(_ row: EntryTimeline.Row, _ context: RowContext) -> String {
         guard let entry = store.entriesByID[row.id] else { return row.categoryName }
         switch context {
         case .search:
-            return FixedFlowPresentation.monthDay(entry.date) + " · " + row.categoryName
+            return joined(FixedFlowPresentation.monthDay(entry.date), categoryText(row, entry))
         case .uncategorized:
             if let from = entry.spreadFrom {
                 return FixedFlowPresentation.monthDay(from) + " – " + "\(Dates.calendar.component(.day, from: entry.date))日"
@@ -260,7 +366,7 @@ struct EntriesView: View {
         case .day:
             let several = store.accounts.count > 1
             let other = several && entry.accountID != ManualBookkeeping.defaultAccount(in: store.current)?.id
-            return other ? row.categoryName + " · " + store.accountName(entry.accountID) : row.categoryName
+            return joined(categoryText(row, entry), other ? store.accountName(entry.accountID) : "")
         }
     }
 
@@ -393,7 +499,7 @@ struct EntriesView: View {
             HStack(spacing: YubaiSpace.space4) {
                 Text(monthTitle(date)).yubaiFont(YubaiFont.callout, weight: .semibold).accessibilityIdentifier("rootHeaderTitle")
                 Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta)
-            }.fixedSize().yubaiHitTarget(alignment: .leading)
+            }.fixedSize().yubaiHitTarget()
         }.buttonStyle(PressButtonStyle())
             .accessibilityIdentifier(Dates.day(date) == Dates.day(month) ? "entriesMonth" : "entriesMonth_" + Dates.text(date))
     }
@@ -444,14 +550,22 @@ struct LedgerEntryRow: View {
             .buttonStyle(.plain).accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .accessibilityValue(isFuture ? "未来" : acknowledged ? "已记下" : "")
             .nativeSwipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.amberInk) }
-                    .tint(YubaiColor.amberTint).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
+                // TODO-TOKEN: switch tint to YubaiColor.swipeDelete (with YubaiColor.white label) once ds-ui merges.
+                Button { delete(systemFeedback: true) } label: { Text("删掉").foregroundStyle(YubaiColor.canvas) }
+                    .tint(YubaiColor.amberStrong).accessibilityIdentifier("deleteLedgerEntry_" + entry.id.uuidString)
                 Button(action: onSortCategory) { Text("改分类").foregroundStyle(YubaiColor.label) }
                     .tint(YubaiColor.keyFn).accessibilityIdentifier("sortLedgerEntry_" + entry.id.uuidString)
+                if savedEntry?.nature == .expense {
+                    Button { refund() } label: { Text("退款").foregroundStyle(YubaiColor.onBrand) }
+                        .tint(YubaiColor.brand).accessibilityIdentifier("refundLedgerEntry_" + entry.id.uuidString)
+                }
             }
             .contextMenu {
                 Button("改一笔", systemImage: "square.and.pencil") { store.sheet = .editEntry(entry.id) }
                 Button("再记一笔一样的", systemImage: "plus") { duplicate() }
+                if savedEntry?.nature == .expense {
+                    Button("记退款", systemImage: "arrow.uturn.backward") { refund() }
+                }
                 Button("删掉", systemImage: "trash") { delete() }
             }
             .accessibilityAction(named: "改分类") { onSortCategory() }
@@ -471,6 +585,13 @@ struct LedgerEntryRow: View {
     }
     private var savedEntry: Entry? { store.entriesByID[entry.id] }
     private var title: String { savedEntry?.displayTitle ?? entry.categoryName }
+    /// A refund linked to this expense offsets its category and the period spending.
+    private func refund() {
+        guard let saved = store.entriesByID[entry.id] else { return }
+        // TODO(merge): pass relatedEntryID: saved.id once entry-sheet merges QuickEntryPrefill.
+        store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: saved.category, amount: nil, purpose: saved.displayTitle + " 退款",
+                                                                    nature: .refund, subcategory: saved.subcategory, accountID: saved.accountID)))
+    }
     private func duplicate() {
         guard let saved = store.entriesByID[entry.id] else { return }
         store.sheetSource = nil; store.sheet = .prefilledEntry(QuickEntryPrefill(entry: saved))
@@ -513,7 +634,7 @@ struct LedgerEntryRow: View {
             tile
             layout { titleBlock; amountView }
         }.padding(.vertical, YubaiSpace.space4).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-            .background(isFresh && highlighted ? YubaiColor.brandTint : YubaiColor.paperSheet)
+            .background(isFresh && highlighted ? YubaiColor.brandTint : Color.clear)
     }
     private func delete(systemFeedback: Bool = false) {
         // Native swipe actions provide their own haptic.

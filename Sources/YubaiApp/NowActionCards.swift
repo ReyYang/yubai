@@ -32,13 +32,32 @@ typealias LetterItem = HomeTask
 struct NowCardButtonStyle: ButtonStyle {
     var primary = false
     func makeBody(configuration: Configuration) -> some View {
+        NowCardButtonBody(configuration: configuration, primary: primary)
+    }
+}
+
+/// A ButtonStyle cannot read `isEnabled`; its body view can.
+private struct NowCardButtonBody: View {
+    @Environment(\.isEnabled) private var isEnabled
+    let configuration: ButtonStyleConfiguration
+    let primary: Bool
+    private var foreground: Color {
+        guard isEnabled else { return YubaiColor.labelSecondary }
+        return primary ? YubaiColor.onBrand : YubaiColor.label
+    }
+    private var fill: Color {
+        guard isEnabled else { return YubaiColor.neutralSoft }
+        return primary ? YubaiColor.brand : YubaiColor.card
+    }
+    var body: some View {
         configuration.label.yubaiFont(YubaiFont.row, weight: primary ? .semibold : .regular)
             .lineLimit(nil).multilineTextAlignment(.center)
             .fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.row)
             .padding(.horizontal, YubaiSpace.space16).padding(.vertical, YubaiSpace.space8)
             .frame(minHeight: YubaiSize.iconButton)
-            .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
-            .background(primary ? YubaiColor.brand : YubaiColor.card, in: Capsule())
+            .foregroundStyle(foreground)
+            .background(fill, in: Capsule())
+            .overlay { if !primary { Capsule().strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) } }
             .yubaiHitTarget()
             .opacity(configuration.isPressed ? 0.75 : 1)
             .animation(YubaiMotion.instant, value: configuration.isPressed)

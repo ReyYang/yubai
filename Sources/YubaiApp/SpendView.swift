@@ -6,6 +6,12 @@ struct FormulaView: View {
     @Environment(AppStore.self) private var store
     private var derivation: SpendableBreakdown { store.formula }
     private var hide: Bool { store.preferences.hideAmounts }
+    private var paydayPlan: Plan? { Finance.anchorPlan(in: store.current, now: store.financialNow) }
+    private var paydayDetail: String {
+        guard let plan = paydayPlan else { return "未设置" }
+        let day = plan.monthlyDay ?? Dates.calendar.component(.day, from: plan.dueDate)
+        return "每月 \(day) 号 · " + amount2(plan.amount, hide: hide)
+    }
     var body: some View {
         let value = derivation
         return Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "formulaPage") {
@@ -17,6 +23,13 @@ struct FormulaView: View {
                     answer(value)
                 }
             }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
+            Card(style: .list) {
+                Button {
+                    if let plan = paydayPlan { store.present(.editPlan(plan.id)) }
+                    else { store.present(.paydaySetup) }
+                } label: { SettingsRow(title: "发薪日与工资", detail: paydayDetail) }
+                    .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaPaydaySetup")
+            }
             SoftLineSection()
         }.navigationTitle("还能花是怎么算的").yubaiNavigation().amountPrivacy(hide)
     }
@@ -25,12 +38,23 @@ struct FormulaView: View {
             .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, YubaiSpace.space12)
     }
     private func sources(_ value: SpendableBreakdown) -> some View {
-        VStack(spacing: YubaiSpace.none) {
-            ForEach(value.rows) { item in
-                if item.id != value.rows.first?.id { EntryFormDivider() }
+        // Without a saving plan the formula still offers「要攒」so it can be set from here.
+        let missingSaving = value.offersFormula && !value.rows.contains { $0.kind == .saving }
+        let tail: Set<SpendableRow.Kind> = [.bills, .spent, .withdrawal, .balanceGap]
+        let savingIndex = missingSaving ? (value.rows.firstIndex { tail.contains($0.kind) } ?? value.rows.count) : nil
+        return VStack(spacing: YubaiSpace.none) {
+            ForEach(Array(value.rows.enumerated()), id: \.element.id) { index, item in
+                if index == savingIndex { savingSetup(value, divider: index > 0) }
+                if index > 0 { EntryFormDivider() }
                 source(item, value: value)
             }
+            if savingIndex == value.rows.count { savingSetup(value, divider: !value.rows.isEmpty) }
         }
+    }
+    @ViewBuilder private func savingSetup(_ value: SpendableBreakdown, divider: Bool) -> some View {
+        if divider { EntryFormDivider() }
+        Button { store.present(.formulaEdit) } label: { row("要攒", amount: 0, sign: "", value: value) }
+            .buttonStyle(PressButtonStyle()).accessibilityIdentifier("formulaSavingSetupRow")
     }
     @ViewBuilder private func source(_ item: SpendableRow, value: SpendableBreakdown) -> some View {
         switch item.kind {
@@ -98,36 +122,41 @@ struct FormulaView: View {
         }
     }
     private func numericColumn(_ amount: Int64, sign: String, value: SpendableBreakdown, constrained: Bool = false) -> some View {
-        HStack(spacing: YubaiSpace.space4) {
-            Text(sign)
-                .yubaiFont(YubaiFont.amountDonut).frame(width: YubaiSpace.space24)
-            ZStack(alignment: .trailing) {
-                // Invisible candidates reserve one shared right-aligned column.
-                ForEach(value.rows) { candidate in
-                    AmountLabel(cents: abs(candidate.amount), hide: hide, role: .account, sign: .none).hidden().accessibilityHidden(true)
-                }
-                AmountLabel(cents: amount, hide: hide, role: .account, sign: .none)
-            }.fixedSize(horizontal: !constrained, vertical: false)
-        }.foregroundStyle(YubaiColor.label)
+        ZStack(alignment: .trailing) {
+            // Invisible candidates reserve one shared right-aligned column; the
+            // visible sign sits right next to its own number.
+            ForEach(value.rows) { candidate in
+                signedAmount(abs(candidate.amount), sign: "−").hidden().accessibilityHidden(true)
+            }
+            signedAmount(amount, sign: sign)
+        }.fixedSize(horizontal: !constrained, vertical: false).foregroundStyle(YubaiColor.label)
+    }
+    private func signedAmount(_ amount: Int64, sign: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space4) {
+            if !sign.isEmpty { Text(sign).yubaiFont(YubaiFont.amountDonut) }
+            AmountLabel(cents: amount, hide: hide, role: .account, sign: .none)
+        }
     }
     private func answer(_ value: SpendableBreakdown) -> some View {
         let ink = value.deficit > 0 ? YubaiColor.amberInk : YubaiColor.brandInk
-        return VStack(alignment: .trailing, spacing: YubaiSpace.space8) {
-            numericColumn(value.spent, sign: "−", value: value, constrained: true).hidden()
-                .overlay(alignment: .bottom) { Rectangle().fill(YubaiColor.label).frame(height: YubaiSize.separator) }
-                .frame(height: YubaiSize.separator).accessibilityHidden(true)
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: YubaiSpace.space8) { answerLabel(ink); Spacer(minLength: YubaiSpace.space8); answerAmount(value.headlineAmount, ink: ink) }
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) { answerLabel(ink); answerAmount(value.headlineAmount, ink: ink).frame(maxWidth: .infinity, alignment: .trailing) }
-            }.padding(.vertical, YubaiSpace.space8)
-        }.accessibilityElement(children: .contain).accessibilityIdentifier("formulaRow_available")
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: YubaiSpace.space8) { answerLabel(ink); Spacer(minLength: YubaiSpace.space8); answerAmount(value.headlineAmount, ink: ink, value: value) }
+            VStack(alignment: .leading, spacing: YubaiSpace.space8) { answerLabel(ink); answerAmount(value.headlineAmount, ink: ink, value: value).frame(maxWidth: .infinity, alignment: .trailing) }
+        }.padding(.bottom, YubaiSpace.space8)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("formulaRow_available")
     }
     private func answerLabel(_ ink: Color) -> some View {
         Text(derivation.headlineTitle).yubaiFont(YubaiFont.row, weight: .semibold).fixedSize()
     }
-    private func answerAmount(_ amount: Int64, ink: Color) -> some View {
-        AmountLabel(cents: amount, hide: hide, role: .display, currency: true, ink: ink)
-            .padding(.bottom, YubaiSpace.space8)
+    /// The sum rule above and the double rule below span the same width: the
+    /// wider of the result (with ¥) and the numeric column it totals.
+    private func answerAmount(_ amount: Int64, ink: Color, value: SpendableBreakdown) -> some View {
+        ZStack(alignment: .trailing) {
+            numericColumn(value.spent, sign: "−", value: value).hidden().accessibilityHidden(true)
+            AmountLabel(cents: amount, hide: hide, role: .display, currency: true, ink: ink)
+        }
+            .padding(.vertical, YubaiSpace.space8)
+            .overlay(alignment: .top) { Rectangle().fill(YubaiColor.label).frame(height: YubaiSize.separator).accessibilityHidden(true) }
             .overlay(alignment: .bottom) {
                 VStack(spacing: YubaiSpace.space4) {
                     Rectangle().fill(YubaiColor.label).frame(height: YubaiSize.separator)
