@@ -280,11 +280,22 @@ struct EntryFormFields<Trailing: View>: View {
             if showsRecent { RecentPurposeChips(selection: $purpose, nature: nature, recall: recall) }
             if nature == .transfer || (nature.paired && otherAccountID != nil) {
                 Card(style: .list) {
-                    EntryFormRow(title: "转入") {
-                        if accounts.filter({ $0.id != accountID }).isEmpty, let transferFallback { transferFallback }
-                        else {
-                            EntryAccountMenu(accounts: accounts.filter { $0.id != accountID }, balances: balances, selection: $otherAccountID, showsBalance: showsBalance)
-                                .accessibilityIdentifier("transferDestinationAccount")
+                    VStack(spacing: YubaiSpace.none) {
+                        EntryFormRow(title: "转出") {
+                            EntryAccountMenu(accounts: accounts, balances: balances, selection: Binding(get: { accountID }, set: { next in
+                                accountID = next
+                                if nature == .transfer, let next, otherAccountID == next {
+                                    otherAccountID = accounts.first { $0.id != next }?.id
+                                }
+                            }), showsBalance: showsBalance, identifier: "transferSourceAccount")
+                        }
+                        EntryFormDivider()
+                        EntryFormRow(title: "转入") {
+                            if accounts.filter({ $0.id != accountID }).isEmpty, let transferFallback { transferFallback }
+                            else {
+                                EntryAccountMenu(accounts: accounts.filter { $0.id != accountID }, balances: balances, selection: $otherAccountID, showsBalance: showsBalance)
+                                    .accessibilityIdentifier("transferDestinationAccount")
+                            }
                         }
                     }
                 }
@@ -304,8 +315,12 @@ struct EntryKeyboardTray<Controls: View, Keys: View>: View {
     @ViewBuilder let keys: () -> Keys
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
-            CardTextFieldRow(title: purposeTitle, text: $purpose, identifier: purposeIdentifier, focus: focus).padding(.horizontal, YubaiSpace.space8).padding(.top, YubaiSpace.space12)
-            controls().padding(.horizontal, YubaiSpace.space8).padding(.top, compact ? YubaiSpace.none : YubaiSpace.space8)
+            CardTextFieldRow(title: purposeTitle, text: $purpose, identifier: purposeIdentifier, focus: focus)
+                .padding(.horizontal, YubaiSpace.gapGroup)
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) }
+                .padding(.horizontal, YubaiSpace.space8).padding(.top, YubaiSpace.space12)
+            controls().padding(.horizontal, YubaiSpace.space8).padding(.top, compact ? YubaiSpace.space4 : YubaiSpace.space8)
             if !focus.wrappedValue { keys() }
         }.padding(.bottom, focus.wrappedValue ? YubaiSpace.space8 : YubaiSpace.none)
             .background { UnevenRoundedRectangle(topLeadingRadius: YubaiRadius.card, topTrailingRadius: YubaiRadius.card).fill(YubaiColor.keypadTray).ignoresSafeArea(edges: .bottom) }
@@ -397,7 +412,7 @@ struct EntryCategoryGrid: View {
     }
 }
 
-/// 今天 / 昨天 / 前天 三颗；长按这一排升起月历。选了更早的日子，多出一颗显示那一天。
+/// 今天 / 昨天 / 前天 三颗，后面一颗月历，点一下升起月历。选了更早的日子，月历那颗显示那一天。
 struct EntryDayChips: View {
     @Binding var date: Date
     let pick: () -> Void
@@ -408,12 +423,19 @@ struct EntryDayChips: View {
             chip("今天", id: "entryDate_today", offset: 0)
             chip("昨天", id: "entryDate_yesterday", offset: -1)
             chip("前天", id: "entryDate_before", offset: -2)
-            if !isStandard {
+            if isStandard {
                 Button(action: pick) {
-                    Text(ManualBookkeeping.dayLabel(date)).yubaiFont(YubaiFont.callout, weight: .medium).fixedSize()
+                    Image(systemName: "calendar").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.label)
+                        .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.trayChip)
+                        .background(YubaiColor.keyFn, in: Capsule()).yubaiHitTarget()
+                }.buttonStyle(PressButtonStyle()).accessibilityLabel("选别的日子").accessibilityIdentifier("entryDatePicker")
+            } else {
+                Button(action: pick) {
+                    Label(ManualBookkeeping.dayLabel(date), systemImage: "calendar").yubaiFont(YubaiFont.callout, weight: .medium).fixedSize()
                         .foregroundStyle(YubaiColor.canvas).padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.trayChip)
                         .background(YubaiColor.label, in: Capsule()).yubaiHitTarget()
-                }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(.isSelected).accessibilityIdentifier("entryDate_other")
+                }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(.isSelected).accessibilityLabel("日期")
+                    .accessibilityValue(ManualBookkeeping.dayLabel(date)).accessibilityIdentifier("entryDate_other")
             }
         }.simultaneousGesture(LongPressGesture(minimumDuration: 0.45).onEnded { _ in pick() })
             .accessibilityElement(children: .contain).accessibilityAction(named: "选别的日子", pick)

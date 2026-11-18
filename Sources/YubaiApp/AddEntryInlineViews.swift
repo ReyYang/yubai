@@ -218,7 +218,7 @@ struct AddEntryAccountForm: View {
     var body: some View {
         EntryForm(title: "添加账户", actionTitle: "加上", enabled: valid, actionIdentifier: "saveManualSheet", cancel: cancel, save: save) {
             Card(style: .list) { CardTextFieldRow(title: "名称", text: $name, identifier: "accountName", focus: $nameFocused) }
-            Segmented(choices: [(AccountKind.bank, "银行卡"), (.cash, "现金"), (.credit, "信用卡")], selection: $kind)
+            Segmented(choices: [(AccountKind.bank, "银行卡"), (.cash, "现金")], selection: $kind)
             EditableAmountDisplay(amount: keypad.resultText, keypad: keypad, presented: true, selected: false,
                                   identifier: "accountBalance", open: { nameFocused = false }, hide: store.preferences.hideAmounts)
         }.fixedBottomBar() {
@@ -228,7 +228,7 @@ struct AddEntryAccountForm: View {
     private func save() {
         guard valid, let amount = keypad.amount else { return }
         let account = Account(name: name.trimmingCharacters(in: .whitespacesAndNewlines), kind: kind,
-                              balance: kind == .credit ? -amount : amount, at: Dates.now)
+                              balance: amount, at: Dates.now)
         if store.update("添加账户", entryMotion: false, showToast: false, { $0.accounts.append(account) }) { added(account) }
     }
 }
