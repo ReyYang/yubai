@@ -36,7 +36,7 @@ private extension AcceptanceWalker {
             shot("add-account-open", dump: true)
             type("银行卡", into: "accountName")
             if tap("accountBalance", timeout: 3, scrolls: 2) {
-                clearKeypad(); keys(balance); shot("add-account-balance", dump: false)
+                keys(balance); shot("add-account-balance", dump: false)
                 tap("accountBalanceDone", timeout: 2, scrolls: 0)
             }
             shot("add-account-filled", dump: true)
@@ -86,12 +86,21 @@ private extension AcceptanceWalker {
     }
 }
 
+/// The year walk already proved a 4,339-row import works; XCTest queries on that
+/// preview take ~35 s each, so this walk imports the last four and a half months.
+private func recentStatement() -> Data {
+    let text = String(decoding: AcceptanceYearData.csv, as: UTF8.self)
+    let lines = text.split(separator: "\n", omittingEmptySubsequences: true)
+    let kept = [lines[0]] + lines.dropFirst().filter { $0 >= "2026-07-01" }
+    return Data((kept.joined(separator: "\n") + "\n").utf8)
+}
+
 /// 一个认真的新用户：把一年账单导进新建的银行卡（填了真实余额），看导入结果、工资、
 /// 还能花算式、对余额（真的输入数字）、心愿单判断，并记录关键操作耗时。
 final class IARevisitTests: YubaiUITestCase {
     func testCarefulYearImport() {
         let w = AcceptanceWalker(self, tag: "R1-revisit", script: "acceptance",
-                                 environment: ["YUBAI_UI_STATEMENT": AcceptanceYearData.csv.base64EncodedString()])
+                                 environment: ["YUBAI_UI_STATEMENT": recentStatement().base64EncodedString()])
         w.launch()
         guard w.importIntoNewAccount(balance: "20000") else { w.finish(); return }
 
@@ -116,7 +125,7 @@ final class IARevisitTests: YubaiUITestCase {
                 let field = w.app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'reconcileField_'")).firstMatch
                 if w.tapElement(field, name: "reconcile field", timeout: 3, scrolls: 2) {
                     w.shot("reconcile-field-open", dump: true)
-                    w.clearKeypad(); w.keys("18500"); w.shot("reconcile-typed", dump: true)
+                    w.keys("18500"); w.shot("reconcile-typed", dump: true)
                     let done = w.app.buttons.matching(NSPredicate(format: "identifier ENDSWITH 'Done'")).firstMatch
                     w.tapElement(done, name: "keypad done", timeout: 2, scrolls: 0)
                     w.shot("reconcile-result", dump: true)
