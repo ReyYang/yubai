@@ -422,7 +422,7 @@ private struct UnsortedEntryRow: View {
                         Text(fields[index].key + "  " + fields[index].value).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-                    .padding(YubaiSpace.space8).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                    .padding(YubaiSpace.space8).background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                     .padding(.leading, YubaiSize.tapMin + YubaiSpace.space8)
                     .accessibilityElement(children: .contain)
                     .accessibilityIdentifier("unsortedEntrySource_" + entry.id.uuidString)
@@ -513,7 +513,7 @@ struct LetterTriageView: View {
                 if showsSource {
                     Text(store.preferences.hideAmounts ? "金额已隐藏" : original).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.gapGroup)
-                        .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                        .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                         .accessibilityLabel(store.preferences.hideAmounts ? "金额已隐藏" : "原文：" + original)
                 }
             }.frame(maxWidth: .infinity)
@@ -562,7 +562,7 @@ struct LetterTriageView: View {
         Toggle(isOn: $rememberParty) {
             Text("以后「" + party(entry) + "」都这样分").yubaiFont(YubaiFont.row).lineLimit(2)
         }.tint(YubaiColor.toggleOn).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.rowDouble)
-            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
             .accessibilityIdentifier("sortRememberParty")
     }
     private var bottomBar: some View {

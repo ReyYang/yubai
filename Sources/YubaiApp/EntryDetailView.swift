@@ -98,7 +98,7 @@ struct EntryDetailView: View {
                     }
                 }.yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).textSelection(.enabled)
                     .padding(YubaiSpace.gapGroup)
-                    .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                    .background(YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                     .accessibilityElement(children: .contain).accessibilityIdentifier("entryDetailSource")
             }.task(id: hide) { await loadSource(entry) }
         }

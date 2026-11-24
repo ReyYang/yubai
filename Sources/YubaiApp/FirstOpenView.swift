@@ -19,7 +19,7 @@ struct FirstOpenView: View {
                                 .accessibilityElement(children: .ignore).accessibilityLabel("余白")
                             AssistantMark(size: YubaiSize.firstOpenSealGlyph, color: YubaiColor.onBrand)
                                 .frame(width: YubaiSize.firstOpenSeal, height: YubaiSize.firstOpenSeal)
-                                .background(YubaiColor.brand, in: RoundedRectangle(cornerRadius: YubaiSpace.space8)).accessibilityHidden(true)
+                                .background(YubaiColor.brand, in: RoundedRectangle(cornerRadius: YubaiSpace.space8, style: .continuous)).accessibilityHidden(true)
                         }
                     }.padding(.trailing, YubaiSpace.space8)
                     Spacer(minLength: YubaiSpace.gapSection)

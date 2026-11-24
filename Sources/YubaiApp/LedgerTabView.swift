@@ -16,7 +16,7 @@ struct LedgerTabView: View {
         Group {
             if model.isFirstOpen { FirstOpenView().transition(.opacity) }
             else { EntriesView(request: $request).transition(.opacity) }
-        }.animation(reduceMotion ? nil : .easeInOut(duration: YubaiMotion.durationFirstLight), value: model.isFirstOpen)
+        }.animation(DSMotion.reduceMotionAnimation, value: model.isFirstOpen)
             .navigationTitle("账本").yubaiNavigation().amountPrivacy(store.preferences.hideAmounts)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)

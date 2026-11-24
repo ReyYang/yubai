@@ -126,7 +126,7 @@ class ShardTests(unittest.TestCase):
                 if method and name != "ScreenGalleryTests":
                     self.assertIsNotNone(name, path)
                     selector = f"YubaiUITests/{name}/{method[1]}"
-                    (excluded if name in UI.LINUX_ONLY_CLASSES else source_tests).append(selector)
+                    (excluded if name in UI.LINUX_ONLY_CLASSES or name in UI.MANUAL_CLASSES else source_tests).append(selector)
         scheduled = [test for row in self.ui_rows for test in row["tests"] if test != "YubaiCoreTests"]
         self.assertEqual(Counter(scheduled), Counter(source_tests))
         self.assertEqual(len(scheduled), len(set(scheduled)))
@@ -141,6 +141,29 @@ class ShardTests(unittest.TestCase):
         expected = [row for row in self.ui_rows if row["part"] == "unit" or "Round47" in row["part"]]
         self.assertEqual(UI.matrix(ROOT, only="r47")["include"], expected)
         self.assertTrue(any(not row["blocking"] for row in expected))
+
+    def test_design_system_snapshots_stay_out_of_ios_shards(self):
+        targets = {test.split("/", 1)[0] for row in self.ui_rows for test in row["tests"]}
+        self.assertEqual(targets, {"YubaiCoreTests", "YubaiUITests"})
+        for selector in ("YubaiDesignSystemTests", "YubaiDesignSystemTests/DesignSystemSnapshotTests",
+                         "YubaiDesignSystemTests/DesignSystemSnapshotTests/testGallerySections"):
+            for selectors in ([selector], ["YubaiCoreTests", selector]):
+                with self.subTest(selectors=selectors), tempfile.TemporaryDirectory() as directory:
+                    result = subprocess.run([sys.executable, str(ROOT / "scripts/run-simulator-tests.py")],
+                                            cwd=directory, capture_output=True, text=True,
+                                            env=dict(os.environ, YUBAI_TEST_SELECTORS=json.dumps(selectors)))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("A tests shard needs explicit non-gallery selectors", result.stderr)
+                    self.assertFalse((Path(directory) / "build").exists())
+
+    def test_design_system_motion_is_explicit_only(self):
+        self.assertFalse(any(row["part"] == "design-system-motion" for row in self.ui_rows))
+        UI.validate_parts(ROOT, "design-system-motion")
+        rows = UI.matrix(ROOT, parts="design-system-motion", include_diagnostics=False)["include"]
+        self.assertEqual(rows, [{"part": "design-system-motion", "tests":
+            ["YubaiUITests/DesignSystemMotionTests/testGalleryMotionAcceptance"], "blocking": False}])
+        self.assertEqual(UI.matrix(ROOT, only="r47-", parts="design-system-motion")["include"], rows)
+        self.assertEqual(GALLERY.matrix(ROOT, parts="design-system-motion"), {"include": []})
 
     def test_manifest_comments_and_strict_unknown_duplicate_validation(self):
         with tempfile.TemporaryDirectory() as directory:

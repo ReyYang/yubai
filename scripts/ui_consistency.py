@@ -2,6 +2,8 @@
 """Round-47 revision source contracts. Run on Linux before the Apple SDK build."""
 import argparse
 import re
+import subprocess
+import sys
 from pathlib import Path
 from gallery_inventory import check as check_gallery
 from bash_array_consistency import check as check_bash_arrays, self_test as test_bash_arrays
@@ -10,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Only the shared design system implements input, navigation and geometry.
 # Domain/fixture/page files receive no blanket exceptions.
 SHARED = 'DesignSystem.swift'
+DS_FILES = {'DSTheme.swift', 'DSMotion.swift', 'DSStyle.swift', 'DSComponents.swift', 'DesignSystemGalleryView.swift'}
 OLD_NAMES = ('\u6211\u7684\u6d88\u8d39\u89c2', '\u5e38\u8bb0\u7684\u51e0\u7b14', '\u8fdb\u51fa\u8bb0\u5f55',
              '\u85cf\u8d77\u6765\u7684', '\u5206\u4e00\u5206', '\u4e00\u4e2a\u4e2a\u5206', '\u6309\u5bf9\u65b9\u5206',
              '\u4f59\u767d\u60f3\u8fd9\u6837\u6539', '\u6574\u7406\u597d\u4e86', '\u5f85\u5904\u7406')
@@ -19,6 +22,18 @@ NUMBER = r'-?\d+(?:\.\d+)?(?![\w.])'
 GEOMETRY = re.compile(r'\b(?:spacing|rowSpacing|topPadding|minLength|minimumDistance|lineHeight|topLeadingRadius|topTrailingRadius|bottomLeadingRadius|bottomTrailingRadius|min|ideal|max|width|height|minWidth|maxWidth|minHeight|maxHeight|idealWidth|idealHeight|cornerRadius|radius|size|minimum|maximum|lineWidth|top|bottom|leading|trailing|x|y):\s*' + NUMBER)
 PADDING = re.compile(r'\.padding\(\s*(?:\.[A-Za-z]+,\s*)?' + NUMBER)
 DETENT = re.compile(r'\.(?:height|presentationCornerRadius)\(\s*' + NUMBER)
+DS_GEOMETRY_TOKEN = re.compile(r'\bDS\.(Space|Size|Stroke|Radius)\.\w+\b')
+# Arithmetic chains stop at argument/statement boundaries, but permit wrapping
+# parentheses, scalar variables, conversions and line breaks between operands.
+DS_MATH_VALUE = r'(?:(?:CGFloat|Double)\s*\(\s*)*(?:\b[A-Za-z_]\w*(?:\.\w+)*|\b\d+(?:\.\d+)?)'
+DS_ARITHMETIC = re.compile(DS_MATH_VALUE + r'(?:\s*\)*\s*[+*/-]\s*\(*\s*' + DS_MATH_VALUE + r')+')
+# Explicit layout relationships, matched as whole expressions after removing
+# whitespace/parentheses. No file or enum is exempt from token arithmetic rules.
+DS_ARITHMETIC_EXCEPTIONS = (
+    r'DS\.Radius\.\w+-DS\.Size\.segmentedInset',  # concentric inner radius
+    r'DS\.Size\.icon\+DS\.Space\.s12',  # list separator inset
+    r'DS\.Space\.s12\+DS\.Size\.iconTile\+DS\.Space\.s12',  # accordion separator inset
+)
 PRESENTATION = re.compile(r'\.(?:sheet|fullScreenCover|popover|confirmationDialog|alert|navigationDestination|surfacePresentations|surfaceNavigation|entryDiscardGuard)\s*\(|\.modifier\(\s*(?:FixedFlowStopConfirmation|EntryDiscardGuard|AppErrorPresenter)\s*\(')
 # Reusable row controls must route requests to a stable page host. Explicit
 # entries cover composite row types whose names do not end in a row noun.
@@ -65,6 +80,26 @@ def masks(source):
     code = TOKEN.sub(mask, source)
     comments = TOKEN.sub(lambda m: m[0] if m[0].startswith('"') else mask(m), source)
     return code, comments
+
+
+def design_token_violations(name, code):
+    """Check masked Swift in every source, including shared DS and fixtures."""
+    found = []
+    for match in re.finditer(r'\bInt\s*\(\s*\(*\s*(?:DS|DSInteraction)\s*\.', code):
+        line = code.count('\n', 0, match.start()) + 1
+        found.append(f'{name}:{line}: token cast to count: use DSLayout or a data count')
+    for match in DS_ARITHMETIC.finditer(code):
+        tokens = list(DS_GEOMETRY_TOKEN.finditer(match[0]))
+        if len(tokens) < 2:
+            continue
+        expression = re.sub(r'[\s()]', '', match[0])
+        if any(re.fullmatch(allowed, expression) for allowed in DS_ARITHMETIC_EXCEPTIONS):
+            continue
+        families = {token[1] for token in tokens}
+        if len(families) > 1 or re.search(r'[*/]', match[0]):
+            line = code.count('\n', 0, match.start()) + 1
+            found.append(f'{name}:{line}: unrelated token arithmetic: use a dedicated design token')
+    return found
 
 
 def hidden_controls(name, code):
@@ -126,11 +161,33 @@ def hidden_controls(name, code):
 
 def violations(name, source):
     code, comments = masks(source)
-    found = row_presentations(name, code) + hidden_controls(name, code)
+    found = row_presentations(name, code) + hidden_controls(name, code) + design_token_violations(name, code)
     def reject(pattern, reason, text=code):
         for match in re.finditer(pattern, text):
             line = text.count('\n', 0, match.start()) + 1
             found.append(f'{name}:{line}: {reason}')
+    # These contracts also apply to both generations of the shared DS.
+    reject(r'\.cornerRadius\s*\(', 'cornerRadius modifier: clip a continuous DS shape')
+    for match in re.finditer(r'\bRoundedRectangle\s*\(\s*cornerRadius\s*:', code):
+        end, depth = match.end(), 1
+        while end < len(code) and depth:
+            depth += (code[end] == '(') - (code[end] == ')')
+            end += 1
+        if not re.search(r'\bstyle\s*:\s*\.continuous\b', code[match.end():end - 1]):
+            found.append(f'{name}:{code.count(chr(10), 0, match.start()) + 1}: rounded rectangle must use style: .continuous')
+    reject(r'\.(?:timingCurve|easeIn|easeOut|easeInOut|linear)\s*\(', 'animation curve: use DSMotion springs')
+    reject(r'\bAnimation\s*\.\s*(?:easeIn|easeOut|easeInOut|linear)\b', 'animation curve: use DSMotion springs')
+    reject(r'(?:\bwithAnimation|\.animation)\s*\(\s*\.(?:easeIn|easeOut|easeInOut|linear)\b', 'animation curve: use DSMotion springs')
+    reject(r'\bAnimation\s*\??\s*=\s*\.(?:easeIn|easeOut|easeInOut|linear)\b', 'animation curve: use DSMotion springs')
+    reject(r'\.custom\s*\(', 'custom fonts: use the DS system font ramp')
+    for match in re.finditer(r'\.blur\s*\(\s*radius\s*:', code):
+        line = code.count('\n', 0, match.start())
+        original = source.splitlines()[line]
+        if not re.search(r'// ds-allow-blur:\s*\S.+', original):
+            found.append(f'{name}:{line + 1}: arbitrary blur: use material or document decorative depth on this line')
+    if name in DS_FILES and name != 'DSTheme.swift':
+        reject(r'(?i)\b0x[0-9a-f]+\b', 'hex belongs only in generated DSTheme.swift')
+        reject(r'#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?\b', 'hex belongs only in generated DSTheme.swift', comments)
     for old in OLD_NAMES:
         reject(re.escape(old), 'obsolete interface name', comments)
     reject(r'(?:日均|年付每月先留)', 'removed period allowance or annual reserve copy', comments)
@@ -156,6 +213,8 @@ def violations(name, source):
         for match in re.finditer(r'\b(?:TextField|SecureField|TextEditor|UITextField|UITextView)\s*\(', code):
             if not any(start <= match.start() < end for start, end in input_ranges):
                 found.append(f'{name}:{code.count(chr(10), 0, match.start()) + 1}: input bypasses shared RowTextInput')
+        return found
+    if name in DS_FILES:
         return found
     reject(r'\b(?:TextField|SecureField|TextEditor|UITextField|UITextView|DatePicker)\s*\(', 'raw input: use a DS control')
     reject(r'"(?:chevron\.left|arrow\.left)"|navigationBarBackButtonHidden|struct\s+\w*BackButton\b', 'hand-made back button', comments)
@@ -215,6 +274,68 @@ def self_test():
     assert not violations(SHARED, 'Button("x") {}\nText("measuring").hidden()')
     assert not violations(SHARED, 'Page { Button("x") {} }.accessibilityHidden(inactive)')
     assert not violations(SHARED, '// Button("x") {}.hidden()\nText("Button {}.opacity(0)")')
+    ds_invalid = [
+        'Text("x").cornerRadius(DS.Radius.s)',
+        'RoundedRectangle(cornerRadius: DS.Radius.s)',
+        'RoundedRectangle(cornerRadius: max(DS.Radius.s, r), style: .circular)',
+        'Animation.easeIn(duration: 1)', 'Animation.easeOut(duration: 1)',
+        'Animation.easeInOut(duration: 1)', '.easeIn(duration: 1)', '.easeOut(duration: 1)',
+        '.easeInOut(duration: 1)', '.linear(duration: 1)', 'Animation.linear',
+        'withAnimation(.linear) {}', 'view.animation(.easeInOut, value: state)',
+        'let animation: Animation = .linear', 'let animation: Animation? = .easeIn',
+        '.timingCurve(0, 0, 1, 1)', 'Font.custom("Font", size: 16)',
+        'Text("x").font(.custom("Font", size: 16))', 'view.blur(radius: radius)',
+        'let count = Int(DS.Space.s4)',
+        'let count = Int(DSInteraction.segmentedInset)',
+        'let count = Int ( DS.Size.segmentedInset )',
+        'let count = Int((DS.Space.s4))',
+        'let inset = DS.Space.s4 - DS.Stroke.hairline',
+        'let inset = DS.Stroke.hairline + DS.Space.s4',
+        'let stroke = DS.Size.icon - DS.Stroke.hairline * 2',
+        'let diameter = DS.Size.buttonH * 2 + DS.Size.iconTile',
+        'let width = DS.Size.keyH * 4 + DS.Space.s16',
+        'let height = DS.Space.s4 + DS.Space.s4 / 2',
+        'let height = DS.Size.pillH - DS.Size.segmentedInset * 2',
+        'let height = DS.Size.rowCat + DS.Space.s20',
+        'let ratio = DS.Stroke.hairline / DS.Size.donut',
+        'let height = (DS.Space.s4 + DS.Space.s8) / 2',
+        'let height = DS.Space.s4 +\n    (DS.Space.s8 / 2)',
+        'let height = DS.Space.s4 * scale + DS.Space.s8',
+        'let height = CGFloat(DS.Space.s4) / Double(DS.Size.icon)',
+        # An allowed subexpression must not whitelist a larger derivation.
+        'let inset = (DS.Size.icon + DS.Space.s12) * 2',
+        'let radius = DS.Radius.s - DS.Size.segmentedInset + DS.Stroke.hairline',
+    ]
+    for name in (SHARED, *sorted(DS_FILES), 'Page.swift'):
+        for sample in ds_invalid:
+            assert violations(name, sample), (name, sample)
+        assert not violations(name, 'RoundedRectangle(cornerRadius: max(DS.Radius.s, r), style: .continuous)')
+        assert not violations(name, 'view.blur(radius: depth) // ds-allow-blur: silhouette penumbra')
+        assert violations(name, 'view.blur(radius: depth) // ds-allow-blur: ')
+        assert not violations(name, '// .linear(duration: 1)\nText(".cornerRadius(10)")')
+        for sample in (
+            'let radius = DS.Radius.s - DS.Size.segmentedInset',
+            'let radius = (DS.Radius.m - DS.Size.segmentedInset)',
+            'let inset = DS.Size.icon + DS.Space.s12',
+            'let inset = DS.Space.s12 + DS.Size.iconTile + DS.Space.s12',
+            'let inset = DS.Space.s12 +\n    DS.Size.iconTile + DS.Space.s12',
+            'let count = DSLayout.keypadColumns; let other = Int(items.count)',
+            'let height = DS.Size.barAmber',
+            'let padding = DS.Size.donutStroke / 2',
+            'let width = geometry.size.width * DS.Size.icon',
+            'Text("x").frame(width: DS.Size.icon, height: DS.Size.donutStroke / 2)',
+            'private enum GallerySample { static let heights: [CGFloat] = [12, 14, 10, 22, 12, 8, 16, 16, 12, 26, 10, 12, 6, 3] }',
+            '// Int(DS.Space.s4)\nText("DS.Space.s4 - DS.Stroke.hairline")',
+            '/* DS.Size.buttonH * 2 + DS.Size.iconTile */',
+        ):
+            assert not violations(name, sample), (name, sample)
+    for name in DS_FILES - {'DSTheme.swift'}:
+        assert violations(name, 'let color = 0xAABBCC')
+        assert violations(name, 'let color = "#AABBCCDD"')
+        assert not violations(name, 'VStack(spacing: 8) {}')
+    assert not violations('DSTheme.swift', 'let color = 0xAABBCC')
+    print('UI lint self-test: continuous shapes, spring-only motion, system fonts, annotated blur and generated hex enforced')
+    print('UI lint self-test: token counts and unrelated arithmetic rejected; explicit layout relationships and fixture arrays accepted')
     print('UI lint self-test: raw inputs, back, toast, geometry rejected; tokens accepted')
     print('UI lint self-test: presentations rejected in reusable and anonymous dynamic rows; surface routing accepted')
     print('UI lint self-test: hidden control modifiers rejected; conditional controls, decorative labels and measurement accepted')
@@ -228,8 +349,24 @@ def main():
         self_test()
         test_bash_arrays()
     errors = check_bash_arrays(ROOT)
+    generated = subprocess.run([sys.executable, str(ROOT / 'scripts/generate-design-tokens.py'), '--check'],
+                               cwd=ROOT, capture_output=True, text=True)
+    if generated.stdout:
+        print(generated.stdout, end='')
+    if generated.returncode:
+        errors.append('Generated design tokens are stale: run python3 scripts/generate-design-tokens.py')
+        if generated.stderr:
+            errors.append(generated.stderr.strip())
     for path in sorted((ROOT / 'Sources/YubaiApp').glob('*.swift')):
         errors.extend(violations(path.name, path.read_text()))
+    # Apply the token rules to all other project Swift files as well. Build and
+    # dependency output is not maintained source; App files were checked above.
+    for path in sorted(ROOT.rglob('*.swift')):
+        relative = path.relative_to(ROOT)
+        if path.parent == ROOT / 'Sources/YubaiApp' or {'.git', '.build', '.swiftpm', 'DerivedData'}.intersection(relative.parts):
+            continue
+        code, _ = masks(path.read_text())
+        errors.extend(design_token_violations(str(relative), code))
     for directory in ('Sources/YubaiCore', 'Tests'):
         for path in (ROOT / directory).rglob('*.swift'):
             code, _ = masks(path.read_text())
@@ -263,7 +400,7 @@ def main():
     if errors:
         print('\n'.join(errors))
         raise SystemExit(1)
-    print('UI consistency: PASS (shared inputs/back/toast, tokens, vocabulary, charts, gallery, bash arrays)')
+    print('UI consistency: PASS (shared inputs/back/toast, tokens/counts/arithmetic, continuous shapes, springs, fonts, blur, vocabulary, charts, gallery, bash arrays)')
 
 
 if __name__ == '__main__':

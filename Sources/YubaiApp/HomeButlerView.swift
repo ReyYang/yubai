@@ -264,7 +264,7 @@ struct TodoView: View {
                     .id(top.id)
                     .background(alignment: .bottom) {
                         ForEach(1..<min(3, deck.ids.count), id: \.self) { depth in
-                            RoundedRectangle(cornerRadius: YubaiRadius.card).fill(YubaiColor.paperSheet)
+                            RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous).fill(YubaiColor.paperSheet)
                                 .frame(height: YubaiSize.sourceRow).padding(.horizontal, CGFloat(depth) * YubaiSpace.space12)
                                 .offset(y: CGFloat(depth) * YubaiSpace.space16).yubaiShadow(YubaiShadow.card).accessibilityHidden(true)
                         }

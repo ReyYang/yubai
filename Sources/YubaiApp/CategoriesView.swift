@@ -100,7 +100,7 @@ struct CategoriesView: View {
     private func iconTile(_ name: String) -> some View {
         LedgerCategoryIcon(category: name, income: income)
             .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
-            .background(YubaiColor.iconTile, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
+            .background(YubaiColor.iconTile, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous)).accessibilityHidden(true)
     }
     private var ordering: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space12) {
@@ -118,7 +118,7 @@ struct CategoriesView: View {
                     categoryName(category.name).frame(minHeight: YubaiSize.tapMin).listRowBackground(YubaiColor.paperSheet)
                 }
             }.listStyle(.plain).scrollContentBackground(.hidden)
-                .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card)).padding(.horizontal, YubaiSpace.insetPage)
+                .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous)).padding(.horizontal, YubaiSpace.insetPage)
                 #if os(iOS)
                 .environment(\.editMode, .constant(.active))
                 #endif

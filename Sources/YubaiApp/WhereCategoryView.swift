@@ -77,7 +77,7 @@ struct WhereCategoryView: View {
     private func cycleBar(_ row: CategoryCycleSpending, maximum: Int64, current: Bool) -> some View {
         VStack(spacing: YubaiSpace.space4) {
             Text(amount2(row.amount, hide: hide)).yubaiFont(YubaiFont.chartValue).fixedSize()
-            RoundedRectangle(cornerRadius: YubaiRadius.bar)
+            RoundedRectangle(cornerRadius: YubaiRadius.bar, style: .continuous)
                 .fill(current ? YubaiColor.brand : YubaiColor.series3)
                 .frame(height: max(YubaiSpace.space2, CGFloat(max(0, row.amount)) / CGFloat(maximum) * YubaiSize.rowDouble))
             Text(monthTitle(row)).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)

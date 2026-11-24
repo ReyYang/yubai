@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the small, dependency-free Xcode project from checked-in app sources."""
+"""Generate the Xcode project and hosted DS snapshots from checked-in sources."""
 from pathlib import Path
 import hashlib
 import json
@@ -122,6 +122,35 @@ TARGETED_DEVICE_FAMILY = "1,2"; ONLY_ACTIVE_ARCH = YES;
 core_test_config_list = add("core-test-configs", f'isa = XCConfigurationList; buildConfigurations = ({",".join(core_test_configs)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;')
 core_test_target = add("core-test-target", f'isa = PBXNativeTarget; buildConfigurationList = {core_test_config_list}; buildPhases = ({core_test_sources},{core_test_frameworks},{core_test_resources},); buildRules = (); dependencies = (); name = YubaiCoreTests; packageProductDependencies = ({core_test_dependency},); productName = YubaiCoreTests; productReference = {core_test_product}; productType = "com.apple.product-type.bundle.unit-test";')
 objects[project_id] = objects[project_id].replace(f'targets = ({target},{ui_target},);', f'targets = ({target},{ui_target},{core_test_target},);')
+# Hosted DS snapshots are iOS-only; SnapshotTesting is never linked to the app.
+snapshot_package = add("snapshot-package", 'isa = XCRemoteSwiftPackageReference; repositoryURL = "https://github.com/pointfreeco/swift-snapshot-testing"; requirement = {kind = exactVersion; version = 1.19.6;};')
+snapshot_product_dependency = add("snapshot-package-product", f'isa = XCSwiftPackageProductDependency; package = {snapshot_package}; productName = SnapshotTesting;')
+snapshot_link = add("snapshot-link", f'isa = PBXBuildFile; productRef = {snapshot_product_dependency};')
+snapshot_refs, snapshot_builds = [], []
+for file in sorted((root / "Tests/YubaiDesignSystemTests").glob("*.swift")):
+    ref = add("snapshot-ref:" + file.name, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quote(file.name)}; sourceTree = "<group>";')
+    snapshot_refs.append(ref)
+    snapshot_builds.append(add("snapshot-build:" + file.name, f'isa = PBXBuildFile; fileRef = {ref};'))
+snapshot_group = add("snapshot-group", f'isa = PBXGroup; children = ({",".join(snapshot_refs)},); path = Tests/YubaiDesignSystemTests; sourceTree = "<group>";')
+objects[group] = objects[group].replace(f'{source_group},', f'{source_group},{snapshot_group},')
+snapshot_product = add("snapshot-product", 'isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = YubaiDesignSystemTests.xctest; sourceTree = BUILT_PRODUCTS_DIR;')
+objects[products] = objects[products].replace(f'{product},', f'{product},{snapshot_product},')
+snapshot_sources = add("snapshot-sources", f'isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = ({",".join(snapshot_builds)},); runOnlyForDeploymentPostprocessing = 0;')
+snapshot_frameworks = add("snapshot-frameworks", f'isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = ({snapshot_link},); runOnlyForDeploymentPostprocessing = 0;')
+snapshot_proxy = add("snapshot-proxy", f'isa = PBXContainerItemProxy; containerPortal = {project_id}; proxyType = 1; remoteGlobalIDString = {target}; remoteInfo = Yubai;')
+snapshot_host_dependency = add("snapshot-host-dependency", f'isa = PBXTargetDependency; target = {target}; targetProxy = {snapshot_proxy};')
+snapshot_configs = [add("snapshot-config:" + name, f'''isa = XCBuildConfiguration; baseConfigurationReference = {signing_ref}; name = {name}; buildSettings = {{
+BUNDLE_LOADER = "$(TEST_HOST)"; TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yubai.app/Yubai";
+CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+PRODUCT_BUNDLE_IDENTIFIER = app.yubai.personal.designsystemtests; PRODUCT_NAME = "$(TARGET_NAME)";
+SDKROOT = iphoneos; SUPPORTED_PLATFORMS = "iphoneos iphonesimulator"; SWIFT_VERSION = 5.0;
+SWIFT_ACTIVE_COMPILATION_CONDITIONS = {quote("DEBUG" if name == "Debug" else "")};
+TARGETED_DEVICE_FAMILY = "1,2"; ONLY_ACTIVE_ARCH = YES;
+LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@loader_path/Frameworks");
+}};''') for name in ["Debug", "Release"]]
+snapshot_config_list = add("snapshot-configs", f'isa = XCConfigurationList; buildConfigurations = ({",".join(snapshot_configs)},); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug;')
+snapshot_target = add("snapshot-target", f'isa = PBXNativeTarget; buildConfigurationList = {snapshot_config_list}; buildPhases = ({snapshot_sources},{snapshot_frameworks},); buildRules = (); dependencies = ({snapshot_host_dependency},); name = YubaiDesignSystemTests; packageProductDependencies = ({snapshot_product_dependency},); productName = YubaiDesignSystemTests; productReference = {snapshot_product}; productType = "com.apple.product-type.bundle.unit-test";')
+objects[project_id] = objects[project_id].replace(f'packageReferences = ({package},);', f'packageReferences = ({package},{snapshot_package},);').replace(f'{core_test_target},);', f'{core_test_target},{snapshot_target},);')
 # 小组件只在 iOS 嵌入；两个共享源文件均不包含账本写入实现。
 widget_refs, widget_builds = [], []
 for file in sorted((root / "Sources/YubaiWidgets").glob("*.swift")):
@@ -159,7 +188,7 @@ widget_dependency = add("widget-dependency", f'isa = PBXTargetDependency; target
 widget_embed = add("widget-embed", f'isa = PBXBuildFile; fileRef = {widget_product}; platformFilter = ios; settings = {{ATTRIBUTES = (RemoveHeadersOnCopy,);}};')
 widget_embed_phase = add("widget-embed-phase", f'isa = PBXCopyFilesBuildPhase; buildActionMask = 2147483647; dstPath = ""; dstSubfolderSpec = 13; files = ({widget_embed},); name = "Embed App Extensions"; runOnlyForDeploymentPostprocessing = 0;')
 objects[target] = objects[target].replace(f'{resources},', f'{resources},{widget_embed_phase},').replace('dependencies = ();', f'dependencies = ({widget_dependency},);')
-objects[project_id] = objects[project_id].replace(f'{core_test_target},);', f'{core_test_target},{widget_target},);')
+objects[project_id] = objects[project_id].replace(f'{snapshot_target},);', f'{snapshot_target},{widget_target},);')
 for filename in ["Yubai-AppGroup.entitlements", "Yubai-iCloud-AppGroup.entitlements"]:
     ref = add("app-extra:" + filename, f'isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = {quote(filename)}; sourceTree = "<group>";')
     objects[source_group] = objects[source_group].replace('children = (', f'children = ({ref},', 1)
@@ -171,10 +200,11 @@ schemes = project / 'xcshareddata/xcschemes'; schemes.mkdir(parents=True, exist_
 reference = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="Yubai.app" BlueprintName="Yubai" ReferencedContainer="container:Yubai.xcodeproj"/>'
 test_reference = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{ui_target}" BuildableName="YubaiUITests.xctest" BlueprintName="YubaiUITests" ReferencedContainer="container:Yubai.xcodeproj"/>'
 core_test_reference = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{core_test_target}" BuildableName="YubaiCoreTests.xctest" BlueprintName="YubaiCoreTests" ReferencedContainer="container:Yubai.xcodeproj"/>'
+snapshot_test_reference = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{snapshot_target}" BuildableName="YubaiDesignSystemTests.xctest" BlueprintName="YubaiDesignSystemTests" ReferencedContainer="container:Yubai.xcodeproj"/>'
 (schemes / 'Yubai.xcscheme').write_text(f'''<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2640" version="1.7">
 <BuildAction parallelizeBuildables="YES" buildImplicitDependencies="YES"><BuildActionEntries><BuildActionEntry buildForTesting="YES" buildForRunning="YES" buildForProfiling="YES" buildForArchiving="YES" buildForAnalyzing="YES">{reference}</BuildActionEntry></BuildActionEntries></BuildAction>
-<TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO">{core_test_reference}</TestableReference><TestableReference skipped="NO">{test_reference}</TestableReference></Testables></TestAction>
+<TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES"><Testables><TestableReference skipped="NO">{core_test_reference}</TestableReference><TestableReference skipped="NO">{test_reference}</TestableReference><TestableReference skipped="NO">{snapshot_test_reference}</TestableReference></Testables></TestAction>
 <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" debugServiceExtension="internal" allowLocationSimulation="YES"><BuildableProductRunnable runnableDebuggingMode="0">{reference}</BuildableProductRunnable></LaunchAction>
 <ProfileAction buildConfiguration="Release" shouldUseLaunchSchemeArgsEnv="YES" savedToolIdentifier="" useCustomWorkingDirectory="NO" debugDocumentVersioning="YES"><BuildableProductRunnable runnableDebuggingMode="0">{reference}</BuildableProductRunnable></ProfileAction>
 <AnalyzeAction buildConfiguration="Debug"/><ArchiveAction buildConfiguration="Release" revealArchiveInOrganizer="YES"/>

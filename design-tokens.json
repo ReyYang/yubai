@@ -1,0 +1,728 @@
+{
+  "$comment": "余白设计系统唯一真源。SwiftUI 的 DSTheme.swift / DSMotion.swift 与网页设计系统预览都由这份文件生成，不要手改生成物。所有数值都按 SwiftUI 语义存：长度单位 pt，阴影 radius 是 SwiftUI .shadow(radius:)（网页端画成 blur = radius × 2），弹簧是 mass / stiffness / damping。",
+  "version": 4,
+  "color": {
+    "$comment": "值是 #RRGGBB 或 #RRGGBBAA（sRGB）。usage 同时是设计系统文档和 Swift 注释。",
+    "bg": {
+      "light": "#F5F1E5",
+      "dark": "#1F1B14",
+      "usage": "页面底。整个 App 只有这一种底色。"
+    },
+    "surface": {
+      "light": "#EDE6D3",
+      "dark": "#2A251C",
+      "usage": "「一块」：胶囊、按钮、空格子、问余白条、键盘托盘里的块、没选中的分类圆。"
+    },
+    "raised": {
+      "light": "#FEFBEA",
+      "dark": "#353026",
+      "usage": "浮起的一层：设置分组、浮动账单卡、弹出菜单、展开的抽屉。"
+    },
+    "selected": {
+      "light": "#FFFFFF",
+      "dark": "#4A4436",
+      "usage": "分段控件的选中格；就地展开里当前选中的那一项。"
+    },
+    "separator": {
+      "light": "#E0D8C9",
+      "dark": "#3A3428",
+      "usage": "列表行之间的细线，从文字开始画，不穿过图标。"
+    },
+    "ink": {
+      "light": "#382F1F",
+      "dark": "#E6DECB",
+      "usage": "主文字和脊柱数字（金额、还剩、几天后）。"
+    },
+    "ink-2": {
+      "light": "#5A5040",
+      "dark": "#C2B8A3",
+      "usage": "列表里的名字等次要正文。"
+    },
+    "ink-3": {
+      "light": "#6A604F",
+      "dark": "#A89D88",
+      "usage": "小字：日期、单位、总额、说明行。最小 11pt。"
+    },
+    "icon-quiet": {
+      "light": "#6A604FBF",
+      "dark": "#A89D88BF",
+      "usage": "列表行里的线性图标（ink-3 再淡一档，代替网页的 opacity .75）。"
+    },
+    "chevron": {
+      "light": "#B9AC93",
+      "dark": "#6B604D",
+      "usage": "箭头、拖动把手、最弱的图标。"
+    },
+    "accent": {
+      "light": "#557F53",
+      "dark": "#86A884",
+      "usage": "下一步：记一笔胶囊、键盘上的记下。一屏只有一个。"
+    },
+    "on-accent": {
+      "light": "#FFFFFF",
+      "dark": "#1F1B14",
+      "usage": "accent 上的字和图标。"
+    },
+    "accent-ink": {
+      "light": "#476846",
+      "dark": "#CFE0C2",
+      "usage": "绿色的字：+ 添加小类、今天的小圆点、文字按钮。"
+    },
+    "accent-soft": {
+      "light": "#D6E2CC",
+      "dark": "#34422F",
+      "usage": "选中的分类圆、展开抽屉的图标方块、正面的结果条。"
+    },
+    "warn": {
+      "light": "#B88443",
+      "dark": "#D2A867",
+      "usage": "快用完的进度条。"
+    },
+    "warn-ink": {
+      "light": "#7A5320",
+      "dark": "#E9CF9F",
+      "usage": "要你看一眼的字：快花完、比上期多、待报销、待 AA。"
+    },
+    "warn-soft": {
+      "light": "#EFE1C4",
+      "dark": "#4A3C24",
+      "usage": "琥珀卡和标签的底。"
+    },
+    "warn-track": {
+      "light": "#E2CFA8",
+      "dark": "#5A4A2E",
+      "usage": "琥珀卡里进度条的底。"
+    },
+    "track": {
+      "light": "#DDD2BE",
+      "dark": "#4A4335",
+      "usage": "进度条和日线柱的底。"
+    },
+    "fill-calm": {
+      "light": "#8FA98A",
+      "dark": "#5E7A5B",
+      "usage": "平常的进度条。"
+    },
+    "key": {
+      "light": "#FEFBEA",
+      "dark": "#4A4436",
+      "usage": "键盘数字键。"
+    },
+    "key-fn": {
+      "light": "#D6CAAF",
+      "dark": "#353026",
+      "usage": "键盘功能键（⌫ + −）。"
+    },
+    "tray": {
+      "light": "#E4DAC4",
+      "dark": "#2A251C",
+      "usage": "键盘托盘。"
+    },
+    "grabber": {
+      "light": "#D8CFBE",
+      "dark": "#4A4335",
+      "usage": "弹窗顶部的拖动条。"
+    },
+    "chart-1": {
+      "light": "#476846",
+      "dark": "#CFE0C2",
+      "usage": "环图第 1 段（最大的一类）。"
+    },
+    "chart-2": {
+      "light": "#8FAE88",
+      "dark": "#86A884",
+      "usage": "环图第 2 段。"
+    },
+    "chart-3": {
+      "light": "#A9BE9C",
+      "dark": "#5E7A5B",
+      "usage": "环图第 3 段。"
+    },
+    "chart-4": {
+      "light": "#C9BCA3",
+      "dark": "#6B604D",
+      "usage": "环图第 4 段。"
+    },
+    "chart-5": {
+      "light": "#DDD2BE",
+      "dark": "#4A4335",
+      "usage": "环图其余。"
+    },
+    "scrim": {
+      "light": "#382F1F52",
+      "dark": "#00000080",
+      "usage": "弹窗和浮动卡后面的遮罩。"
+    },
+    "shadow-ink": {
+      "light": "#4A4030",
+      "dark": "#000000",
+      "usage": "阴影颜色（不透明度在 shadow 里给）。"
+    }
+  },
+  "typography": {
+    "$comment": "family: text = 系统 SF Pro（中文苹方），num = SF Pro Rounded + 等宽数字（.monospacedDigit()）。weight 只允许 regular / medium / semibold。lineHeight 是行盒高度，SwiftUI 端用 lineSpacing + 上下补齐还原。relativeTo 决定动态字体跟哪一档放大。",
+    "families": {
+      "text": {
+        "swift": "default",
+        "css": "-apple-system, \"SF Pro Text\", \"PingFang SC\", system-ui, sans-serif"
+      },
+      "num": {
+        "swift": "rounded",
+        "css": "ui-rounded, \"SF Pro Rounded\", -apple-system, \"PingFang SC\", system-ui, sans-serif",
+        "monospacedDigit": true
+      }
+    },
+    "styles": {
+      "n-entry": {
+        "family": "num",
+        "size": 54,
+        "lineHeight": 60,
+        "weight": "semibold",
+        "tracking": -1,
+        "relativeTo": "largeTitle",
+        "usage": "记一笔里正在输入的金额。"
+      },
+      "n-detail": {
+        "family": "num",
+        "size": 44,
+        "lineHeight": 52,
+        "weight": "semibold",
+        "tracking": -1,
+        "relativeTo": "largeTitle",
+        "usage": "浮动账单卡的金额。"
+      },
+      "n-hero": {
+        "family": "num",
+        "size": 40,
+        "lineHeight": 46,
+        "weight": "semibold",
+        "tracking": -1,
+        "relativeTo": "largeTitle",
+        "usage": "每页唯一的主数字：还能花、花了、流动现金、账户余额。"
+      },
+      "n-tile": {
+        "family": "num",
+        "size": 26,
+        "lineHeight": 30,
+        "weight": "semibold",
+        "tracking": -0.5,
+        "relativeTo": "title",
+        "usage": "琥珀卡里的还剩。"
+      },
+      "n-key": {
+        "family": "num",
+        "size": 22,
+        "lineHeight": 26,
+        "weight": "medium",
+        "tracking": 0,
+        "relativeTo": "title2",
+        "usage": "键盘数字。"
+      },
+      "n-spine-lg": {
+        "family": "num",
+        "size": 20,
+        "lineHeight": 26,
+        "weight": "semibold",
+        "tracking": -0.3,
+        "relativeTo": "title3",
+        "usage": "预算列表的脊柱（还剩多少）。"
+      },
+      "n-spine": {
+        "family": "num",
+        "size": 18,
+        "lineHeight": 22,
+        "weight": "semibold",
+        "tracking": -0.2,
+        "relativeTo": "headline",
+        "usage": "列表脊柱：账单金额、账户余额、几天后扣。"
+      },
+      "t-title": {
+        "family": "text",
+        "size": 17,
+        "lineHeight": 22,
+        "weight": "semibold",
+        "tracking": 0,
+        "relativeTo": "headline",
+        "usage": "导航标题、弹窗标题、分类抽屉的大类名、完成按钮。"
+      },
+      "t-body": {
+        "family": "text",
+        "size": 16,
+        "lineHeight": 22,
+        "weight": "regular",
+        "tracking": 0,
+        "relativeTo": "body",
+        "usage": "列表名字（ink-2）、用途。"
+      },
+      "t-label": {
+        "family": "text",
+        "size": 15,
+        "lineHeight": 20,
+        "weight": "regular",
+        "tracking": 0,
+        "relativeTo": "subheadline",
+        "usage": "公式行、小类行、组标题里的字。"
+      },
+      "t-label-strong": {
+        "family": "text",
+        "size": 15,
+        "lineHeight": 20,
+        "weight": "semibold",
+        "tracking": 0,
+        "relativeTo": "subheadline",
+        "usage": "文字按钮（调整、编辑、+ 添加小类）。"
+      },
+      "t-pill": {
+        "family": "text",
+        "size": 14,
+        "lineHeight": 20,
+        "weight": "regular",
+        "tracking": 0,
+        "relativeTo": "callout",
+        "usage": "胶囊和小类芯片里的字。"
+      },
+      "t-sub": {
+        "family": "text",
+        "size": 13,
+        "lineHeight": 18,
+        "weight": "regular",
+        "tracking": 0,
+        "relativeTo": "footnote",
+        "usage": "主数字下面的一行。"
+      },
+      "t-sub-strong": {
+        "family": "text",
+        "size": 13,
+        "lineHeight": 18,
+        "weight": "semibold",
+        "tracking": 0,
+        "relativeTo": "footnote",
+        "usage": "日期组标题。"
+      },
+      "t-caption": {
+        "family": "text",
+        "size": 12,
+        "lineHeight": 16,
+        "weight": "regular",
+        "tracking": 0,
+        "relativeTo": "caption",
+        "usage": "列表第二行小字、总额、百分比。"
+      },
+      "t-tag": {
+        "family": "text",
+        "size": 11,
+        "lineHeight": 18,
+        "weight": "semibold",
+        "tracking": 0,
+        "relativeTo": "caption2",
+        "usage": "行内标签（待 AA、存入）。全 App 最小字号。"
+      },
+      "t-tab": {
+        "family": "text",
+        "size": 10,
+        "lineHeight": 12,
+        "weight": "medium",
+        "tracking": 0,
+        "relativeTo": "caption2",
+        "usage": "底栏两个入口的字（系统 TabView 同级）。"
+      }
+    }
+  },
+  "spacing": {
+    "space-4": {
+      "value": 4,
+      "usage": "字和小标记之间。"
+    },
+    "space-8": {
+      "value": 8,
+      "usage": "胶囊之间、芯片之间。"
+    },
+    "space-12": {
+      "value": 12,
+      "usage": "图标和名字之间；卡片之间。"
+    },
+    "space-16": {
+      "value": 16,
+      "usage": "卡片和分组的左右外边距、卡内边距。"
+    },
+    "space-20": {
+      "value": 20,
+      "usage": "页面左右边距（不装卡片的列表）、组与组之间。"
+    },
+    "space-28": {
+      "value": 28,
+      "usage": "大块之间。"
+    }
+  },
+  "radius": {
+    "$comment": "SwiftUI 一律 .rect(cornerRadius:style: .continuous)；pill 用 Capsule(style: .continuous)。嵌套形状用同心规则：内圆角 = 外圆角 − 内边距（例如分段控件 12 − 3 = 9），不另设 token。",
+    "radius-xs": {
+      "value": 4,
+      "usage": "图例色块、订阅日历里的品牌小方块（只给 ≤ 18pt 的小色块）。"
+    },
+    "radius-s": {
+      "value": 12,
+      "usage": "键盘按键、图标方块、分段控件外框、输入框。"
+    },
+    "radius-m": {
+      "value": 20,
+      "usage": "卡片、分组、展开的抽屉、结果条、琥珀卡、弹出菜单。"
+    },
+    "radius-sheet": {
+      "value": 28,
+      "usage": "底部弹窗的两个顶角（.presentationCornerRadius）。"
+    },
+    "radius-float": {
+      "value": 32,
+      "usage": "居中浮动卡的四个角。"
+    },
+    "radius-pill": {
+      "value": "capsule",
+      "usage": "胶囊、按钮、芯片、进度条、分类圆。"
+    }
+  },
+  "stroke": {
+    "hairline": {
+      "value": 1,
+      "usage": "列表行分隔线（与网页 1px 同为 1pt）。"
+    },
+    "icon": {
+      "value": 1.6,
+      "usage": "设计稿 SVG 图标线宽；iOS 端换成 SF Symbols 的 symbolWeight，见 icon。"
+    },
+    "focus": {
+      "value": 1.5,
+      "usage": "选中的输入框描边（accent），用 strokeBorder，不用 inset 阴影。"
+    }
+  },
+  "shadow": {
+    "$comment": "只有 color / opacity / radius / x / y 五个量，没有 spread、没有 inset。radius 是 SwiftUI 语义，网页端 blur = radius × 2。",
+    "shadow-float": {
+      "light": {
+        "color": "shadow-ink",
+        "opacity": 0.22,
+        "radius": 14,
+        "x": 0,
+        "y": 8
+      },
+      "dark": {
+        "color": "shadow-ink",
+        "opacity": 0.55,
+        "radius": 14,
+        "x": 0,
+        "y": 8
+      },
+      "usage": "只给浮在遮罩上的东西：浮动账单卡、弹出菜单。"
+    },
+    "shadow-near": {
+      "light": {
+        "color": "shadow-ink",
+        "opacity": 0.12,
+        "radius": 1,
+        "x": 0,
+        "y": 1
+      },
+      "dark": {
+        "color": "shadow-ink",
+        "opacity": 0.3,
+        "radius": 1,
+        "x": 0,
+        "y": 1
+      },
+      "usage": "分段控件的选中格。"
+    },
+    "shadow-key": {
+      "light": {
+        "color": "shadow-ink",
+        "opacity": 0.12,
+        "radius": 0,
+        "x": 0,
+        "y": 1
+      },
+      "dark": {
+        "color": "shadow-ink",
+        "opacity": 0.3,
+        "radius": 0,
+        "x": 0,
+        "y": 1
+      },
+      "usage": "键盘按键底边。"
+    }
+  },
+  "material": {
+    "$comment": "毛玻璃只用系统档位。css 是网页预览的固定近似，不是可调参数。",
+    "bar": {
+      "swift": "glassEffect",
+      "fallback": "regularMaterial",
+      "css": {
+        "background": "raised",
+        "alpha": 0.84,
+        "blur": 20
+      },
+      "usage": "底栏和问余白条所在的浮层（iOS 26 Liquid Glass）。"
+    }
+  },
+  "size": {
+    "row-bill": {
+      "value": 54,
+      "usage": "账单、流水、账户行的高度（两行时 60）。"
+    },
+    "row-bill-2": {
+      "value": 60,
+      "usage": "两行的账单行。"
+    },
+    "row-cat": {
+      "value": 60,
+      "usage": "分类抽屉的大类行。"
+    },
+    "row-sub": {
+      "value": 44,
+      "usage": "抽屉里的小类行、触控最小高度。"
+    },
+    "pill-h": {
+      "value": 34,
+      "usage": "记一笔底部的胶囊（账户、时间、···）。"
+    },
+    "chip-h": {
+      "value": 32,
+      "usage": "小类芯片、周期胶囊。"
+    },
+    "button-h": {
+      "value": 50,
+      "usage": "完成、整宽按钮。"
+    },
+    "key-h": {
+      "value": 48,
+      "usage": "键盘按键。"
+    },
+    "cta-h": {
+      "value": 48,
+      "usage": "底栏中间的记一笔。"
+    },
+    "ask-h": {
+      "value": 44,
+      "usage": "问余白条。"
+    },
+    "cat-circle": {
+      "value": 48,
+      "usage": "分类圆。"
+    },
+    "icon-tile": {
+      "value": 36,
+      "usage": "抽屉里的图标方块。"
+    },
+    "icon": {
+      "value": 20,
+      "usage": "列表图标。"
+    },
+    "tap-min": {
+      "value": 44,
+      "usage": "最小触控尺寸。"
+    },
+    "segmented-inset": {
+      "value": 3,
+      "usage": "分段控件外框到选中格的内边距；选中格圆角 = radius-s − 3。"
+    },
+    "bar-calm": {
+      "value": 4,
+      "usage": "预算行的进度条高度。"
+    },
+    "bar-amber": {
+      "value": 6,
+      "usage": "琥珀卡里的进度条高度。"
+    },
+    "bar-mini": {
+      "value": 3,
+      "usage": "首页三个小预算的进度条高度。"
+    },
+    "day-bar-gap": {
+      "value": 3,
+      "usage": "首页日线柱之间的间隔。"
+    },
+    "day-bars-h": {
+      "value": 36,
+      "usage": "首页日线柱区域的高度。"
+    },
+    "donut": {
+      "value": 136,
+      "usage": "环图直径。"
+    },
+    "donut-stroke": {
+      "value": 18,
+      "usage": "环图环宽。"
+    },
+    "legend-swatch": {
+      "value": 10,
+      "usage": "图例色块边长。"
+    },
+    "brand-tile": {
+      "value": 18,
+      "usage": "订阅日历里的品牌小方块。"
+    },
+    "menu-w": {
+      "value": 208,
+      "usage": "更多菜单的宽度。"
+    }
+  },
+  "icon": {
+    "$comment": "iOS 端一律 SF Symbols。preview 是设计稿里的 24 网格 SVG，只给网页预览用，长得接近但不完全相同。",
+    "weight": {
+      "list": "regular",
+      "nav": "medium",
+      "chevron": "semibold"
+    },
+    "symbols": {
+      "cat-food": "fork.knife",
+      "cat-shopping": "bag",
+      "cat-transport": "tram",
+      "cat-housing": "house",
+      "cat-grocery": "basket",
+      "cat-fun": "ticket",
+      "cat-daily": "shippingbox",
+      "cat-coffee": "cup.and.saucer",
+      "cat-digital": "powerplug",
+      "cat-other": "ellipsis",
+      "acct-debit": "building.columns",
+      "acct-wallet": "wallet.bifold",
+      "acct-balance": "yensign.circle",
+      "acct-credit": "creditcard",
+      "acct-cash": "banknote",
+      "acct-invest": "chart.line.uptrend.xyaxis",
+      "save-first": "tray.and.arrow.down",
+      "floor": "checkmark.shield",
+      "subscription": "repeat",
+      "cycle": "calendar",
+      "tab-home": "house",
+      "tab-overview": "chart.bar",
+      "transfer": "arrow.left.arrow.right",
+      "reimburse": "arrow.uturn.backward",
+      "ai": "sparkles",
+      "memory": "brain",
+      "screenshot": "photo",
+      "voice": "mic",
+      "cloud": "cloud",
+      "export": "square.and.arrow.up",
+      "chevron": "chevron.right",
+      "chevron-down": "chevron.down",
+      "back": "chevron.left",
+      "close": "xmark",
+      "more": "ellipsis",
+      "add": "plus",
+      "time": "clock",
+      "search": "magnifyingglass",
+      "edit": "pencil",
+      "delete": "trash",
+      "recategorize": "tag",
+      "duplicate": "square.on.square",
+      "done": "checkmark"
+    }
+  },
+  "motion": {
+    "$comment": "只用阻尼弹簧，不用固定毫秒的缓动。SwiftUI: Animation.spring(Spring(mass:stiffness:damping:))；网页: Framer Motion / Motion { type: \"spring\", mass, stiffness, damping }。两端读同一组数，零换算。",
+    "springs": {
+      "snappy": {
+        "mass": 1,
+        "stiffness": 300,
+        "damping": 22,
+        "usage": "按压、切换、勾选、箭头旋转。"
+      },
+      "smooth": {
+        "mass": 1,
+        "stiffness": 200,
+        "damping": 28,
+        "usage": "面板、位移、分段滑块、列表入场（零回弹）。"
+      },
+      "standard": {
+        "mass": 1,
+        "stiffness": 130,
+        "damping": 14,
+        "usage": "常规状态过渡：颜色、展开收起、数字换位、柱子长出。"
+      },
+      "bouncy": {
+        "mass": 1,
+        "stiffness": 180,
+        "damping": 12,
+        "usage": "完成、弹出反馈：记下成功、浮动卡出现。"
+      }
+    },
+    "press": {
+      "scale": 0.97,
+      "spring": "snappy",
+      "haptic": "impact-light",
+      "usage": "所有可点的块：统一 DSPressStyle（ButtonStyle）。"
+    },
+    "roles": {
+      "segmented-thumb": {
+        "spring": "smooth",
+        "usage": "分段 / 类型标签的滑块。"
+      },
+      "accordion": {
+        "spring": "standard",
+        "usage": "抽屉展开收起。"
+      },
+      "chevron-rotate": {
+        "spring": "snappy",
+        "usage": "抽屉箭头转向。"
+      },
+      "row-enter": {
+        "spring": "smooth",
+        "offsetY": 8,
+        "staggerDelay": 0.04,
+        "usage": "账单行首次出现：上移 8pt 淡入，每行晚 0.04s 开始（只是起步延迟，不是时长）。"
+      },
+      "bar-grow": {
+        "spring": "standard",
+        "staggerDelay": 0.012,
+        "usage": "日线柱首次长出。"
+      },
+      "number": {
+        "spring": "standard",
+        "transition": "numericText",
+        "usage": "数字变化：.contentTransition(.numericText())，只换变了的位。"
+      },
+      "float-card": {
+        "spring": "bouncy",
+        "usage": "浮动账单卡出现（缩放 0.96 → 1 + 淡入）。"
+      },
+      "sheet": {
+        "spring": "system",
+        "usage": "底部弹窗用系统 .sheet 自带弹簧，不自定义。"
+      }
+    },
+    "haptics": {
+      "save": "success",
+      "overspend": "warning",
+      "toggle": "selection"
+    },
+    "loops": {
+      "$comment": "循环动画：SwiftUI 用 PhaseAnimator / KeyframeAnimator，相位之间用这里的弹簧。",
+      "breathe": {
+        "phases": [
+          1.0,
+          0.55
+        ],
+        "property": "opacity",
+        "spring": "smooth",
+        "hold": 0.6,
+        "usage": "AI 正在想、读取中。"
+      },
+      "shimmer": {
+        "phases": [
+          -1.0,
+          1.0
+        ],
+        "property": "offsetX",
+        "spring": "smooth",
+        "hold": 0.4,
+        "usage": "骨架屏扫光。"
+      }
+    },
+    "reduceMotion": {
+      "spring": "smooth",
+      "allow": [
+        "opacity"
+      ],
+      "usage": "减弱动态效果：去掉位移、缩放、回弹，只留淡入淡出；数字直接跳。"
+    }
+  }
+}

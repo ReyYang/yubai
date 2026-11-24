@@ -976,15 +976,7 @@ enum AppSheet: Identifiable {
         }
     }
     var body: some Scene {
-        WindowGroup {
-            // A ledger boundary discards ALL tab NavigationPaths and
-            // pager state together, rather than only changing its selected tab.
-            RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
-                .preferredColorScheme(colorScheme)
-                #if os(macOS)
-                .frame(minWidth: YubaiSize.desktopMinimumWidth, minHeight: YubaiSize.contentNarrow)
-                #endif
-        }
+        WindowGroup { launchRoot }
         #if os(macOS)
         .defaultSize(width: YubaiSize.desktopIdealWidth, height: YubaiSize.desktopIdealHeight)
         .commands {
@@ -995,6 +987,25 @@ enum AppSheet: Identifiable {
             CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
         }
         #endif
+    }
+    @ViewBuilder private var launchRoot: some View {
+        #if DEBUG
+        if UITestSupport.designSystemGallery {
+            DesignSystemGalleryView()
+                .environment(\.dsReduceMotionOverride, UITestSupport.script != nil ? UITestSupport.reduceMotion : nil)
+        }
+        else { applicationRoot }
+        #else
+        applicationRoot
+        #endif
+    }
+    private var applicationRoot: some View {
+        // A ledger boundary discards all tab NavigationPaths and pager state together.
+        RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
+            .preferredColorScheme(colorScheme)
+            #if os(macOS)
+            .frame(minWidth: YubaiSize.desktopMinimumWidth, minHeight: YubaiSize.contentNarrow)
+            #endif
     }
 }
 

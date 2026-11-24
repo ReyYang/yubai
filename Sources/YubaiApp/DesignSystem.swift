@@ -10,63 +10,63 @@ import UIKit
 #endif
 
 enum YubaiColor {
-    static let white = Color.white
-    static let canvas = adaptive(0xf5f1e5, 0x1f1b14)
-    static let card = adaptive(0xede6d3, 0x2a251c)
-    static let raised = adaptive(0xfefbea, 0x353026)
-    static let keypadTray = adaptive(0xe4dac4, 0x2a251c)
-    static let key = adaptive(0xfefbea, 0x4a4436)
-    static let keyFn = adaptive(0xd6caaf, 0x353026)
-    static let keyPressed = adaptive(0xf1e9d5, 0x353026)
-    static let keyFnPressed = adaptive(0xccc0a4, 0x4a4436)
+    static let white = Color.white // legacy: no DS v4 token
+    static let canvas = DS.Color.bg
+    static let card = DS.Color.surface
+    static let raised = DS.Color.raised
+    static let keypadTray = DS.Color.tray
+    static let key = DS.Color.key
+    static let keyFn = DS.Color.keyFn
+    static let keyPressed = adaptive(0xf1e9d5, 0x353026) // legacy: no DS v4 token
+    static let keyFnPressed = adaptive(0xccc0a4, 0x4a4436) // legacy: no DS v4 token
     // Solid bottom edge: radius 0, x 0, y 1; removed at touch-down.
-    static let shadowKey = adaptive(0x4a4030, 0x000000, lightAlpha: 0x38 / 255.0, darkAlpha: 0x73 / 255.0)
+    static let shadowKey = adaptive(0x4a4030, 0x000000, lightAlpha: 0x38 / 255.0, darkAlpha: 0x73 / 255.0) // legacy: no DS v4 token
 
-    static let paperSheet = adaptive(0xfefbea, 0x2a251c)
+    static let paperSheet = adaptive(0xfefbea, 0x2a251c) // legacy: no DS v4 token
     // A slightly lighter sheet, blended entirely from the existing paper/light palette.
     static func receiptPaper(for scheme: ColorScheme) -> Color {
         if scheme == .dark { return raised }
         if #available(macOS 15, *) { return paperSheet.mix(with: windowLight, by: 0.65) }
         return raised
     }
-    static let paperInset = adaptive(0xede6d3, 0x353026)
-    static let glassBar = adaptive(0xfefbea, 0x353026, lightAlpha: 204.0 / 255, darkAlpha: 217.0 / 255)
-    static let windowLight = adaptive(0xfffdf3, 0xe9cf9f)
-    static let bambooShadowLightRGB: UInt32 = 0x2f4a2e
-    static let bambooShadowDarkRGB: UInt32 = 0x86a884
-    static let bambooShadow = adaptive(bambooShadowLightRGB, bambooShadowDarkRGB)
-    static let selected = adaptive(0xffffff, 0x4a4436)
-    static let label = adaptive(0x382f1f, 0xe6decb)
-    static let labelMuted = adaptive(0x5a5040, 0xc2b8a3)
-    static let labelSecondary = adaptive(0x6a604f, 0xa89d88)
-    static let separator = adaptive(0xe0d8c9, 0x3a3428)
-    static let grabber = adaptive(0xd8cfbe, 0x4a4335)
-    static let borderDashed = adaptive(0xcfc3ae, 0x5a5040)
-    static let brand = adaptive(0x557f53, 0x86a884)
-    static let onBrand = adaptive(0xffffff, 0x1f1b14)
-    static let brandInk = adaptive(0x476846, 0xcfe0c2)
-    static let brandTint = adaptive(0xd6e2cc, 0x34422f)
-    static let brandTintStrong = adaptive(0x2f4a2e, 0xdcebd0)
-    static let brandMark = adaptive(0x6e926e, 0x86a884)
-    static let brandGlyph = adaptive(0x3f6a3e, 0xa9c9a6)
-    static let amberTint = adaptive(0xefe1c4, 0x4a3c24)
-    static let amberInk = adaptive(0x7a5320, 0xe9cf9f)
-    static let amberStrong = adaptive(0x5e3f17, 0xf3ddb3)
-    static let amberDot = adaptive(0xb88443, 0xd2a867)
-    static let amberMark = adaptive(0xd9b77e, 0xc9a061)
-    static let seriesSoft = adaptive(0xa9be9c, 0x5e7a5b)
-    static let series2 = adaptive(0x8fae88, 0x4e6a4c)
-    static let series3 = adaptive(0xc3d3b8, 0x3e523c)
-    static let neutralStrong = adaptive(0xc9bca3, 0x6b604d)
-    static let neutralSoft = adaptive(0xddd2be, 0x4a4335)
-    static let outflow = adaptive(0xb09e80, 0x8c7b5f)
-    static let chartRule = adaptive(0xb9ac93, 0x6b604d)
-    static let chartGuide = adaptive(0x8c806b, 0x8c806b)
-    static let toggleOn = adaptive(0x557f53, 0x86a884)
-    static let iconTile = adaptive(0xede6d3, 0xede6d3)
-    static let iconInk = adaptive(0x3e3224, 0x3e3224)
+    static let paperInset = adaptive(0xede6d3, 0x353026) // legacy: no DS v4 token
+    static let glassBar = adaptive(0xfefbea, 0x353026, lightAlpha: 204.0 / 255, darkAlpha: 217.0 / 255) // legacy: no DS v4 token
+    static let windowLight = adaptive(0xfffdf3, 0xe9cf9f) // legacy: no DS v4 token
+    static let bambooShadowLightRGB: UInt32 = 0x2f4a2e // legacy: no DS v4 token
+    static let bambooShadowDarkRGB: UInt32 = 0x86a884 // legacy: no DS v4 token
+    static let bambooShadow = adaptive(bambooShadowLightRGB, bambooShadowDarkRGB) // legacy: no DS v4 token
+    static let selected = DS.Color.selected
+    static let label = DS.Color.ink
+    static let labelMuted = DS.Color.ink2
+    static let labelSecondary = DS.Color.ink3
+    static let separator = DS.Color.separator
+    static let grabber = DS.Color.grabber
+    static let borderDashed = adaptive(0xcfc3ae, 0x5a5040) // legacy: no DS v4 token
+    static let brand = DS.Color.accent
+    static let onBrand = DS.Color.onAccent
+    static let brandInk = DS.Color.accentInk
+    static let brandTint = DS.Color.accentSoft
+    static let brandTintStrong = adaptive(0x2f4a2e, 0xdcebd0) // legacy: no DS v4 token
+    static let brandMark = adaptive(0x6e926e, 0x86a884) // legacy: no DS v4 token
+    static let brandGlyph = adaptive(0x3f6a3e, 0xa9c9a6) // legacy: no DS v4 token
+    static let amberTint = DS.Color.warnSoft
+    static let amberInk = DS.Color.warnInk
+    static let amberStrong = adaptive(0x5e3f17, 0xf3ddb3) // legacy: no DS v4 token
+    static let amberDot = DS.Color.warn
+    static let amberMark = adaptive(0xd9b77e, 0xc9a061) // legacy: no DS v4 token
+    static let seriesSoft = DS.Color.chart3
+    static let series2 = adaptive(0x8fae88, 0x4e6a4c) // legacy: no DS v4 token
+    static let series3 = adaptive(0xc3d3b8, 0x3e523c) // legacy: no DS v4 token
+    static let neutralStrong = DS.Color.chart4
+    static let neutralSoft = DS.Color.track
+    static let outflow = adaptive(0xb09e80, 0x8c7b5f) // legacy: no DS v4 token
+    static let chartRule = DS.Color.chevron
+    static let chartGuide = adaptive(0x8c806b, 0x8c806b) // legacy: no DS v4 token
+    static let toggleOn = DS.Color.accent
+    static let iconTile = adaptive(0xede6d3, 0xede6d3) // legacy: no DS v4 token
+    static let iconInk = adaptive(0x3e3224, 0x3e3224) // legacy: no DS v4 token
     /// Native swipe-action fill for delete: white UIKit labels stay ≥ 4.8:1 in both appearances.
-    static let swipeDelete = adaptive(0x9e3f2c, 0xb85440)
+    static let swipeDelete = adaptive(0x9e3f2c, 0xb85440) // legacy: no DS v4 token
 
     fileprivate static func adaptive(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> Color {
         #if os(macOS)
@@ -404,7 +404,7 @@ extension View {
     static let windowSwayPhase = 9.0
     static let durationReceiptPrint = 0.32
     // Amount keypad: immediate color/edge feedback, no scale/opacity; release
-    // eases out over durationQuick. Prepared system haptics fire at touch-down:
+    // releases with the snappy spring. Prepared system haptics fire at touch-down:
     // light for digits/delete, medium for operators/clear, rigid 0.5 if rejected.
     static let durationInstant = 0.100
     static let durationQuick = 0.160
@@ -421,39 +421,40 @@ extension View {
     static let saveToastDelay = 0.380
     static let pointDelay = 0.180
     static let ringDelay = 0.420
-    static let settle = Animation.smooth(duration: 0.42)
-    static let snappy = Animation.snappy(duration: 0.3)
-    static let lively = Animation.spring(duration: 0.45, bounce: 0.25)
-    static let livelySpring = Spring(duration: 0.45, bounce: 0.25)
-    static let snappySpring = Spring(duration: 0.3, bounce: 0.15)
+    static let settle = DSMotion.smoothAnimation
+    static let snappy = DSMotion.snappyAnimation
+    static let lively = DSMotion.bouncyAnimation
+    static let livelySpring = DSMotion.bouncy
+    static let snappySpring = DSMotion.snappy
     static let durationTagHopHalf = 0.150
     static let durationSwayHalf = 0.225
     private static var session = MotionSessionState()
     static func hasAppeared(_ key: String) -> Bool { session.contains(key) }
     static func claim(_ key: String) -> Bool { session.claim(key) }
 
-    static func easeOut(duration: Double) -> Animation { .timingCurve(0.2, 0, 0, 1, duration: duration) }
-    static func easeIn(duration: Double) -> Animation { .timingCurve(0.4, 0, 1, 1, duration: duration) }
-    static func easeInOut(duration: Double) -> Animation { .timingCurve(0.4, 0, 0.2, 1, duration: duration) }
-    static let instant = easeInOut(duration: durationInstant)
-    static let quick = Animation.easeInOut(duration: durationQuick)
-    static let chartGrowth = easeOut(duration: durationDraw)
-    static let progressFill = easeOut(duration: durationProgress)
-    static let stagger = easeOut(duration: durationStagger)
-    static let thinkCycle = easeInOut(duration: durationThink)
+    // Compatibility names: duration is retained for callers, never converted to a curve.
+    static func easeOut(duration: Double) -> Animation { DSMotion.smoothAnimation }
+    static func easeIn(duration: Double) -> Animation { DSMotion.smoothAnimation }
+    static func easeInOut(duration: Double) -> Animation { DSMotion.standardAnimation }
+    static let instant = DSMotion.standardAnimation
+    static let quick = DSMotion.standardAnimation
+    static let chartGrowth = DSMotion.smoothAnimation
+    static let progressFill = DSMotion.smoothAnimation
+    static let stagger = DSMotion.smoothAnimation
+    static let thinkCycle = DSMotion.Loop.breathe.animation
 
-    static func number(reduceMotion: Bool) -> Animation { reduceMotion ? quick : snappy }
+    static func number(reduceMotion: Bool) -> Animation { reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.standardAnimation }
     static func layout(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : settle }
-    static func control(reduceMotion: Bool) -> Animation { reduceMotion ? quick : snappy }
-    static func entrance(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeOut(duration: durationStandard) }
-    static func dismiss(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeIn(duration: durationDismiss) }
-    static func wash(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeOut(duration: durationWash) }
-    static func ring(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : easeOut(duration: durationRing) }
+    static func control(reduceMotion: Bool) -> Animation { reduceMotion ? DSMotion.reduceMotionAnimation : snappy }
+    static func entrance(reduceMotion: Bool) -> Animation { reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation }
+    static func dismiss(reduceMotion: Bool) -> Animation { reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation }
+    static func wash(reduceMotion: Bool) -> Animation { reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.standardAnimation }
+    static func ring(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : DSMotion.bouncyAnimation }
     static func chart(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : chartGrowth }
     static func progress(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : progressFill }
     static func think(reduceMotion: Bool) -> Animation? { reduceMotion ? nil : thinkCycle }
-    static func toastIn(reduceMotion: Bool) -> Animation { reduceMotion ? quick : snappy }
-    static func toastOut(reduceMotion: Bool) -> Animation { reduceMotion ? quick : easeIn(duration: durationQuick) }
+    static func toastIn(reduceMotion: Bool) -> Animation { reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.bouncyAnimation }
+    static func toastOut(reduceMotion: Bool) -> Animation { reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation }
     static func rise(_ distance: CGFloat, reduceMotion: Bool) -> AnyTransition { reduceMotion ? .opacity : .offset(y: distance).combined(with: .opacity) }
     static func rowTransition(reduceMotion: Bool) -> AnyTransition { reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.96, anchor: .top)) }
     static func cardTransition(reduceMotion: Bool) -> AnyTransition {
@@ -992,7 +993,7 @@ private struct PaperCardSurface<S: InsettableShape>: ViewModifier {
     }
 
     final class ShadowView: UIView {
-        var shape = RoundedRectangle(cornerRadius: 0)
+        var shape = RoundedRectangle(cornerRadius: 0, style: .continuous)
         var scheme: ColorScheme = .light
         var scale: CGFloat = 1
         var increasedContrast = false
@@ -1415,7 +1416,7 @@ struct Card<Content: View>: View {
         content.environment(\.yubaiCardContent, true).padding(.horizontal, YubaiSpace.insetCard)
             .padding(.vertical, style == .list ? YubaiSpace.space4 : YubaiSpace.insetCard)
             .frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(YubaiColor.label)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: background)
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous), background: background)
             .accessibilityElement(children: .contain)
     }
 }
@@ -1645,14 +1646,14 @@ struct BrandMark: View {
     var background = YubaiColor.canvas
     var jumpTrigger = 0
     private var tag: some View {
-        RoundedRectangle(cornerRadius: size / 24)
+        RoundedRectangle(cornerRadius: size / 24, style: .continuous)
             .fill(.foreground)
-            .overlay { RoundedRectangle(cornerRadius: size / 24).stroke(background, lineWidth: size / 24) }
+            .overlay { RoundedRectangle(cornerRadius: size / 24, style: .continuous).stroke(background, lineWidth: size / 24) }
             .frame(width: size * 4.2 / 24, height: size * 3 / 24)
     }
     var body: some View {
         ZStack(alignment: .topLeading) {
-            let outline = RoundedRectangle(cornerRadius: size * 5.2 / 24)
+            let outline = RoundedRectangle(cornerRadius: size * 5.2 / 24, style: .continuous)
             outline.fill(.foreground)
                 .mask(alignment: .trailing) { Rectangle().frame(width: size * 6 / 24) }
                 .frame(width: size * 18 / 24, height: size * 18 / 24).offset(x: size * 3 / 24, y: size * 3 / 24)
@@ -1712,7 +1713,7 @@ struct AssistantMark: View {
             if thinking && !reduceMotion {
                 leaf.phaseAnimator([false, true]) { content, right in
                     content.rotationEffect(.degrees(right ? 6 : -6), anchor: UnitPoint(x: 3.2 / 24, y: 15.5 / 24))
-                } animation: { _ in YubaiMotion.easeInOut(duration: YubaiMotion.durationThink / 2) }
+                } animation: { _ in DSMotion.Loop.breathe.animation }
             } else { leaf.transaction { $0.animation = nil; $0.disablesAnimations = true } }
         }.frame(width: size, height: size)
             .transaction { if !thinking || reduceMotion { $0.animation = nil; $0.disablesAnimations = true } }
@@ -1753,7 +1754,7 @@ struct InlineNote: View {
                 Text(text).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).multilineTextAlignment(.center).frame(maxWidth: .infinity)
             case .explanation:
                 Text(text).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted).frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(YubaiSpace.insetCard).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                    .padding(YubaiSpace.insetCard).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous))
             case .attention:
                 VStack(alignment: .leading, spacing: YubaiSpace.space4) {
                     Text(text).yubaiFont(YubaiFont.row, weight: .medium).foregroundStyle(YubaiColor.amberStrong)
@@ -1765,7 +1766,7 @@ struct InlineNote: View {
                         }.padding(.top, YubaiSpace.gapAction)
                     }
                 }.frame(maxWidth: .infinity, alignment: .leading).padding(YubaiSpace.insetCard)
-                    .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row), background: YubaiColor.amberTint)
+                    .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous), background: YubaiColor.amberTint)
             case .reminder, .inline:
                 HStack(spacing: YubaiSpace.space8) {
                     Circle().fill(YubaiColor.amberDot).frame(width: 6, height: 6).accessibilityHidden(true)
@@ -1775,7 +1776,7 @@ struct InlineNote: View {
                         Button(action, action: onAction).yubaiFont(YubaiFont.callout).foregroundStyle(style == .reminder ? YubaiColor.amberInk : YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle())
                     }
                 }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: style == .reminder ? YubaiSize.rowSingle : YubaiSize.rowDouble)
-                    .background(style == .reminder ? YubaiColor.amberTint : Color.clear, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                    .background(style == .reminder ? YubaiColor.amberTint : Color.clear, in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous))
             }
         }.fixedSize(horizontal: false, vertical: true)
     }
@@ -2050,7 +2051,7 @@ struct Toast: View {
                     .hidden().accessibilityHidden(true).allowsHitTesting(false)
                     .frame(width: 0, height: 0).clipped()
             }
-            .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row)).yubaiShadow(YubaiShadow.card)
+            .frame(minHeight: YubaiSize.buttonHeight).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous)).yubaiShadow(YubaiShadow.card)
             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapGroup)
             .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
             .simultaneousGesture(DragGesture(minimumDistance: YubaiSpace.gapGroup).onEnded { value in
@@ -2650,7 +2651,7 @@ struct ResultBar: View {
             }
         }.padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
             .frame(maxWidth: .infinity, minHeight: YubaiSize.rowIcon, alignment: .leading)
-            .background(amber ? YubaiColor.amberTint : YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .background(amber ? YubaiColor.amberTint : YubaiColor.brandTint, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
             .accessibilityElement(children: .combine).accessibilityIdentifier(identifier)
     }
     private var stacked: some View {
@@ -2812,8 +2813,8 @@ struct AmountEntrySheet<Accessory: View>: View {
             }.foregroundStyle(on ? YubaiColor.raised : YubaiColor.label)
                 .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading)
-                .background(on ? YubaiColor.label : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .background(on ? YubaiColor.label : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(on ? .isSelected : [])
             .accessibilityIdentifier(preset.identifier)
     }
@@ -2863,12 +2864,12 @@ struct IconGridCell: View {
             }.foregroundStyle(mode == .selected ? YubaiColor.onBrand : YubaiColor.label)
                 .padding(.vertical, YubaiSpace.space8).padding(.horizontal, YubaiSpace.space4)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin + YubaiSpace.space8)
-                .background(mode == .selected ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .background(mode == .selected ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                 .overlay {
                     if mode == .outlined {
-                        RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: 1.5)
+                        RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(YubaiColor.brand, lineWidth: 1.5)
                     }
-                }.contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                }.contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
         }.buttonStyle(PressButtonStyle()).accessibilityLabel(title)
             .accessibilityValue(mode == .outlined ? hintValue : "")
             .accessibilityAddTraits(mode == .selected ? .isSelected : [])
@@ -2902,7 +2903,7 @@ struct Segmented<Value: Hashable>: View {
                 segment(choices[index].0, title: choices[index].1)
             }
         }.padding(YubaiSpace.space4)
-            .background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .background(background, in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous))
             .animation(YubaiMotion.control(reduceMotion: reduceMotion), value: selection)
     }
     private func segment(_ value: Value, title: String) -> some View {
@@ -2918,13 +2919,13 @@ struct Segmented<Value: Hashable>: View {
                 .padding(.horizontal, YubaiSpace.space8).padding(.vertical, YubaiSpace.space8)
                 .foregroundStyle(on ? YubaiColor.label : YubaiColor.labelSecondary)
                 .frame(maxWidth: .infinity, minHeight: minimum)
-                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
         }.buttonStyle(PressButtonStyle()).accessibilityAddTraits(on ? .isSelected : [])
             .accessibilityIdentifier(identifier?(value) ?? "")
     }
     @ViewBuilder private var selectedSurface: some View {
-        if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised) }
-        else { RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
+        if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).fill(YubaiColor.raised) }
+        else { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
     }
 }
 
@@ -3526,8 +3527,8 @@ struct SearchInput: View {
                 }
             }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.buttonHeight)
                 .contentShape(Rectangle()).onTapGesture { fieldFocus.wrappedValue = true }
-                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .overlay { if fieldFocus.wrappedValue { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                .overlay { if fieldFocus.wrappedValue { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
             if showsCancel {
                 Button("取消") { fieldFocus.wrappedValue = false; cancel() }.yubaiFont(YubaiFont.body).fixedSize().yubaiHitTarget()
                     .accessibilityIdentifier(cancelIdentifier)
@@ -3728,13 +3729,13 @@ private struct AmountKeyButtonStyle: ButtonStyle {
             : selected ? YubaiColor.brandTint : (function ? YubaiColor.keyFn : YubaiColor.key)
         return configuration.label
             .foregroundStyle(primary ? YubaiColor.onBrand : (selected || secondary) ? YubaiColor.brandInk : YubaiColor.label)
-            .background(fill, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+            .background(fill, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
             .overlay {
-                if selected { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.brand, lineWidth: 1.5) }
+                if selected { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(YubaiColor.brand, lineWidth: 1.5) }
             }
             .shadow(color: primary || selected || pressed ? .clear : YubaiColor.shadowKey, radius: 0, x: 0, y: 1)
-            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
-            .animation(pressed ? nil : .easeOut(duration: YubaiMotion.durationQuick), value: pressed)
+            .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+            .animation(pressed ? nil : DSMotion.snappyAnimation, value: pressed)
             .onChange(of: pressed) { _, value in pressing(value) }
     }
 }
@@ -4013,7 +4014,7 @@ private struct EntrySaveReceipt: View {
                                     .frame(width: proxy.size.width * ContinuousEntrySession.receiptFraction(deadline: deadline, at: context.date))
                             }
                     }
-                }.clipShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                }.clipShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
         }.accessibilityElement(children: .ignore).accessibilityLabel("已记下")
             .accessibilityIdentifier("entrySavedReceipt")
     }
@@ -4300,7 +4301,7 @@ struct MonthDayChoices: View {
                     Text("\(value)").yubaiFont(YubaiFont.callout).lineLimit(1)
                         .frame(minWidth: minimum, maxWidth: .infinity, minHeight: minimum)
                         .foregroundStyle(selection == value ? YubaiColor.onBrand : YubaiColor.label)
-                        .background(selection == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                        .background(selection == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
                     .accessibilityAddTraits(selection == value ? .isSelected : []).accessibilityIdentifier(identifier + "\(value)")
             }
@@ -4359,8 +4360,8 @@ struct NativeCardRows<Item: Identifiable, Row: View>: View where Item.ID: Hashab
                 .listRowBackground(YubaiColor.paperSheet).listRowSeparatorTint(YubaiColor.separator)
         }.listStyle(.plain).scrollContentBackground(.hidden).scrollDisabled(true)
             .frame(height: items.reduce(CGFloat(0)) { $0 + max(44, heights[AnyHashable($1.id)] ?? estimatedHeight) })
-            .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card))
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .clipShape(RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous))
             .deferredPreferenceChange(NativeRowsHeight.self) { value in if value != heights { heights = value } }
     }
 }
@@ -4412,7 +4413,7 @@ struct BrandBambooShadow: View {
     var opacity = 0.11
     var body: some View {
         Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
-            .foregroundStyle(YubaiColor.bambooShadow).blur(radius: 5).opacity(opacity)
+            .foregroundStyle(YubaiColor.bambooShadow).blur(radius: 5).opacity(opacity) // ds-allow-blur: decorative bamboo silhouette penumbra; material would blur the backdrop instead of the silhouette
             .allowsHitTesting(false).accessibilityHidden(true)
     }
 }
@@ -4426,19 +4427,26 @@ struct FirstWindowWall: View {
             ZStack {
                 LinearGradient(colors: [YubaiColor.card, YubaiColor.keypadTray], startPoint: .topLeading, endPoint: .bottomTrailing)
                 window(size)
-                TimelineView(.animation(minimumInterval: 1.0 / 20, paused: reduceMotion)) { context in
-                    let angle = reduceMotion ? 0 : sin(context.date.timeIntervalSinceReferenceDate / YubaiMotion.windowSwayPhase) * 2
-                    BrandBambooShadow(opacity: scheme == .dark ? 0.14 : 0.20)
-                        .frame(width: size.width * 1.02, height: size.height * 0.54)
-                        .rotationEffect(.degrees(8 + angle), anchor: .bottomLeading)
-                        .position(x: size.width * 0.27, y: size.height * 0.49)
-                    BrandBambooShadow(opacity: 0.13)
-                        .frame(width: size.width * 0.60, height: size.height * 0.35)
-                        .scaleEffect(x: -1, y: 1).rotationEffect(.degrees(-18 - angle))
-                        .position(x: size.width * 0.70, y: size.height * 0.27)
+                if reduceMotion { bamboo(size, angle: 0) }
+                else {
+                    PhaseAnimator(DSMotion.Loop.shimmer.phases) { phase in
+                        bamboo(size, angle: phase * 2)
+                    } animation: { _ in DSMotion.Loop.shimmer.animation.delay(YubaiMotion.windowSwayPhase) }
                 }
             }.frame(width: size.width, height: size.height).clipped()
         }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private func bamboo(_ size: CGSize, angle: Double) -> some View {
+        ZStack {
+            BrandBambooShadow(opacity: scheme == .dark ? 0.14 : 0.20)
+                .frame(width: size.width * 1.02, height: size.height * 0.54)
+                .rotationEffect(.degrees(8 + angle), anchor: .bottomLeading)
+                .position(x: size.width * 0.27, y: size.height * 0.49)
+            BrandBambooShadow(opacity: 0.13)
+                .frame(width: size.width * 0.60, height: size.height * 0.35)
+                .scaleEffect(x: -1, y: 1).rotationEffect(.degrees(-18 - angle))
+                .position(x: size.width * 0.70, y: size.height * 0.27)
+        }
     }
     private func window(_ size: CGSize) -> some View {
         let pane = Path { p in
@@ -4457,7 +4465,7 @@ struct FirstWindowWall: View {
                     p.move(to: CGPoint(x: size.width * 0.35, y: size.height * 0.16))
                     p.addLine(to: CGPoint(x: size.width * 0.35, y: size.height * 0.79))
                 }.stroke(YubaiColor.keypadTray.opacity(0.9), lineWidth: 9).clipShape(pane)
-            }.blur(radius: 1.4)
+            }.blur(radius: 1.4) // ds-allow-blur: decorative sunlight edge feathering; a material would replace transmitted light with a frosted pane
             // Sunlight has no ruled edge: feather the pane's right, top and
             // bottom borders (x 0.77, y 0.15–0.24, y 0.72–0.81) to zero alpha
             // inside the polygon so no straight cut crosses the page.
@@ -4615,7 +4623,7 @@ struct WaterBar: View {
                 Capsule().fill(YubaiColor.card).frame(height: height)
                 Capsule().fill(fast ? YubaiColor.amberDot : YubaiColor.brand)
                     .frame(width: geometry.size.width * min(max(0, fill), 1), height: height)
-                RoundedRectangle(cornerRadius: YubaiSpace.space2).fill(YubaiColor.label)
+                RoundedRectangle(cornerRadius: YubaiSpace.space2, style: .continuous).fill(YubaiColor.label)
                     .frame(width: textSize.isAccessibilitySize ? YubaiSize.waterTickWidthAccessible : YubaiSize.waterTickWidth, height: tickHeight)
                     .position(x: x, y: height / 2)
                 Text("今天").yubaiFont(YubaiFont.waterToday).foregroundStyle(YubaiColor.labelSecondary)
@@ -4638,7 +4646,7 @@ struct SavedPill: View {
         SavedPillLayout { title; amount; chevron }
             .padding(.horizontal, YubaiSpace.space10).padding(.vertical, YubaiSpace.space6)
             .frame(minHeight: YubaiSize.savedPillHeight)
-            .controlSurface(in: RoundedRectangle(cornerRadius: YubaiSize.savedPillHeight / 2))
+            .controlSurface(in: RoundedRectangle(cornerRadius: YubaiSize.savedPillHeight / 2, style: .continuous))
     }
     private var title: some View {
         HStack(spacing: YubaiSpace.space6) {
