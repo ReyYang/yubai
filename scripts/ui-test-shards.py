@@ -16,6 +16,8 @@ LINUX_ONLY_CLASSES = (
     "Round47RevealProgressTests",
     "Round47ViewportGeometryTests",
 )
+# Manual acceptance is never part of the default gate or diagnostic matrix.
+MANUAL_CLASSES = {"DesignSystemMotionTests": "design-system-motion"}
 DIAGNOSTIC_MANIFEST = "Tests/YubaiUITests/diagnostic-tests.txt"
 
 
@@ -57,6 +59,7 @@ def diagnostic_tests(root: Path, classes: dict[str, list[str]]) -> set[str]:
 
 def matrix(root: Path, size: int = 8, only: str = "", parts: str = "", include_diagnostics: bool = True) -> dict:
     validate_linux_coverage(root)
+    requested = set(filter(None, re.split(r"[\s,]+", parts)))
     classes: dict[str, list[str]] = {}
     for path in sorted((root / "Tests/YubaiUITests").glob("*.swift")):
         source = path.read_text()
@@ -83,6 +86,11 @@ def matrix(root: Path, size: int = 8, only: str = "", parts: str = "", include_d
     for name, methods in sorted(classes.items()):
         if name in LINUX_ONLY_CLASSES:
             continue
+        if name in MANUAL_CLASSES:
+            part = MANUAL_CLASSES[name]
+            if part in requested:
+                shards.append({"part": part, "tests": [f"YubaiUITests/{name}/{method}" for method in methods], "blocking": False})
+            continue
         for prefix, blocking in (("ui", True), ("diag", False)):
             tier = [method for method in methods if (f"{name}/{method}" not in diagnostics) == blocking]
             for start in range(0, len(tier), size):
@@ -90,7 +98,8 @@ def matrix(root: Path, size: int = 8, only: str = "", parts: str = "", include_d
                                "tests": [f"YubaiUITests/{name}/{method}" for method in tier[start:start + size]],
                                "blocking": blocking})
     if only:
-        shards = [row for row in shards if row["part"] == "unit" or "Round47" in row["part"]]
+        shards = [row for row in shards if row["part"] == "unit" or "Round47" in row["part"]
+                  or row["part"] in requested & set(MANUAL_CLASSES.values())]
     requested = set(filter(None, re.split(r"[\s,]+", parts)))
     if requested:
         shards = [row for row in shards if row["part"] in requested
@@ -106,7 +115,7 @@ def validate_parts(root: Path, parts: str) -> None:
     if not requested:
         return
     rows = matrix(root)["include"]
-    known = {row["part"] for row in rows}
+    known = {row["part"] for row in rows} | set(MANUAL_CLASSES.values())
     known.update(row["part"].rsplit("-", 1)[0] for row in rows if row["part"].startswith(("ui-", "diag-")))
     spec = importlib.util.spec_from_file_location("gallery_shards", Path(__file__).with_name("gallery-shards.py"))
     gallery = importlib.util.module_from_spec(spec)
@@ -115,7 +124,7 @@ def validate_parts(root: Path, parts: str) -> None:
     unknown = requested - known
     if unknown:
         raise ValueError("Unknown shard part(s): " + ", ".join(sorted(unknown))
-                         + ". Use exact UI/diagnostic/gallery parts or ui-<XCTestClass>/diag-<XCTestClass>.")
+                         + ". Use exact UI/diagnostic/gallery/manual parts or ui-<XCTestClass>/diag-<XCTestClass>.")
 
 
 if __name__ == "__main__":

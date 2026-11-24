@@ -19,7 +19,7 @@ struct BillBrandIcon: View {
                 Image(systemName: symbol).symbolRenderingMode(.monochrome)
                     .yubaiFont(YubaiFont.row).foregroundStyle(scheme == .dark ? YubaiColor.label : YubaiColor.iconInk)
             }
-        }.frame(width: size, height: size).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+        }.frame(width: size, height: size).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
             .accessibilityHidden(true)
     }
 }
@@ -133,8 +133,8 @@ struct FixedFlowsView: View {
                 dayMarker(day)
             }.frame(maxWidth: .infinity)
                 .frame(height: cellHeight)
-                .background(selected ? YubaiColor.raised : day.payday ? YubaiColor.brandTint : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(today || selected ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline) }
+                .background(selected ? YubaiColor.raised : day.payday ? YubaiColor.brandTint : .clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(today || selected ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline) }
         }.buttonStyle(PressButtonStyle()).accessibilityElement(children: .ignore)
             .accessibilityLabel(Dates.text(day.date) + (today ? "，今天" : "") + (day.payday ? "，工资" : "") + (day.yearly ? "，年付" : "") + "，\(day.bills.count) 笔账单")
             .accessibilityAddTraits(selected ? .isSelected : [])
@@ -336,9 +336,9 @@ struct YearlyBillsStrip: View {
                         let hasBills = month.yearlyMonths.contains(value)
                         Button { selectMonth(value) } label: {
                             VStack(spacing: YubaiSpace.space4) {
-                                RoundedRectangle(cornerRadius: YubaiRadius.messageTail)
+                                RoundedRectangle(cornerRadius: YubaiRadius.messageTail, style: .continuous)
                                     .fill(hasBills ? YubaiColor.label : YubaiColor.neutralSoft).frame(height: YubaiSize.tagHeight)
-                                    .overlay { RoundedRectangle(cornerRadius: YubaiRadius.messageTail).strokeBorder(selected ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline).padding(-YubaiSpace.space4) }
+                                    .overlay { RoundedRectangle(cornerRadius: YubaiRadius.messageTail, style: .continuous).strokeBorder(selected ? YubaiColor.label : .clear, lineWidth: YubaiSize.outline).padding(-YubaiSpace.space4) }
                                 Text("\(value)").yubaiFont(YubaiFont.meta)
                             }.frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                         }.buttonStyle(PressButtonStyle())

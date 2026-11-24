@@ -195,7 +195,7 @@ struct ModelUnavailableNote: View {
             .foregroundStyle(YubaiColor.amberInk)
             .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row), background: YubaiColor.amberTint)
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous), background: YubaiColor.amberTint)
             .accessibilityHint("使用下方模型菜单选择其他模型")
             .accessibilityIdentifier("modelUnavailable")
     }
@@ -384,7 +384,7 @@ private struct CloudSendLogDetailView: View {
                         }
                     }.padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+                        .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous))
                 }
             }.contentShape(Rectangle())
         }.buttonStyle(.plain).accessibilityIdentifier("cloudLogStep_" + String(step.id))
@@ -474,7 +474,7 @@ private struct CloudLogRawCard<Content: View>: View {
     var body: some View {
         content.padding(.horizontal, YubaiSpace.insetCard).padding(.vertical, YubaiSpace.space8)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous))
     }
 }
 

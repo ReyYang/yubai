@@ -1,0 +1,155 @@
+# Manual only. This repository is public, so standard runners are free.
+# If it becomes private, macOS minutes are billed 10×: ask the owner first.
+name: Design system acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      record:
+        description: Record all snapshot references
+        type: boolean
+        default: false
+      video:
+        description: Record motion acceptance video
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: design-system-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  acceptance:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: 选择 Xcode 26
+        run: |
+          xcode=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$xcode"
+          xcodebuild -version
+      - name: 检查设计系统
+        run: python3 scripts/ui_consistency.py
+      - name: 选择并启动 iPhone 模拟器
+        run: |
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          runtimes = sorted((r for r in devices if "iOS" in r), reverse=True)
+          for r in runtimes:
+              for d in devices[r]:
+                  if d["name"].startswith("iPhone") and "Pro Max" in d["name"]:
+                      print(d["udid"]); sys.exit()
+          for r in runtimes:
+              for d in devices[r]:
+                  if d["name"].startswith("iPhone"):
+                      print(d["udid"]); sys.exit()
+          sys.exit("No iPhone simulator available")
+          ')
+          xcrun simctl list devices | grep "$udid"
+          echo "SIM_UDID=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid" || xcrun simctl list devices booted | grep "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
+      - name: 编译验收产物
+        id: build
+        run: |
+          set -o pipefail
+          mkdir -p build
+          xcodebuild build-for-testing -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
+            -destination "id=$SIM_UDID" -derivedDataPath build/DSDerivedData \
+            -parallel-testing-enabled NO \
+            CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            2>&1 | tee build/ds-build.log | tail -80
+      - name: 记录或验证快照
+        env:
+          DS_RECORD_INPUT: ${{ inputs.record && '1' || '0' }}
+          TEST_RUNNER_DS_SNAPSHOT_RECORD: ${{ inputs.record && '1' || '0' }}
+          TEST_RUNNER_DS_SNAPSHOT_EXPORT_DIR: ${{ runner.temp }}/ds-png
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/ds-png"
+          set +e
+          xcodebuild test-without-building -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
+            -destination "id=$SIM_UDID" -derivedDataPath build/DSDerivedData \
+            -parallel-testing-enabled NO -only-testing:YubaiDesignSystemTests \
+            -resultBundlePath build/ds-snapshots.xcresult \
+            CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            2>&1 | tee build/ds-snapshots.log | tail -80
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" = 0 ]; then exit 0; fi
+          if [ "$DS_RECORD_INPUT" != 1 ]; then exit "$status"; fi
+          xcrun xcresulttool get test-results summary --path build/ds-snapshots.xcresult --format json > build/ds-snapshot-summary.json
+          python3 scripts/check-ds-snapshot-result.py build/ds-snapshot-summary.json --png-dir "$RUNNER_TEMP/ds-png"
+      - name: 动效视频
+        if: ${{ !cancelled() && inputs.video && steps.build.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          xcrun simctl io "$SIM_UDID" recordVideo --codec=h264 --force "$RUNNER_TEMP/ds-motion.mp4" > "$RUNNER_TEMP/ds-video.log" 2>&1 &
+          recorder=$!
+          finish_video() {
+            kill -INT "$recorder" 2>/dev/null || true
+            wait "$recorder" || true
+          }
+          trap finish_video EXIT
+          sleep 2
+          kill -0 "$recorder"
+          # simctl must acknowledge recording before XCTest launches the gallery.
+          for attempt in {1..10}; do
+            if grep -q 'Recording started' "$RUNNER_TEMP/ds-video.log"; then break; fi
+            sleep 1
+          done
+          grep -q 'Recording started' "$RUNNER_TEMP/ds-video.log"
+          xcodebuild test-without-building -project Yubai.xcodeproj -scheme Yubai -configuration Debug \
+            -destination "id=$SIM_UDID" -derivedDataPath build/DSDerivedData \
+            -parallel-testing-enabled NO -only-testing:YubaiUITests/DesignSystemMotionTests \
+            -resultBundlePath build/ds-motion.xcresult \
+            CODE_SIGNING_ALLOWED=NO ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            2>&1 | tee build/ds-motion.log | tail -80
+          finish_video
+          trap - EXIT
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds-snapshots-png
+          path: |
+            ${{ runner.temp }}/ds-png
+            Tests/YubaiDesignSystemTests/__Snapshots__
+          if-no-files-found: warn
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds-motion-mp4
+          path: ${{ runner.temp }}/ds-motion.mp4
+          if-no-files-found: ignore
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ds-xcresult
+          path: |
+            build/ds-snapshots.xcresult
+            build/ds-motion.xcresult
+            build/ds-*.log
+            ${{ runner.temp }}/ds-video.log
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: 验收摘要
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          temp = Path(os.environ['RUNNER_TEMP'])
+          count = len(list((temp / 'ds-png').glob('*.png')))
+          video = temp / 'ds-motion.mp4'
+          size = video.stat().st_size if video.exists() else 0
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'PNG: {count}/14\n\nMP4: {size:,} bytes\n')
+          PY

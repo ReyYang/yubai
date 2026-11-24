@@ -46,7 +46,7 @@ struct ProfileChatEntry: View {
                 Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption)
             }.foregroundStyle(prominent ? YubaiColor.brandTintStrong : YubaiColor.brandInk)
                 .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: prominent ? YubaiSize.rowDouble : YubaiSize.rowSingle)
-                .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card), background: prominent ? YubaiColor.brandTint : nil)
+                .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous), background: prominent ? YubaiColor.brandTint : nil)
         }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.5)
             .accessibilityIdentifier("profileChatEntry")
     }

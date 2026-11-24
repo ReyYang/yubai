@@ -117,7 +117,7 @@ private struct CaptureThumbnail: View {
     let kind: Kind
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: YubaiRadius.control).fill(YubaiColor.canvas)
+            RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).fill(YubaiColor.canvas)
             switch kind {
             case .siri:
                 AssistantMark(size: YubaiSize.barMax)

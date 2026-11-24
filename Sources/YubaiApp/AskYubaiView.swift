@@ -326,7 +326,7 @@ struct AskYubaiView: View {
                 Text(store.preferences.hideAmounts ? "账单表格" : (statement.preamble.isEmpty ? "帮我导入这些" : statement.preamble)).yubaiFont(YubaiFont.body)
                 Text(store.preferences.hideAmounts ? "金额已隐藏" : statement.text)
                     .yubaiFont(YubaiFont.meta).lineLimit(4).frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(YubaiSpace.space8).background(YubaiColor.onBrand.opacity(0.15), in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                    .padding(YubaiSpace.space8).background(YubaiColor.onBrand.opacity(0.15), in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                 Text("共 \(statement.rowCount) 行").yubaiFont(YubaiFont.meta)
             }.accessibilityIdentifier("pastedStatementBubble")
         } else { Text(store.preferences.hideAmounts ? "金额已隐藏" : message.text).yubaiFont(YubaiFont.body) }

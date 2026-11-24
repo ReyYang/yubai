@@ -25,7 +25,7 @@ struct QuickRepeatMenu: View {
                     .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageQuickRepeats")
         }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : YubaiSize.quickMenuWidth)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card))
+            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous))
             .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
             .task(id: store.ledgerRevision) {
                 let ledger = store.current, now = Dates.now

@@ -89,7 +89,7 @@ private struct FormulaAmountEditor: View {
             Text(sharing ? "\(percent)%" : keypad.resultText).yubaiFont(YubaiFont.entryAmount)
                 .fixedSize(horizontal: false, vertical: true).layoutPriority(1)
                 .padding(.horizontal, YubaiSpace.space8)
-                .background(selected ? YubaiColor.brandTint : Color.clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .background(selected ? YubaiColor.brandTint : Color.clear, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
             EntryAmountCursor()
             Spacer(minLength: YubaiSpace.none)
         }.frame(minHeight: YubaiSize.rowDouble)

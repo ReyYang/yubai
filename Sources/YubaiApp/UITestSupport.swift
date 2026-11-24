@@ -414,6 +414,10 @@ struct UITestWindowMetrics: UIViewRepresentable {
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
+    /// DEBUG-only gallery bypasses application navigation and onboarding entirely.
+    static let designSystemGallery = ProcessInfo.processInfo.arguments.contains("-YubaiDesignSystemGallery") ||
+        ProcessInfo.processInfo.environment["YUBAI_DS_GALLERY"] == "1"
+
     // Launch configuration is immutable. Copying Foundation's full environment
     // at every SwiftUI environment read was measured in main-thread stalls.
     static let launchEnvironment = ProcessInfo.processInfo.environment

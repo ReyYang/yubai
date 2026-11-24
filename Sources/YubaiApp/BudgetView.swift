@@ -179,7 +179,7 @@ struct BudgetView: View {
             } label: {
                 AmountLabel(cents: part.amount ?? 0, hide: hide, role: .summary)
                     .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin)
-                    .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).contentShape(Rectangle())
+                    .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous)).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityLabel(part.name + "的预算")
                 .accessibilityIdentifier("budgetAmount_" + part.name)
         } else {
@@ -192,7 +192,7 @@ struct BudgetView: View {
             } label: {
                 Text(part.share.map(partShare) ?? "—").yubaiFont(YubaiFont.amountSummary)
                     .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.tapMin)
-                    .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control)).contentShape(Rectangle())
+                    .background(YubaiColor.paperInset, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous)).contentShape(Rectangle())
             }.accessibilityLabel(part.name + "的成数，" + (part.share.map(partShare) ?? "未分配"))
         }
     }

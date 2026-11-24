@@ -86,7 +86,7 @@ struct WeeklyReviewView: View {
                         ForEach(weeks) { week in
                             VStack(spacing: YubaiSpace.space4) {
                                 Text(amount2(week.amount, hide: hide)).yubaiFont(YubaiFont.chartValue).lineLimit(1).minimumScaleFactor(0.8)
-                                RoundedRectangle(cornerRadius: YubaiRadius.bar)
+                                RoundedRectangle(cornerRadius: YubaiRadius.bar, style: .continuous)
                                     .fill(weekBarColor(week.role))
                                     .frame(height: max(YubaiSpace.space2, CGFloat(max(0, week.amount)) / CGFloat(maximum) * YubaiSize.rowDouble))
                                 Text(week.label).yubaiFont(YubaiFont.caption)

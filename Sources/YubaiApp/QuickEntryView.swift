@@ -282,9 +282,9 @@ struct QuickEntryView: View {
                 Image(systemName: "chevron.down")
                     .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
             }.padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin)
-                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) }
-                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) }
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
         }.buttonStyle(PressButtonStyle())
             .padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.space8)
             .accessibilityLabel("收起键盘").accessibilityValue(focusedSummaryText)

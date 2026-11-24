@@ -317,8 +317,8 @@ struct EntryKeyboardTray<Controls: View, Keys: View>: View {
         VStack(spacing: YubaiSpace.none) {
             CardTextFieldRow(title: purposeTitle, text: $purpose, identifier: purposeIdentifier, focus: focus)
                 .padding(.horizontal, YubaiSpace.gapGroup)
-                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control).strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) }
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                .overlay { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(YubaiColor.separator, lineWidth: YubaiSize.separator) }
                 .padding(.horizontal, YubaiSpace.space8).padding(.top, YubaiSpace.space12)
             controls().padding(.horizontal, YubaiSpace.space8).padding(.top, compact ? YubaiSpace.space4 : YubaiSpace.space8)
             if !focus.wrappedValue { keys() }
@@ -488,8 +488,8 @@ struct EntryTransferCards: View {
                 Text(account?.name ?? "选择账户").yubaiFont(YubaiFont.rowTitle).foregroundStyle(YubaiColor.label).lineLimit(1)
                 Text(balance).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true)
             }.padding(YubaiSpace.gapGroup).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading)
-                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
         }.buttonStyle(PressButtonStyle()).accessibilityLabel(title).accessibilityValue((account?.name ?? "") + " " + balance)
             .accessibilityIdentifier(identifier)
     }
@@ -515,8 +515,8 @@ struct EntryRecallList: View {
                             AmountLabel(cents: item.entry.amount, hide: store.preferences.hideAmounts, role: .summary).fixedSize(horizontal: false, vertical: true)
                         }
                     }.padding(.horizontal, YubaiSpace.gapGroup).frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble)
-                        .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control))
-                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control))
+                        .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("recentPurpose_" + item.purpose)
             }
         }.accessibilityElement(children: .contain).accessibilityLabel("记过的用途")

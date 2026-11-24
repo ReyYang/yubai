@@ -599,7 +599,7 @@ struct LedgerEntryRow: View {
         LedgerCategoryIcon(category: entry.categoryName, pending: entry.uncategorized)
             .frame(width: YubaiSize.rowIcon, height: YubaiSize.rowIcon)
             .background(entry.inflow ? YubaiColor.brandTint : YubaiColor.paperInset,
-                        in: RoundedRectangle(cornerRadius: YubaiRadius.control)).accessibilityHidden(true)
+                        in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous)).accessibilityHidden(true)
     }
     private var titleBlock: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space2) {
