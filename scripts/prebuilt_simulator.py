@@ -90,8 +90,9 @@ def validate_prebuilt(directory: str, record: bool = False) -> Path:
             resolve(target["UITargetAppPath"], host)
         for dependency in target.get("DependentProductPaths", []):
             resolve(dependency, host)
-    if bundles != {"YubaiCoreTests", "YubaiUITests"}:
-        raise ValueError(f"Expected Core and UI test bundles, found {sorted(bundles)}")
+    expected = {"YubaiCoreTests", "YubaiDesignSystemTests", "YubaiUITests"}
+    if bundles != expected:
+        raise ValueError(f"Expected test bundles {sorted(expected)}, found {sorted(bundles)}")
     if not (products / "Debug-iphonesimulator/Yubai.app").is_dir():
         raise ValueError("Missing Debug simulator app")
     if not any(path.is_file() for path in products.glob("Debug-iphonesimulator/Yubai*.dSYM/Contents/Resources/DWARF/*")):

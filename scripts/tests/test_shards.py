@@ -142,6 +142,20 @@ class ShardTests(unittest.TestCase):
         self.assertEqual(UI.matrix(ROOT, only="r47")["include"], expected)
         self.assertTrue(any(not row["blocking"] for row in expected))
 
+    def test_design_system_snapshots_stay_out_of_ios_shards(self):
+        targets = {test.split("/", 1)[0] for row in self.ui_rows for test in row["tests"]}
+        self.assertEqual(targets, {"YubaiCoreTests", "YubaiUITests"})
+        for selector in ("YubaiDesignSystemTests", "YubaiDesignSystemTests/DesignSystemSnapshotTests",
+                         "YubaiDesignSystemTests/DesignSystemSnapshotTests/testGallerySections"):
+            for selectors in ([selector], ["YubaiCoreTests", selector]):
+                with self.subTest(selectors=selectors), tempfile.TemporaryDirectory() as directory:
+                    result = subprocess.run([sys.executable, str(ROOT / "scripts/run-simulator-tests.py")],
+                                            cwd=directory, capture_output=True, text=True,
+                                            env=dict(os.environ, YUBAI_TEST_SELECTORS=json.dumps(selectors)))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("A tests shard needs explicit non-gallery selectors", result.stderr)
+                    self.assertFalse((Path(directory) / "build").exists())
+
     def test_design_system_motion_is_explicit_only(self):
         self.assertFalse(any(row["part"] == "design-system-motion" for row in self.ui_rows))
         UI.validate_parts(ROOT, "design-system-motion")
