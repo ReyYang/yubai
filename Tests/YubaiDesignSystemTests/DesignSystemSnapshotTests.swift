@@ -31,7 +31,7 @@ final class DesignSystemSnapshotTests: XCTestCase {
                     let host = UIHostingController(rootView: root)
                     host.safeAreaRegions = []
                     host.view.backgroundColor = .clear
-                    let fitting = host.sizeThatFits(in: CGSize(width: 393, height: .greatestFiniteMagnitude))
+                    let fitting = host.sizeThatFits(in: CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude))
                     let size = CGSize(width: 393, height: ceil(max(1, fitting.height)))
                     let traits = UITraitCollection(traitsFrom: [
                         UITraitCollection(displayScale: 3),
