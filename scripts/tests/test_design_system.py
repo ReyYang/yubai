@@ -167,7 +167,7 @@ class RecordingResultTests(unittest.TestCase):
 
 class PNGValidationTests(unittest.TestCase):
     @staticmethod
-    def png(colour_type, scanlines, *, depth=8, interlace=0):
+    def png(colour_type, scanlines, *, depth=8, interlace=0, transparency=None):
         """Build a 2×2 PNG from already-filtered bytes, with two IDAT chunks."""
         def chunk(kind, data):
             return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
@@ -175,14 +175,19 @@ class PNGValidationTests(unittest.TestCase):
         compressed = zlib.compress(scanlines)
         middle = len(compressed) // 2
         return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header)
+                + (chunk(b'tRNS', transparency) if transparency is not None else b'')
                 + chunk(b'IDAT', compressed[:middle]) + chunk(b'IDAT', compressed[middle:])
                 + chunk(b'IEND', b''))
 
     def test_single_flat_colour_is_rejected_for_all_supported_types_and_filters(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / 'flat.png'
-            for colour_type, pixel in ((0, b'\x50'), (2, b'\x50\x64\x78'),
-                                       (4, b'\x50\xff'), (6, b'\x50\x64\x78\xff')):
+            for depth, colour_type, pixel in (
+                (8, 0, b'\x50'), (8, 2, b'\x50\x64\x78'),
+                (8, 4, b'\x50\xff'), (8, 6, b'\x50\x64\x78\xff'),
+                (16, 0, b'\x50\x13'), (16, 2, b'\x50\x13\x64\x27\x78\x39'),
+                (16, 4, b'\x50\x13\xff\xff'), (16, 6, b'\x50\x13\x64\x27\x78\x39\xff\xff'),
+            ):
                 zero = bytes(len(pixel))
                 half = bytes(value - value // 2 for value in pixel)
                 # Known encodings of two identical rows of two identical pixels.
@@ -194,8 +199,8 @@ class PNGValidationTests(unittest.TestCase):
                     b'\x04' + pixel + zero + b'\x04' + zero * 2,         # Paeth
                 )
                 for filter_type, encoded in enumerate(scanlines):
-                    with self.subTest(colour_type=colour_type, filter_type=filter_type):
-                        path.write_bytes(self.png(colour_type, encoded))
+                    with self.subTest(depth=depth, colour_type=colour_type, filter_type=filter_type):
+                        path.write_bytes(self.png(colour_type, encoded, depth=depth))
                         self.assertIn('flat colour', RECORD.png_blank_reason(path))
 
     def test_transparent_images_with_varying_hidden_colours_are_rejected(self):
@@ -220,14 +225,56 @@ class PNGValidationTests(unittest.TestCase):
                     path.write_bytes(self.png(colour_type, b'\x00' + zero * 2 + b'\x00' + zero + pixel))
                     self.assertIsNone(RECORD.png_blank_reason(path))
 
+    def test_16_bit_rgba_with_visible_variation_is_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'rgba16.png'
+            for alpha in (1, 0x100, 0xffff):
+                with self.subTest(alpha=alpha):
+                    pixel = struct.pack('>4H', 0x1234, 0x5678, 0x9abc, alpha)
+                    changed = struct.pack('>4H', 0x1234, 0x5678, 0x9abd, alpha)
+                    scanlines = b'\x00' + pixel * 2 + b'\x00' + pixel + changed
+                    path.write_bytes(self.png(6, scanlines, depth=16))
+                    self.assertIsNone(RECORD.png_blank_reason(path))
+
+    def test_16_bit_fully_transparent_images_with_varying_hidden_colours_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'transparent16.png'
+            for colour_type, rows in (
+                (4, ((0x1234, 0, 0x5678, 0), (0x9abc, 0, 0xdef0, 0))),
+                (6, ((0x1234, 0x5678, 0x9abc, 0, 0xdef0, 0x2468, 0x1357, 0),
+                     (0x9876, 0x5432, 0x10fe, 0, 0xdcba, 0x8642, 0x7531, 0))),
+            ):
+                with self.subTest(colour_type=colour_type):
+                    scanlines = b''.join(b'\x00' + struct.pack('>' + 'H' * len(row), *row) for row in rows)
+                    path.write_bytes(self.png(colour_type, scanlines, depth=16))
+                    self.assertIn('fully transparent', RECORD.png_blank_reason(path))
+
+    def test_transparency_keys_use_the_full_sample_depth(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'keyed.png'
+            for depth in (8, 16):
+                for colour_type, samples in ((0, (0x50,)), (2, (0x50, 0x64, 0x78))):
+                    with self.subTest(depth=depth, colour_type=colour_type):
+                        samples = tuple(value << (depth - 8) for value in samples)
+                        transparency = struct.pack('>' + 'H' * len(samples), *samples)
+                        pixel = bytes(samples) if depth == 8 else transparency
+                        blank = (b'\x00' + pixel * 2) * 2
+                        path.write_bytes(self.png(colour_type, blank, depth=depth, transparency=transparency))
+                        self.assertIn('fully transparent', RECORD.png_blank_reason(path))
+                        visible = blank[:-1] + bytes([blank[-1] + 1])
+                        path.write_bytes(self.png(colour_type, visible, depth=depth, transparency=transparency))
+                        self.assertIsNone(RECORD.png_blank_reason(path))
+
     def test_malformed_and_unsupported_images_are_rejected(self):
         valid = self.png(0, b'\x00\x10\x20\x00\x30\x40')
         images = (
             b'not a PNG', valid[:20], valid[:-12], valid[:-1] + bytes([valid[-1] ^ 1]),
+            self.png(0, b'\x00\x10\x20\x00\x30\x40', depth=4),
             self.png(0, b'\x00\x10\x20\x00\x30\x40', depth=16),
             self.png(0, b'\x00\x10\x20\x00\x30\x40', interlace=1),
             self.png(3, b'\x00\x10\x20\x00\x30\x40'),
             self.png(0, b'\x05\x10\x20\x00\x30\x40'),
+            self.png(0, b'\x00\x10\x20\x05\x30\x40'),
             self.png(0, b'\x00\x10\x20'),
         )
         with tempfile.TemporaryDirectory() as directory:

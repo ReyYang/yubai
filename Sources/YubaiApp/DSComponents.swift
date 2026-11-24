@@ -15,8 +15,8 @@ struct DSListRow: View {
     var separator = true
 
     var body: some View {
-        Grid(alignment: .leading, horizontalSpacing: DS.Space.s12, verticalSpacing: 0) {
-            GridRow(alignment: .center) {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: DS.Space.s12) {
                 Image(systemName: icon)
                     .font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.list))
                     .foregroundStyle(DS.Color.iconQuiet).frame(width: DS.Size.icon)
@@ -24,7 +24,7 @@ struct DSListRow: View {
                 HStack(spacing: DS.Space.s4) {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
                     if let tag {
-                        Text(tag.title).dsText(DS.Font.tTag)
+                        Text(tag.title).dsText(DS.Font.tTag).lineLimit(1)
                             .foregroundStyle(tag.tone == .warning ? DS.Color.warnInk : DS.Color.accentInk)
                             .padding(.horizontal, DS.Space.s4)
                             .dsPill(tag.tone == .warning ? DS.Color.warnSoft : DS.Color.accentSoft)
@@ -32,14 +32,11 @@ struct DSListRow: View {
                     }
                 }.dsFillWidth()
                 Text(amount).dsText(DS.Font.nSpine).foregroundStyle(DS.Color.ink)
-                    .lineLimit(1).fixedSize().gridColumnAlignment(.trailing)
+                    .lineLimit(1).fixedSize()
             }
             if let detail {
-                GridRow {
-                    Color.clear.frame(width: DS.Size.icon, height: 0).gridCellUnsizedAxes(.vertical)
-                    Text(detail).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).dsFillWidth()
-                    Color.clear.gridCellUnsizedAxes([.horizontal, .vertical])
-                }
+                Text(detail).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).dsFillWidth()
+                    .padding(.leading, DS.Size.icon + DS.Space.s12)
             }
         }
         .padding(.vertical, DS.Space.s8)
@@ -279,6 +276,7 @@ struct DSTabBar: View {
             tab(.home, title: "首页", icon: DS.Icon.tabHome)
             Button(action: onEntry) {
                 Label("记一笔", systemImage: DS.Icon.add).dsText(DS.Font.tTitle)
+                    .labelStyle(.titleAndIcon).lineLimit(1).fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(DS.Color.onAccent).padding(.horizontal, DS.Space.s28)
                     .frame(minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
             }.dsPressStyle()
@@ -305,7 +303,7 @@ struct DSAskBar: View {
             Button(action: onAsk) {
                 HStack(spacing: DS.Space.s8) {
                     Image(systemName: DS.Icon.search)
-                    Text("问余白 · 搜账单").dsText(DS.Font.tLabel).dsFillWidth()
+                    Text("问余白 · 搜账单").dsText(DS.Font.tLabel).lineLimit(1).dsFillWidth()
                 }.frame(minHeight: DS.Size.askH)
             }.dsPressStyle()
             Button(action: onVoice) {
@@ -333,6 +331,14 @@ struct DSEntryPills: View {
     @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
 
     var body: some View {
+        ViewThatFits(in: .horizontal) {
+            pillRow
+            ScrollView(.horizontal) { pillRow }
+                .scrollIndicators(.hidden).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity)
+            .animation(DSMotion.animation(.accordion, reduceMotion: reduceMotionOverride ?? systemReduceMotion), value: timeExpanded)
+    }
+    private var pillRow: some View {
         HStack(spacing: DS.Space.s8) {
             if timeExpanded {
                 ForEach(Time.allCases, id: \.self) { option in
@@ -355,8 +361,7 @@ struct DSEntryPills: View {
                     if exception != .none { repeats = false }
                 }
             }
-        }.frame(maxWidth: .infinity)
-            .animation(DSMotion.animation(.accordion, reduceMotion: reduceMotionOverride ?? systemReduceMotion), value: timeExpanded)
+        }.fixedSize(horizontal: true, vertical: false)
     }
     private func pill(_ title: String, icon: String?, selected: Bool = false, iconOnly: Bool = false,
                       action: @escaping () -> Void) -> some View {
@@ -367,7 +372,8 @@ struct DSEntryPills: View {
                         .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink3)
                 }
                 if !iconOnly { Text(title).dsText(DS.Font.tPill).fontWeight(selected ? .semibold : .regular) }
-            }.foregroundStyle(selected ? DS.Color.ink : DS.Color.ink2)
+            }.lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink2)
                 .padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.pillH)
                 .dsPill(selected ? DS.Color.selected : DS.Color.surface)
         }.dsPressStyle().accessibilityLabel(title).accessibilityAddTraits(selected ? .isSelected : [])
@@ -442,6 +448,7 @@ struct DSCategoryPicker: View {
                         let selected = selectedSubcategory == name
                         Button { selectedSubcategory = name } label: {
                             Text(name).dsText(DS.Font.tPill).fontWeight(selected ? .semibold : .regular)
+                                .lineLimit(1).fixedSize(horizontal: true, vertical: false)
                                 .foregroundStyle(selected ? DS.Color.accentInk : DS.Color.ink2)
                                 .padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.chipH)
                                 .dsPill(selected ? DS.Color.accentSoft : DS.Color.surface)
@@ -546,6 +553,7 @@ struct DSFloatingCard: View {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink3)
                     Text(amount).dsText(DS.Font.nDetail).foregroundStyle(DS.Color.ink)
                     Text(impact).dsText(DS.Font.tSub).foregroundStyle(DS.Color.accentInk)
+                        .lineLimit(1).truncationMode(.middle)
                         .padding(.horizontal, DS.Space.s12).dsPill(DS.Color.accentSoft)
                     if let warning {
                         Text(warning).dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.warnInk)
@@ -627,6 +635,7 @@ struct DSSegmented: View {
             ForEach(options, id: \.self) { option in
                 Button { selection = option } label: {
                     Text(option).dsText(DS.Font.tPill).fontWeight(selection == option ? .semibold : .regular)
+                        .lineLimit(1)
                         .foregroundStyle(selection == option ? DS.Color.ink : DS.Color.ink3)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, DS.Size.segmentedInset)
@@ -662,6 +671,7 @@ struct DSButton: View {
     var body: some View {
         Button(action: action) {
             Text(title).dsText(kind == .text ? DS.Font.tLabelStrong : DS.Font.tTitle)
+                .lineLimit(1)
                 .foregroundStyle(kind == .primary ? DS.Color.onAccent : (kind == .text ? DS.Color.accentInk : DS.Color.ink))
                 .frame(maxWidth: kind == .text ? nil : .infinity, minHeight: kind == .text ? DS.Size.tapMin : DS.Size.buttonH)
                 .padding(.horizontal, DS.Space.s16)

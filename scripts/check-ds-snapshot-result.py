@@ -11,7 +11,7 @@ EXPECTED_PNG_COUNT = 20
 
 
 def png_blank_reason(path):
-    """Decode UIImage's 8-bit, non-interlaced PNGs without third-party packages."""
+    """Check UIImage's 8/16-bit, non-interlaced PNGs without third-party packages."""
     data = path.read_bytes()
     if not data.startswith(b'\x89PNG\r\n\x1a\n'):
         raise ValueError('Invalid PNG signature')
@@ -47,44 +47,51 @@ def png_blank_reason(path):
         raise ValueError('Missing PNG header or end chunk')
     width, height, depth, colour_type, compression, filtering, interlace = header
     channels = {0: 1, 2: 3, 4: 2, 6: 4}.get(colour_type)
-    if not width or not height or depth != 8 or channels is None or compression or filtering or interlace:
-        raise ValueError('Expected an 8-bit, non-interlaced grayscale, RGB, LA or RGBA PNG')
+    if not width or not height or depth not in (8, 16) or channels is None or compression or filtering or interlace:
+        raise ValueError('Expected an 8-bit or 16-bit, non-interlaced grayscale, RGB, LA or RGBA PNG')
+    sample_bytes = depth // 8
+    bytes_per_pixel = channels * sample_bytes
 
     transparent_pixel = None
     if transparency is not None:
         if colour_type not in (0, 2) or len(transparency) != channels * 2:
             raise ValueError('Invalid PNG transparency chunk')
         samples = struct.unpack('>' + 'H' * channels, transparency)
-        if any(sample > 255 for sample in samples):
-            raise ValueError('Invalid 8-bit PNG transparency samples')
-        transparent_pixel = bytes(samples)
+        if any(sample >= 1 << depth for sample in samples):
+            raise ValueError(f'Invalid {depth}-bit PNG transparency samples')
+        transparent_pixel = bytes(samples) if depth == 8 else transparency
 
     decoded = zlib.decompress(compressed)
-    stride = width * channels
+    stride = width * bytes_per_pixel
     if len(decoded) != (stride + 1) * height:
         raise ValueError('Unexpected PNG scanline length')
+    # Validate every filter before stopping pixel reconstruction as soon as both
+    # blank conditions are ruled out. Large gallery PNGs need only a few rows.
+    filters = decoded[::stride + 1]
+    for filter_type in filters:
+        if filter_type > 4:
+            raise ValueError(f'Unknown PNG filter: {filter_type}')
     previous = bytearray(stride)
     solid_row = None
     flat = True
     all_transparent = colour_type in (4, 6) or transparent_pixel is not None
-    for y in range(height):
+    for y, filter_type in enumerate(filters):
         start = y * (stride + 1)
-        filter_type = decoded[start]
         row = bytearray(decoded[start + 1:start + 1 + stride])
         if filter_type == 1:  # Sub
-            for x in range(channels, stride):
-                row[x] = (row[x] + row[x - channels]) & 255
+            for x in range(bytes_per_pixel, stride):
+                row[x] = (row[x] + row[x - bytes_per_pixel]) & 255
         elif filter_type == 2:  # Up
             for x in range(stride):
                 row[x] = (row[x] + previous[x]) & 255
         elif filter_type in (3, 4):  # Average / Paeth
             for x in range(stride):
-                left = row[x - channels] if x >= channels else 0
+                left = row[x - bytes_per_pixel] if x >= bytes_per_pixel else 0
                 above = previous[x]
                 if filter_type == 3:
                     prediction = (left + above) // 2
                 else:
-                    corner = previous[x - channels] if x >= channels else 0
+                    corner = previous[x - bytes_per_pixel] if x >= bytes_per_pixel else 0
                     estimate = left + above - corner
                     distances = (abs(estimate - left), abs(estimate - above), abs(estimate - corner))
                     if distances[0] <= distances[1] and distances[0] <= distances[2]:
@@ -94,16 +101,18 @@ def png_blank_reason(path):
                     else:
                         prediction = corner
                 row[x] = (row[x] + prediction) & 255
-        elif filter_type != 0:
-            raise ValueError(f'Unknown PNG filter: {filter_type}')
         if solid_row is None:
-            solid_row = row[:channels] * width
+            solid_row = row[:bytes_per_pixel] * width
         flat = flat and row == solid_row
         if all_transparent:
             if colour_type in (4, 6):
-                all_transparent = not any(row[channels - 1::channels])
+                alpha = bytes_per_pixel - sample_bytes
+                all_transparent = not any(any(row[alpha + byte::bytes_per_pixel])
+                                          for byte in range(sample_bytes))
             else:
                 all_transparent = row == transparent_pixel * width
+        if not flat and not all_transparent:
+            return None
         previous = row
     if all_transparent:
         return 'all pixels are fully transparent'
