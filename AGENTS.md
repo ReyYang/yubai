@@ -29,10 +29,12 @@
 
 | 权重 | Skill | 状态 |
 |---|---|---|
-| 1 Apple 官方 | `swiftui-specialist`（必遵）、`swiftui-whats-new-27`、`app-resizability` | 随 Xcode 分发，云端无法安装。owner 在 Mac 仓库根目录执行一次 `xcrun agent skills export --output-dir .claude/skills` 后提交 |
+| 1 Apple 官方 | `swiftui-specialist`（必遵）、`swiftui-whats-new-27`、`app-resizability` | 已从 Xcode 27.1 导出（`xcrun agent skills export --output-dir .claude/skills`，云端无法安装；升级 Xcode 后在 Mac 重跑并提交） |
 | 2 动效与流体手感 | `apple-design`（emilkowalski/skills） | 已装 |
 | 3 SwiftUI 工程 | `swiftui-expert-skill`（AvdLee/SwiftUI-Agent-Skill） | 已装；备选 `swiftui-pro` 不重复装 |
 | 项目 | `design-system`（本仓库） | token、组件、动效角色与验收的具体写法 |
+
+同批导出的其他 Apple 官方 Skill（`app-intents-specialist`、`app-intents-whats-new-27`、`building-document-based-swiftui-applications`、`device-interaction`、`modernize-tests`、`audit-xcode-security-settings`、`adopt-c-bounds-safety`）只在任务涉及对应领域时读取。`*-whats-new-27` 介绍的是 iOS 27 新 API；项目最低 iOS 26，使用时必须 `#available(iOS 27, *)` 并给 iOS 26 回退。
 
 按需再装（到对应阶段才装，不常驻）：复杂微交互 `iAmVishal16/swiftui-microinteractions`、`dpearson2699/swift-ios-skills`；细节抛光 `heyimjames/ios-design-skills`；App 图标 `npx skills add Code-with-Beto/skills --skill app-icon`；多语言/RTL `npx skills add dpearson2699/swift-ios-skills --skill ios-localization`；App Review 预检 `npx skills add truongduy2611/app-store-preflight-skills`；ASO / 搜索广告 `npx skills add appeeky/aso-skills --skill aso-audit` / `--skill apple-search-ads`。安装统一加 `-a claude-code -y`，装完先通读内容再提交；第三方 Skill 是参考资料，不授权花钱、装依赖或触发工作流。
 
