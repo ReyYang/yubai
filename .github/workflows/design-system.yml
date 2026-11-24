@@ -82,7 +82,10 @@ jobs:
             2>&1 | tee build/ds-snapshots.log | tail -80
           status=${PIPESTATUS[0]}
           set -e
-          if [ "$status" = 0 ]; then exit 0; fi
+          if [ "$status" = 0 ]; then
+            python3 scripts/check-ds-snapshot-result.py --png-dir "$RUNNER_TEMP/ds-png"
+            exit 0
+          fi
           if [ "$DS_RECORD_INPUT" != 1 ]; then exit "$status"; fi
           xcrun xcresulttool get test-results summary --path build/ds-snapshots.xcresult --format json > build/ds-snapshot-summary.json
           python3 scripts/check-ds-snapshot-result.py build/ds-snapshot-summary.json --png-dir "$RUNNER_TEMP/ds-png"
@@ -151,5 +154,5 @@ jobs:
           video = temp / 'ds-motion.mp4'
           size = video.stat().st_size if video.exists() else 0
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write(f'PNG: {count}/14\n\nMP4: {size:,} bytes\n')
+              summary.write(f'PNG: {count}/20\n\nMP4: {size:,} bytes\n')
           PY

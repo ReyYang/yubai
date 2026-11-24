@@ -6,8 +6,18 @@ private enum GallerySample {
 }
 
 struct DesignSystemGalleryView: View {
-    enum Section: String, CaseIterable, Identifiable {
+    enum Section: String, Identifiable {
         case colors, typography = "type", spacing, radius, shadow, components, motion
+        case componentsSkeleton = "components-skeleton"
+        case componentsNumbers = "components-numbers"
+        case componentsEntry = "components-entry"
+        case componentsOverlayControls = "components-overlay-controls"
+
+        // The interactive gallery retains its complete components section and jump target.
+        static let gallerySections: [Self] = [.colors, .typography, .spacing, .radius, .shadow, .components, .motion]
+        static let componentSnapshotSections: [Self] = [.componentsSkeleton, .componentsNumbers, .componentsEntry, .componentsOverlayControls]
+        static let snapshotSections: [Self] = [.colors, .typography, .spacing, .radius, .shadow] + componentSnapshotSections + [.motion]
+
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -16,10 +26,15 @@ struct DesignSystemGalleryView: View {
             case .spacing: "间距"
             case .radius: "圆角"
             case .shadow: "阴影"
-            case .components: "组件"
+            case .components, .componentsSkeleton, .componentsNumbers, .componentsEntry, .componentsOverlayControls: "组件"
             case .motion: "动效"
             }
         }
+    }
+    private enum Component: CaseIterable, Hashable {
+        // Preserve the interactive gallery's specimen order.
+        case listRow, budgetRow, accordion, hero, tabBar, entryPills, keypad, categoryPicker, resultStrip
+        case floatingCard, sheet, segmented, button, alertCard, donut, subCalendar, toggle
     }
     let section: Section?
     init(section: Section? = nil) { self.section = section }
@@ -55,7 +70,7 @@ struct DesignSystemGalleryView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         VStack(alignment: .leading, spacing: DS.Space.s28) {
-                            ForEach(Section.allCases) { part in
+                            ForEach(Section.gallerySections) { part in
                                 sectionView(part).id(part)
                             }
                         }.padding(DS.Space.s20)
@@ -88,7 +103,11 @@ struct DesignSystemGalleryView: View {
             case .spacing: spacing
             case .radius: radii
             case .shadow: shadows
-            case .components: components
+            case .components: components(Component.allCases)
+            case .componentsSkeleton: components([.listRow, .accordion, .tabBar])
+            case .componentsNumbers: components([.hero, .budgetRow, .alertCard, .donut, .subCalendar])
+            case .componentsEntry: components([.entryPills, .keypad, .categoryPicker, .resultStrip])
+            case .componentsOverlayControls: components([.floatingCard, .sheet, .segmented, .button, .toggle])
             case .motion: motion
             }
         }.dsFillWidth().accessibilityElement(children: .contain)
@@ -166,8 +185,17 @@ struct DesignSystemGalleryView: View {
         }.padding(DS.Space.s16)
     }
 
-    private var components: some View {
+    private func components(_ items: [Component]) -> some View {
         VStack(alignment: .leading, spacing: DS.Space.s28) {
+            ForEach(items, id: \.self) { component in
+                componentView(component)
+            }
+        }
+    }
+
+    @ViewBuilder private func componentView(_ component: Component) -> some View {
+        switch component {
+        case .listRow:
             specimen("ListRow · DayHeader") {
                 VStack(spacing: 0) {
                     DSDayHeader(title: "昨天", total: "−243.10")
@@ -178,6 +206,7 @@ struct DesignSystemGalleryView: View {
                     DSListRow(icon: DS.Icon.saveFirst, name: "工资", amount: "+12,000.00", tag: DSInlineTag(title: "存入", tone: .positive))
                 }
             }
+        case .budgetRow:
             specimen("BudgetRow · AmberTile") {
                 VStack(spacing: DS.Space.s12) {
                     HStack(alignment: .top, spacing: DS.Space.s12) {
@@ -186,14 +215,27 @@ struct DesignSystemGalleryView: View {
                     DSBudgetRow(budget: Self.budgets[2]); DSBudgetRow(budget: Self.budgets[3])
                 }
             }
+        case .accordion:
             specimen("Accordion") { DSAccordion(items: Self.accordionItems, expandedID: $expanded) }
+        case .hero:
             specimen("Hero") {
                 DSHero(amount: "¥6,268.40", daily: "391.78", remainingDays: 16, days: Self.days,
                        budgets: [Self.budgets[3], Self.budgets[1], Self.budgets[4]])
             }
+        case .tabBar:
             specimen("TabBar · AskBar") {
-                VStack(spacing: DS.Space.s20) { DSAskBar(); DSTabBar(selection: $tab, onEntry: { sheetPresented = true }) }
+                VStack(spacing: DS.Space.s20) {
+                    DSAskBar()
+                    DSTabBar(selection: $tab, onEntry: { sheetPresented = true })
+                        .background {
+                            // Keep system glass, with visible backing if the off-screen effect is empty.
+                            if section != nil {
+                                RoundedRectangle(cornerRadius: DS.Radius.m, style: .continuous).fill(DS.Color.surface)
+                            }
+                        }
+                }
             }
+        case .entryPills:
             specimen("EntryPills") {
                 VStack(spacing: DS.Space.s12) {
                     DSEntryPills(account: "招行储蓄", time: $time, timeExpanded: $timeExpanded, repeats: $repeats,
@@ -204,17 +246,21 @@ struct DesignSystemGalleryView: View {
                                  repeats: .constant(true), exception: .constant(.none), repeatDay: 23)
                 }
             }
+        case .keypad:
             specimen("Keypad") { DSKeypad() }
+        case .categoryPicker:
             specimen("CategoryPicker") {
                 DSCategoryPicker(categories: Self.categories, subcategories: ["午餐", "早餐", "晚餐", "夜宵"],
                                  selectedID: $category, selectedSubcategory: $subcategory)
             }
+        case .resultStrip:
             specimen("ResultStrip") {
                 VStack(spacing: DS.Space.s12) {
                     DSResultStrip(title: "记下后还能花", detail: "吃饭剩 1,194.00", value: "¥6,226.40")
                     DSResultStrip(title: "还能花", detail: "", value: "不变", unchanged: true)
                 }
             }
+        case .floatingCard:
             specimen("FloatingCard · Menu") {
                 DSFloatingCard(name: "换手机", amount: "−6,999.00", impact: "走机动余钱 · 还剩 1,421.00",
                                metadata: "购物 · 今天 14:20 · 招行信用卡", showsMenu: menuShown,
@@ -222,36 +268,43 @@ struct DesignSystemGalleryView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
             }
+        case .sheet:
             specimen("Sheet") {
                 VStack(spacing: DS.Space.s12) {
                     DSSheet(title: "记一笔") { Text("42.00").dsText(DS.Font.nEntry) }
                     if section != nil { sheetButton }
                 }
             }
+        case .segmented:
             specimen("Segmented") {
                 VStack(spacing: DS.Space.s8) {
                     DSSegmented(options: ["支出", "收入"], selection: $selectedSegment)
                     DSSegmented(options: ["支出", "收入"], selection: $selectedSegment2)
                 }
             }
+        case .button:
             specimen("Button") {
                 VStack(spacing: DS.Space.s12) {
                     DSButton("记下") {}; DSButton("完成", kind: .secondary) {}
                     DSButton("调整", kind: .text) {}; DSButton("记下", enabled: false) {}
                 }
             }
+        case .alertCard:
             specimen("AlertCard") {
                 VStack(spacing: DS.Space.s12) {
                     DSAlertCard(title: "衣服比上期多 181%", detail: "", value: "899.00")
                     DSAlertCard(title: "上期留下", detail: "已转入机动余钱", value: "+1,204.30", tone: .positive)
                 }
             }
+        case .donut:
             specimen("Donut") { DSDonut(slices: Self.slices) }
+        case .subCalendar:
             specimen("SubCalendar") {
                 DSSubCalendar(days: (1...28).map { day in
                     DSSubCalendar.Day(number: day, brand: Self.brands[day]?.name, color: Self.brands[day]?.color ?? DS.Color.accent)
                 })
             }
+        case .toggle:
             specimen("Switch") {
                 VStack(spacing: DS.Space.s8) {
                     DSSwitch(title: "每月", isOn: $switchOn); DSSwitch(title: "每月", isOn: $switchOff)

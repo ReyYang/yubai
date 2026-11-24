@@ -14,7 +14,7 @@ final class DesignSystemSnapshotTests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         let recordAll = env["DS_SNAPSHOT_RECORD"] == "1"
         withSnapshotTesting(record: recordAll ? .all : .missing) {
-            for section in DesignSystemGalleryView.Section.allCases {
+            for section in DesignSystemGalleryView.Section.snapshotSections {
                 for scheme in [ColorScheme.light, ColorScheme.dark] {
                     let appearance = scheme == .light ? "light" : "dark"
                     let name = "\(section.rawValue)-\(appearance)"
@@ -30,9 +30,13 @@ final class DesignSystemSnapshotTests: XCTestCase {
                         }
                     let host = UIHostingController(rootView: root)
                     host.safeAreaRegions = []
-                    host.view.backgroundColor = .clear
+                    host.overrideUserInterfaceStyle = scheme == .light ? .light : .dark
+                    host.view.backgroundColor = UIColor(DS.Color.bg)
                     let fitting = host.sizeThatFits(in: CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude))
                     let size = CGSize(width: 393, height: ceil(max(1, fitting.height)))
+                    if DesignSystemGalleryView.Section.componentSnapshotSections.contains(section) {
+                        XCTAssertLessThanOrEqual(size.height, 1600, "Split oversized component snapshot: \(name)")
+                    }
                     let traits = UITraitCollection(traitsFrom: [
                         UITraitCollection(displayScale: 3),
                         UITraitCollection(userInterfaceStyle: scheme == .light ? .light : .dark),

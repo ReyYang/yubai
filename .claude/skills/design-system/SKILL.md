@@ -163,6 +163,6 @@ python3 -m pytest -q scripts/tests
 
 DEBUG 启动参数 `-YubaiDesignSystemGallery` 或 `YUBAI_DS_GALLERY=1` 打开 gallery；Release 无入口。单节快照用 `DesignSystemGalleryView(section:)`。
 
-Xcode 上运行 `YubaiDesignSystemTests`；`DS_SNAPSHOT_RECORD=1` 记录全部，否则 `.missing` 记录缺失并校验现有基线。`DS_SNAPSHOT_EXPORT_DIR` 导出本次实际 PNG；通过 xcodebuild 传递时加 `TEST_RUNNER_` 前缀。基线固定 393pt、3×、zh_CN、大号默认字体、明暗各七节，动画冻结。
+Xcode 上运行 `YubaiDesignSystemTests`；`DS_SNAPSHOT_RECORD=1` 记录全部，否则 `.missing` 记录缺失并校验现有基线。`DS_SNAPSHOT_EXPORT_DIR` 导出本次实际 PNG；通过 xcodebuild 传递时加 `TEST_RUNNER_` 前缀。基线固定 393pt、3×、zh_CN、大号默认字体、明暗各十节，共 20 张，动画冻结。`Section.snapshotSections` 将组件分为 `components-skeleton`、`components-numbers`、`components-entry`、`components-overlay-controls`，每张组件快照不超过 1600pt；完整 gallery 仍展示全部组件并保留跳转入口。`scripts/check-ds-snapshot-result.py --png-dir <目录>` 校验数量及像素，拒绝全透明或单一纯色 PNG；附加 xcresult summary 参数时同时校验预期的记录断言。
 
 `.github/workflows/design-system.yml` 仅支持手动 dispatch，record 默认 false，video 默认 true。仅在任务明确授权时触发；取回 PNG、`__Snapshots__` 与 MP4 审阅。`design-system-motion` 分片只在显式选择时运行，排除默认门禁。仓库变私有时先问 owner：macOS 计费倍率 10×。完整管线与可见文案清单见 `docs/design-tokens.md`。

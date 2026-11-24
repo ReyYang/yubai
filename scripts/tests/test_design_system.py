@@ -5,11 +5,13 @@ import importlib.util
 import json
 from pathlib import Path
 import re
+import struct
 import subprocess
 import sys
 import tempfile
 import unittest
 import xml.etree.ElementTree as ET
+import zlib
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -140,27 +142,132 @@ class RecordingResultTests(unittest.TestCase):
                 'skippedTests': 0, 'testFailures': [{'testName': 'DesignSystemSnapshotTests.testGallerySections', 'failureText': message}]}
 
     def test_expected_recording_assertions_are_accepted(self):
-        self.assertTrue(RECORD.recording_only(self.summary(), 14))
-        self.assertTrue(RECORD.recording_only(self.summary('No reference was found on disk. Automatically recorded snapshot: /tmp/image.png'), 14))
+        self.assertTrue(RECORD.recording_only(self.summary(), 20))
+        self.assertTrue(RECORD.recording_only(self.summary('No reference was found on disk. Automatically recorded snapshot: /tmp/image.png'), 20))
 
     def test_mismatches_and_export_errors_are_failures(self):
         for message in ('Snapshot does not match reference', 'PNG export failed', 'Application crashed', 'XCTAssertEqual failed', 'Timed out', ''):
-            self.assertFalse(RECORD.recording_only(self.summary(message), 14), message)
+            self.assertFalse(RECORD.recording_only(self.summary(message), 20), message)
 
     def test_incomplete_or_missing_runs_cannot_pass(self):
-        for count in (0, 1, 13, 15):
+        for count in (0, 1, 14, 19, 21):
             self.assertFalse(RECORD.recording_only(self.summary(), count))
         for key, value in (('totalTestCount', 0), ('failedTests', 0), ('skippedTests', 1), ('testFailures', []), ('result', 'Stopped')):
             summary = self.summary(); summary[key] = value
-            self.assertFalse(RECORD.recording_only(summary, 14), key)
+            self.assertFalse(RECORD.recording_only(summary, 20), key)
         summary = self.summary()
         summary['testFailures'][0]['testName'] = 'OtherTests.testUnexpected'
-        self.assertFalse(RECORD.recording_only(summary, 14))
+        self.assertFalse(RECORD.recording_only(summary, 20))
 
     def test_a_second_unexpected_failure_stays_failing(self):
         summary = self.summary()
         summary['testFailures'].append({'testName': 'DesignSystemSnapshotTests.testGallerySections', 'failureText': 'PNG export failed'})
-        self.assertFalse(RECORD.recording_only(summary, 14))
+        self.assertFalse(RECORD.recording_only(summary, 20))
+
+
+class PNGValidationTests(unittest.TestCase):
+    @staticmethod
+    def png(colour_type, scanlines, *, depth=8, interlace=0):
+        """Build a 2×2 PNG from already-filtered bytes, with two IDAT chunks."""
+        def chunk(kind, data):
+            return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+        header = struct.pack('>IIBBBBB', 2, 2, depth, colour_type, 0, 0, interlace)
+        compressed = zlib.compress(scanlines)
+        middle = len(compressed) // 2
+        return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header)
+                + chunk(b'IDAT', compressed[:middle]) + chunk(b'IDAT', compressed[middle:])
+                + chunk(b'IEND', b''))
+
+    def test_single_flat_colour_is_rejected_for_all_supported_types_and_filters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'flat.png'
+            for colour_type, pixel in ((0, b'\x50'), (2, b'\x50\x64\x78'),
+                                       (4, b'\x50\xff'), (6, b'\x50\x64\x78\xff')):
+                zero = bytes(len(pixel))
+                half = bytes(value - value // 2 for value in pixel)
+                # Known encodings of two identical rows of two identical pixels.
+                scanlines = (
+                    (b'\x00' + pixel * 2) * 2,                         # None
+                    (b'\x01' + pixel + zero) * 2,                      # Sub
+                    b'\x02' + pixel * 2 + b'\x02' + zero * 2,           # Up
+                    b'\x03' + pixel + half + b'\x03' + half + zero,     # Average
+                    b'\x04' + pixel + zero + b'\x04' + zero * 2,         # Paeth
+                )
+                for filter_type, encoded in enumerate(scanlines):
+                    with self.subTest(colour_type=colour_type, filter_type=filter_type):
+                        path.write_bytes(self.png(colour_type, encoded))
+                        self.assertIn('flat colour', RECORD.png_blank_reason(path))
+
+    def test_transparent_images_with_varying_hidden_colours_are_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'transparent.png'
+            for colour_type, scanlines in (
+                (4, b'\x00\x10\x00\x80\x00\x00\xc0\x00\xff\x00'),
+                (6, b'\x00' + bytes((10, 20, 30, 0, 90, 80, 70, 0))
+                    + b'\x00' + bytes((100, 120, 130, 0, 200, 210, 220, 0))),
+            ):
+                with self.subTest(colour_type=colour_type):
+                    path.write_bytes(self.png(colour_type, scanlines))
+                    self.assertIn('fully transparent', RECORD.png_blank_reason(path))
+
+    def test_visible_variation_in_the_last_pixel_is_accepted(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'visible.png'
+            for colour_type, pixel in ((0, b'\x50'), (2, b'\x50\x64\x78'),
+                                       (4, b'\x00\xff'), (6, b'\x00\x00\x00\xff')):
+                with self.subTest(colour_type=colour_type):
+                    zero = bytes(len(pixel))
+                    path.write_bytes(self.png(colour_type, b'\x00' + zero * 2 + b'\x00' + zero + pixel))
+                    self.assertIsNone(RECORD.png_blank_reason(path))
+
+    def test_malformed_and_unsupported_images_are_rejected(self):
+        valid = self.png(0, b'\x00\x10\x20\x00\x30\x40')
+        images = (
+            b'not a PNG', valid[:20], valid[:-12], valid[:-1] + bytes([valid[-1] ^ 1]),
+            self.png(0, b'\x00\x10\x20\x00\x30\x40', depth=16),
+            self.png(0, b'\x00\x10\x20\x00\x30\x40', interlace=1),
+            self.png(3, b'\x00\x10\x20\x00\x30\x40'),
+            self.png(0, b'\x05\x10\x20\x00\x30\x40'),
+            self.png(0, b'\x00\x10\x20'),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'invalid.png'
+            for index, data in enumerate(images):
+                with self.subTest(image=index):
+                    path.write_bytes(data)
+                    with self.assertRaises(ValueError):
+                        RECORD.png_blank_reason(path)
+
+    def test_cli_rejects_blank_exports_even_when_recording_assertions_are_expected(self):
+        valid = self.png(0, b'\x00\x10\x20\x00\x30\x40')
+        blanks = (
+            self.png(4, b'\x00\x10\x00\x80\x00\x00\xc0\x00\xff\x00'),
+            self.png(2, (b'\x00' + bytes((50, 100, 150)) * 2) * 2),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            summary = root / 'summary.json'
+            summary.write_text(json.dumps(RecordingResultTests().summary()))
+            for index in range(19):
+                (root / f'section-{index}.png').write_bytes(valid)
+            path = root / 'components-skeleton-light.png'
+            path.write_bytes(valid)
+            # CI validates successful comparisons as well as expected record failures.
+            for summary_args in ([], [str(summary)]):
+                command = [sys.executable, str(ROOT / 'scripts/check-ds-snapshot-result.py'),
+                           *summary_args, '--png-dir', str(root)]
+                result = subprocess.run(command, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                for blank in blanks:
+                    path.write_bytes(blank)
+                    result = subprocess.run(command, capture_output=True, text=True)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(f'Blank PNG {path.name}', result.stderr)
+                path.unlink()
+                result = subprocess.run(command, capture_output=True, text=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('Expected 20 PNGs, found 19', result.stderr)
+                path.write_bytes(valid)
 
 
 if __name__ == '__main__':

@@ -47,7 +47,8 @@ final class DesignSystemMotionTests: YubaiUITestCase {
         let toggle = app.switches["ds-motion-switch"]
         reveal(toggle)
         let before = toggle.value as? String
-        toggle.tap(); settle(1.5)
+        // iOS 26 includes the label in the switch frame; tap the trailing control.
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap(); settle(1.5)
         XCTAssertNotEqual(toggle.value as? String, before)
         let accordion = app.buttons["ds-accordion-motion-shopping"]
         reveal(accordion)
