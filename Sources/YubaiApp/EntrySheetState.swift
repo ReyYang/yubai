@@ -14,7 +14,6 @@ struct EntrySheetDraft: Equatable {
     var accountID: UUID?
     var destinationID: UUID?
     var date = Dates.now
-    var explicitTime = false
     var screenshot: Data?
     var repeatMonthly = false
     var exception: EntryException?
@@ -39,6 +38,15 @@ struct EntrySheetDraft: Equatable {
     var hasContent: Bool { !expression.isEmpty || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     init() {}
+
+    static func dayLabel(for date: Date, now: Date) -> String {
+        let day = Dates.day(date)
+        if day == Dates.day(now) { return "今天" }
+        if day == Dates.day(Dates.addDays(-1, to: now)) { return "昨天" }
+        if day == Dates.day(Dates.addDays(-2, to: now)) { return "前天" }
+        let parts = Dates.calendar.dateComponents([.month, .day], from: day)
+        return "\(parts.month ?? 1)月\(parts.day ?? 1)日"
+    }
 
     init(prefill: QuickEntryPrefill, ledger: Ledger) {
         let nature = prefill.nature ?? .expense
@@ -262,22 +270,11 @@ struct EntrySheetDraft: Equatable {
     }
 
     var dayLabel: String {
-        if let fixtureDayLabel { return fixtureDayLabel }
-        let day = Dates.day(draft.date)
-        if !draft.explicitTime {
-            if day == Dates.day(now) { return "今天" }
-            if day == Dates.day(Dates.addDays(-1, to: now)) { return "昨天" }
-            if day == Dates.day(Dates.addDays(-2, to: now)) { return "前天" }
-        }
-        let parts = Dates.calendar.dateComponents([.month, .day, .hour, .minute], from: draft.date)
-        let label = "\(parts.month ?? 1)月\(parts.day ?? 1)日"
-        guard draft.explicitTime else { return label }
-        return label + String(format: " %02d:%02d", parts.hour ?? 0, parts.minute ?? 0)
+        fixtureDayLabel ?? EntrySheetDraft.dayLabel(for: draft.date, now: now)
     }
 
     func setDate(_ value: Date) {
         draft.date = value
-        draft.explicitTime = false
         fixtureDayLabel = nil
         drawer = nil
     }
@@ -345,7 +342,7 @@ struct EntrySheetDraft: Equatable {
             subcategory: category?.subcategory, accountID: accountID, destinationAccountID: draft.destinationID,
             date: draft.date, repeatMonthly: draft.repeatMonthly && canRepeat, exception: draft.exception,
             incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: draft.originalNature,
-            relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings, preserveTime: draft.explicitTime)
+            relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings)
     }
 
     private var selectedCategory: CategoryAssignment? {

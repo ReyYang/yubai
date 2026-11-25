@@ -54,6 +54,11 @@ struct DesignSystemGalleryView: View {
     @State private var selectedSegment2 = "收入"
     @State private var tab = DSTabBar.Tab.home
     @State private var calendarPreviewOpen = true
+    @State private var calendarPreviewDate = EntrySpec.fixtureCalendarSelection
+    @State private var calendarPreviewMonth = DSCalendarPopover.initialMonth(
+        for: EntrySpec.fixtureCalendarSelection, now: EntrySpec.fixtureToday)
+    @State private var calendarPreviewRepeats = false
+    @State private var calendarPreviewException = DSEntryPills.Exception.none
     @State private var repeats = false
     @State private var exception = DSEntryPills.Exception.none
     @State private var category = "food"
@@ -127,19 +132,38 @@ struct DesignSystemGalleryView: View {
         VStack(spacing: DS.Space.s16) {
             DSEntryPills(account: "招行储蓄", repeats: $repeats, exception: $exception,
                          repeatDay: EntrySpec.galleryRepeatDay)
-            VStack(spacing: DS.Space.s8) {
-                if calendarPreviewOpen {
-                    DSCalendarPopover(date: EntrySpec.fixtureCalendarSelection, now: EntrySpec.fixtureToday,
-                                      onSelect: { _ in calendarPreviewOpen = false },
-                                      onRepeat: { calendarPreviewOpen = false })
-                }
-                DSEntryPills(account: "招行储蓄", day: "11月22日", calendarOpen: calendarPreviewOpen,
-                             repeats: .constant(false), exception: .constant(.none), repeatDay: EntrySpec.galleryRepeatDay,
-                             onCalendar: { calendarPreviewOpen.toggle() })
-            }
+            interactiveCalendarSpecimen
             DSEntryPills(account: "招行储蓄", repeats: .constant(true),
                          exception: .constant(.none), repeatDay: EntrySpec.galleryRepeatDay)
+            DSEntryPills(account: "招行储蓄", repeats: .constant(false),
+                         exception: .constant(.reserve), repeatDay: EntrySpec.galleryRepeatDay)
         }.frame(maxWidth: .infinity)
+    }
+
+    private var interactiveCalendarSpecimen: some View {
+        VStack(spacing: DS.Space.s8) {
+            if calendarPreviewOpen {
+                DSCalendarPopover(date: calendarPreviewDate, now: EntrySpec.fixtureToday,
+                                  displayedMonth: $calendarPreviewMonth, repeats: calendarPreviewRepeats,
+                                  canRepeat: calendarPreviewException == .none, onSelect: { date in
+                    calendarPreviewDate = date
+                    calendarPreviewOpen = false
+                }, onRepeat: {
+                    calendarPreviewRepeats.toggle()
+                    calendarPreviewOpen = false
+                })
+            }
+            DSEntryPills(account: "招行储蓄", day: EntrySheetDraft.dayLabel(for: calendarPreviewDate, now: EntrySpec.fixtureToday),
+                         calendarOpen: calendarPreviewOpen, repeats: $calendarPreviewRepeats,
+                         exception: $calendarPreviewException,
+                         repeatDay: Dates.calendar.component(.day, from: calendarPreviewDate),
+                         onCalendar: {
+                if !calendarPreviewOpen {
+                    calendarPreviewMonth = DSCalendarPopover.initialMonth(for: calendarPreviewDate, now: EntrySpec.fixtureToday)
+                }
+                calendarPreviewOpen.toggle()
+            })
+        }
     }
 
     private var effectSpecimens: some View {
@@ -161,11 +185,11 @@ struct DesignSystemGalleryView: View {
             iconGroup("操作", [.add, .edit, .delete, .duplicate, .recategorize, .done, .close, .more, .time,
                                .search, .backspace, .chevron, .chevronDown, .back])
             Text("用的时候").dsText(DS.Font.tLabelStrong)
-            HStack {
-                iconUsage("列表", .catFood, size: DS.Size.icon)
-                iconUsage("分类圆", .catFood, size: EntrySpec.categoryIcon)
-                iconUsage("胶囊", .edit, size: DS.Font.tLabel.size)
-                iconUsage("箭头", .chevron, size: EntrySpec.galleryChevron)
+            FlowLayout(centered: false) {
+                iconUsage("列表 20 · icon-quiet", .catFood, size: DS.Size.icon, color: DS.Color.iconQuiet)
+                iconUsage("分类圆 22", .catFood, size: EntrySpec.categoryIcon, category: true, color: DS.Color.accentInk)
+                iconUsage("胶囊 15", .edit, size: DS.Font.tLabel.size)
+                iconUsage("箭头 16", .chevron, size: EntrySpec.galleryChevron, color: DS.Color.chevron)
             }
         }
     }
@@ -177,27 +201,32 @@ struct DesignSystemGalleryView: View {
                                     count: EntrySpec.galleryIconColumns), spacing: DS.Space.s8) {
                 ForEach(icons) { icon in
                     VStack(spacing: DS.Space.s4) {
-                        HStack(spacing: DS.Space.s4) {
-                            icon.view(size: EntrySpec.galleryIconLarge, color: DS.Color.ink2)
-                            icon.view(size: DS.Size.icon, color: DS.Color.ink2)
-                        }
-                        .padding(DS.Space.s4)
-                        .dsSurface(DS.Color.surface, radius: DS.Radius.s)
+                        icon.view(size: EntrySpec.galleryIconLarge, color: DS.Color.ink2)
+                            .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
+                            .dsSurface(DS.Color.surface, radius: DS.Radius.s)
                         Text(icon.rawValue).dsText(DS.Font.tTag).fontWeight(.regular).lineLimit(1)
                             .foregroundStyle(DS.Color.ink3)
                             .minimumScaleFactor(EntrySpec.amountMinimumScale)
+                            .padding(.horizontal, DS.Space.s4)
                     }.frame(maxWidth: .infinity)
                 }
             }
         }
     }
 
-    private func iconUsage(_ title: String, _ icon: DS.Icon, size: CGFloat) -> some View {
-        VStack(spacing: DS.Space.s4) {
-            icon.view(size: size)
-                .frame(minHeight: EntrySpec.galleryIconLarge)
-            Text(title + " " + size.formatted()).dsText(DS.Font.tCaption)
-        }.frame(maxWidth: .infinity)
+    private func iconUsage(_ title: String, _ icon: DS.Icon, size: CGFloat, category: Bool = false,
+                           color: Color = DS.Color.ink2) -> some View {
+        HStack(spacing: DS.Space.s4) {
+            if category {
+                icon.view(size: size, color: color)
+                    .frame(width: DS.Size.catCircle, height: DS.Size.catCircle)
+                    .background(DS.Color.accentSoft, in: Circle())
+            } else {
+                icon.view(size: size, color: color)
+            }
+            Text(title).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
+        }
+        .fixedSize(horizontal: true, vertical: false)
     }
 
     private func sectionView(_ section: Section) -> some View {
@@ -509,12 +538,15 @@ private struct EntryHeaderGallery: View {
     @State private var model = EntryFixture.expense.makeModel()
 
     var body: some View {
+        let outline = UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet,
+                                             topTrailingRadius: DS.Radius.sheet, style: .continuous)
         VStack(spacing: DS.Space.s20) {
             EntryTopHeaderView(model: model, close: {}, drag: EntryHeaderDrag(move: { _ in }, end: { _ in }))
             Text(EntrySpec.fixtureLunchAmount).dsText(DS.Font.nEntry).monospacedDigit()
                 .padding(.bottom, DS.Space.s20)
         }
-        .dsSurface(DS.Color.bg, radius: DS.Radius.sheet)
+        .background(DS.Color.bg, in: outline)
+        .overlay { outline.strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline).allowsHitTesting(false) }
     }
 }
 

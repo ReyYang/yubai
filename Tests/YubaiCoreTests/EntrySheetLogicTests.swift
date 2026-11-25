@@ -397,6 +397,14 @@ final class EntrySheetLogicTests: XCTestCase {
         XCTAssertEqual(expression.evaluatedCents, 99_999_999_999)
     }
 
+    func testRepeatingIncomeDoesNotShowMoneySetAside() {
+        let ledger = makeLedger()
+        let input = EntrySaveInput(type: .income, amountCents: 5_800, accountID: ledger.accounts[0].id,
+                                   date: now, repeatMonthly: true)
+
+        XCTAssertNil(EntrySaveMapper.effect(for: input, in: ledger, now: now))
+    }
+
     func testEntryEffectShowsOnlyMoneySetAsideOrRecovered() throws {
         var ledger = makeLedger()
         ledger.fixedSavings = 842_000

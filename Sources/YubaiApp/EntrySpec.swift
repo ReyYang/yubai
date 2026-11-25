@@ -36,7 +36,9 @@ enum EntrySpec {
     static let trailingPadding: CGFloat = 14 // SPEC §§5–6, 8
     static let pillLeading: CGFloat = 11 // SPEC §6
     static let iconOnlyPadding: CGFloat = 9 // SPEC §6
-    static let effectGap: CGFloat = 10 // canvas Entry.dc.html: gap after pills
+    static let effectGap: CGFloat = 10 // canvas Entry.dc.html: gap after the visible pill edge
+    static let pillHitInset: CGFloat = 5 // SPEC §6, (44 pt hit area - 34 pt pill) / 2
+    static let effectLineTopPadding = effectGap - pillHitInset // canvas Entry.dc.html: exclude the transparent hit inset
     static let aboveTray: CGFloat = 14 // canvas Entry.dc.html: spacer above keypad tray
     static let calendarWidth: CGFloat = 300 // canvas Entry.dc.html: calendar card width
     static let calendarHeader: CGFloat = 32 // canvas Entry.dc.html: calendar header

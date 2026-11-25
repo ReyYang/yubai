@@ -377,7 +377,8 @@ public enum EntrySaveMapper {
             case .reimbursement: return .reimbursement(amount)
             }
         }
-        guard input.exception == nil, input.repeatMonthly, input.type != .transfer else { return nil }
+        guard input.exception == nil, input.repeatMonthly,
+              input.type == .expense || input.type == .deposit else { return nil }
         if input.type == .deposit {
             guard ledger.accounts.contains(where: { $0.id == input.destinationAccountID && $0.kind == .investment }) else { return nil }
         }

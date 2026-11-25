@@ -859,17 +859,23 @@ struct DSInlineTextField: View {
 struct DSCalendarPopover: View {
     let date: Date
     let now: Date
+    @Binding var displayedMonth: Date
     var repeats = false
     var canRepeat = true
     var onSelect: (Date) -> Void = { _ in }
     var onRepeat: () -> Void = {}
 
-    @State private var displayedMonth: Date?
-    private var calendar: Calendar { Dates.calendar }
-    private var currentMonth: Date { calendar.dateInterval(of: .month, for: now)?.start ?? now }
-    private var month: Date {
-        displayedMonth ?? min(calendar.dateInterval(of: .month, for: date)?.start ?? date, currentMonth)
+    static func initialMonth(for date: Date, now: Date) -> Date {
+        monthStart(for: min(date, now))
     }
+
+    private static func monthStart(for date: Date) -> Date {
+        Dates.calendar.dateInterval(of: .month, for: date)?.start ?? date
+    }
+
+    private var calendar: Calendar { Dates.calendar }
+    private var currentMonth: Date { Self.monthStart(for: now) }
+    private var month: Date { displayedMonth }
     private var monthTitle: String {
         "\(calendar.component(.year, from: month))年\(calendar.component(.month, from: month))月"
     }
@@ -924,7 +930,9 @@ struct DSCalendarPopover: View {
     private func arrow(_ icon: DS.Icon, offset: Int, label: String) -> some View {
         let disabled = offset > 0 && month >= currentMonth
         return Button {
-            displayedMonth = calendar.date(byAdding: .month, value: offset, to: month)
+            if let next = calendar.date(byAdding: .month, value: offset, to: month) {
+                displayedMonth = next
+            }
         } label: {
             icon.view(size: EntrySpec.routeIcon, color: disabled ? DS.Color.chevron : DS.Color.ink3)
                 .frame(width: DS.Size.tapMin, height: EntrySpec.calendarHeader)

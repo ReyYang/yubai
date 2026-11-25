@@ -1,18 +1,25 @@
 import SwiftUI
 import YubaiCore
 
+enum EntryCalendarFocus: Hashable {
+    case timePill, calendar
+}
+
 struct EntrySheetOverlay: View {
     let model: EntrySheetViewModel
     let onClose: () -> Void
     let onReceipt: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduced
     @State private var motion: EntrySheetMotion
+    @State private var displayedMonth: Date
+    @FocusState private var calendarFocus: EntryCalendarFocus?
 
     init(model: EntrySheetViewModel, onClose: @escaping () -> Void, onReceipt: @escaping () -> Void = {}) {
         self.model = model
         self.onClose = onClose
         self.onReceipt = onReceipt
         _motion = State(initialValue: EntrySheetMotion(settled: model.settled))
+        _displayedMonth = State(initialValue: DSCalendarPopover.initialMonth(for: model.draft.date, now: model.now))
     }
 
     var body: some View {
@@ -23,7 +30,7 @@ struct EntrySheetOverlay: View {
                 EntryScrimView(motion: motion, color: DS.Color.scrim, close: cancel)
                     .ignoresSafeArea()
                 EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
-                               drag: drag, close: cancel, save: save, receipt: onReceipt)
+                               calendarFocus: $calendarFocus, drag: drag, close: cancel, save: save, receipt: onReceipt)
                     .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
                     .accessibilityHidden(model.categoryPanel || model.drawer == .calendar)
                 if model.categoryPanel {
@@ -51,6 +58,9 @@ struct EntrySheetOverlay: View {
             if model.drawer == .calendar { model.drawer = nil }
             else if model.categoryPanel { model.dismissCategoryPanel() }
             else { cancel() }
+        }
+        .onChange(of: model.drawer == .calendar) { wasOpen, isOpen in
+            if wasOpen && !isOpen { calendarFocus = .timePill }
         }
         .onAppear { model.schedulePreview() }
         .onChange(of: model.draft) { _, _ in model.schedulePreview() }
@@ -80,14 +90,26 @@ struct EntrySheetOverlay: View {
                 }
                 .frame(width: width, height: available, alignment: .bottom)
                 .offset(x: leading)
+                .focusable()
+                .focusEffectDisabled()
+                .focused($calendarFocus, equals: .calendar)
+                .onKeyPress(.escape) {
+                    model.drawer = nil
+                    return .handled
+                }
                 .accessibilityAddTraits(.isModal)
                 .accessibilityAction(.escape) { model.drawer = nil }
             }
         }
+        .onAppear {
+            displayedMonth = DSCalendarPopover.initialMonth(for: model.draft.date, now: model.now)
+            calendarFocus = .calendar
+        }
     }
 
     private var calendarCard: some View {
-        DSCalendarPopover(date: model.draft.date, now: model.now, repeats: model.draft.repeatMonthly,
+        DSCalendarPopover(date: model.draft.date, now: model.now, displayedMonth: $displayedMonth,
+                          repeats: model.draft.repeatMonthly,
                           canRepeat: model.canRepeat && model.draft.exception == nil,
                           onSelect: model.setDate, onRepeat: model.toggleRepeat)
     }
@@ -127,6 +149,7 @@ struct EntrySheetView: View {
     let model: EntrySheetViewModel
     let safeBottom: CGFloat
     let maxHeight: CGFloat
+    let calendarFocus: FocusState<EntryCalendarFocus?>.Binding
     let drag: EntryHeaderDrag
     let close: () -> Void
     let save: () -> Void
@@ -167,7 +190,7 @@ struct EntrySheetView: View {
                     .padding(.bottom, EntrySpec.amountBottom)
                 typeBody
                     .transition(.opacity)
-                EntryPillsRowView(model: model)
+                EntryPillsRowView(model: model, calendarFocus: calendarFocus)
                 EntryEffectLineView(model: model)
                 if model.drawer != nil, model.drawer != .calendar { EntryExpandedPanelView(model: model) }
                 if model.hasReceipt {
@@ -653,6 +676,7 @@ private struct EntryPill: View {
             .frame(minWidth: DS.Size.pillH, minHeight: DS.Size.pillH)
             .dsPill(selected ? DS.Color.selected : DS.Color.surface)
             .anchorPreference(key: EntryTimeAnchor.self, value: .bounds) { anchorsCalendar ? $0 : nil }
+            .padding(.vertical, EntrySpec.pillHitInset)
             .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
         }
         .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
@@ -664,6 +688,7 @@ private struct EntryPill: View {
 
 private struct EntryPillsRowView: View {
     let model: EntrySheetViewModel
+    let calendarFocus: FocusState<EntryCalendarFocus?>.Binding
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.pillsRow)
@@ -677,6 +702,7 @@ private struct EntryPillsRowView: View {
             EntryPill(title: time, icon: model.draft.repeatMonthly ? .subscription : .time,
                       selected: calendarOpen, strong: model.draft.repeatMonthly, anchorsCalendar: true,
                       hint: calendarOpen ? "收起日历" : "选择日期和重复选项") { model.toggleDrawer(.calendar) }
+                .focused(calendarFocus, equals: .timePill)
                 .accessibilityIdentifier("entryTimePill")
             if model.draft.type == .expense {
                 EntryPill(title: model.draft.exception?.title, icon: .more, strong: model.draft.exception != nil,
@@ -814,7 +840,7 @@ private struct EntryEffectLineView: View {
         Group {
             if let effect = model.effect {
                 DSEffectLine(effect: effect, hidesAmount: model.hidesAmounts)
-                    .padding(.top, EntrySpec.effectGap)
+                    .padding(.top, EntrySpec.effectLineTopPadding)
                     .transition(.opacity)
             }
         }
