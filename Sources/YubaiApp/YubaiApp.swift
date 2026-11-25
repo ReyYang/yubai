@@ -994,21 +994,23 @@ enum AppSheet: Identifiable {
         #endif
     }
     @ViewBuilder private var launchRoot: some View {
-        #if DEBUG
+        #if DEBUG && targetEnvironment(simulator)
         if UITestSupport.designSystemGallery {
             DesignSystemGalleryView()
                 .environment(\.dsReduceMotionOverride, UITestSupport.script != nil ? UITestSupport.reduceMotion : nil)
+        } else {
+            bakeoffOrApplicationRoot
         }
-        else {
-            #if os(iOS)
-            switch BakeoffFixture.argument("-YubaiBakeoff") {
-            case "swiftui": BakeoffSwiftScreen()
-            case "uikit": BakeoffUIKitHost().ignoresSafeArea()
-            default: applicationRoot
-            }
-            #else
-            applicationRoot
-            #endif
+        #else
+        bakeoffOrApplicationRoot
+        #endif
+    }
+    @ViewBuilder private var bakeoffOrApplicationRoot: some View {
+        #if DEBUG && os(iOS)
+        switch BakeoffFixture.argument("-YubaiBakeoff") {
+        case "swiftui": BakeoffSwiftScreen()
+        case "uikit": BakeoffUIKitHost().ignoresSafeArea()
+        default: applicationRoot
         }
         #else
         applicationRoot
