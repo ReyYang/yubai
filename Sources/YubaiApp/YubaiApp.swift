@@ -628,7 +628,16 @@ enum AppSheet: Identifiable {
             return ledger
         }
         loadTask = Task { @MainActor in
-            defer { loadingLedger = false; loadTask = nil }
+            defer {
+                loadingLedger = false
+                loadTask = nil
+                #if os(iOS)
+                if let url = pendingOpenURL, url.scheme?.lowercased() == "yubai" {
+                    pendingOpenURL = nil
+                    handleCaptureURL(url)
+                }
+                #endif
+            }
             do {
                 ledger = try await read.value
                 locked = ledger.preferences.lockEnabled
@@ -1072,7 +1081,7 @@ struct RootView: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Namespace private var motionNamespace
-    @State private var tabPaths: [Destination: NavigationPath] = [:]
+    @State private var tabPaths: [Destination: [TabRoute]] = [:]
     @State private var toastHeight = CGFloat.zero
     private var hasToast: Bool { !store.locked && (store.unsortedUndo != nil || store.toast != nil) }
     #if os(iOS)
@@ -1237,7 +1246,7 @@ struct RootView: View {
             }.listStyle(.sidebar).navigationTitle("余白")
                 .navigationSplitViewColumnWidth(min: YubaiSize.sidebarMinimumWidth, ideal: YubaiSize.sidebarIdealWidth, max: YubaiSize.sidebarMaximumWidth)
         } detail: {
-            NavigationStack(path: Binding(get: { tabPaths[store.destination] ?? NavigationPath() }, set: { tabPaths[store.destination] = $0 })) {
+            NavigationStack(path: Binding(get: { tabPaths[store.destination] ?? [] }, set: { tabPaths[store.destination] = $0 })) {
                 tabRoot(store.destination).navigationDestination(for: TabRoute.self) { tabDestination($0) }
             }.id(store.destination)
         }
@@ -1246,22 +1255,20 @@ struct RootView: View {
         }
         #else
         let generation = store.navigationRevision
+        let activeTab: Destination = store.destination == .insights ? .insights : .ledger
         ZStack {
-            ForEach(Destination.allCases) { destination in
-                let hidden = store.destination != destination
-                tabNavigation(destination, generation: generation, hidden: hidden)
-                    .opacity(hidden ? 0 : 1).allowsHitTesting(!hidden)
-                    .zIndex(hidden ? 0 : 1)
-            }
-        }.id(generation)
+            tabNavigation(activeTab, generation: generation)
+                .id("\(generation)-\(activeTab.rawValue)")
+        }
             .overlay(alignment: .bottom) { tabBarOverlay }
             .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
             .onChange(of: store.tabRouteRequest, initial: true) { _, route in
                 if let route { openTabRoute(route) }
             }
-            .onChange(of: store.butlerFocusID) { _, id in
+            .onChange(of: store.butlerFocusID, initial: true) { _, id in
                 guard id != nil, !store.locked else { return }
-                var path = NavigationPath(); path.append(TabRoute.todo); tabPaths[.ledger] = path
+                store.destination = .ledger
+                tabPaths[.ledger] = [.todo]
             }
             .onChange(of: store.locked) { _, locked in
                 if !locked, let id = store.pendingButlerTaskID { store.pendingButlerTaskID = nil; store.openButlerNotice(id) }
@@ -1304,18 +1311,16 @@ struct RootView: View {
         else { store.requestCaptureSheet(.addEntry) }
     }
 
-    private func tabNavigation(_ d: Destination, generation: UInt64, hidden: Bool) -> some View {
-        NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: {
-            guard generation == store.navigationRevision else { return }
+    private func tabNavigation(_ d: Destination, generation: UInt64) -> some View {
+        NavigationStack(path: Binding(get: { tabPaths[d] ?? [] }, set: {
+            guard generation == store.navigationRevision, store.destination == d else { return }
             tabPaths[d] = $0
         })) {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
-                .accessibilityHidden(hidden)
-                .navigationDestination(for: TabRoute.self) { tabDestination($0).accessibilityHidden(hidden) }
+                .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)
             .toolbar(.hidden, for: .tabBar)
             .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
-            .accessibilityHidden(hidden)
             .environment(\.isScrollEnabled, true)
             .scrollClipDisabled(false)
             .background(YubaiColor.canvas.ignoresSafeArea())
@@ -1326,7 +1331,10 @@ struct RootView: View {
             if store.current.activeEntries.contains(where: { $0.id == id }) { store.billCardID = id }
             else { store.error = "找不到账单。" }
         }
-        else { tabPaths[store.destination, default: NavigationPath()].append(route) }
+        else if route != .saving || tabPaths[store.destination]?.last != .saving {
+            // UIKit's scene delegate and SwiftUI can deliver the same saving link.
+            tabPaths[store.destination, default: []].append(route)
+        }
         store.tabRouteRequest = nil
     }
 

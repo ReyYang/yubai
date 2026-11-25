@@ -135,7 +135,17 @@ extension QuickEntryPrefill {
 }
 @MainActor final class HomeActionSceneDelegate: NSObject, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+        routeSavingURL(options.urlContexts)
         if let shortcut = options.shortcutItem { _ = HomeActionDelegate.route(shortcut) }
+    }
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        routeSavingURL(URLContexts)
+    }
+    private func routeSavingURL(_ contexts: Set<UIOpenURLContext>) {
+        guard let url = contexts.map(\.url).first(where: {
+            $0.scheme?.lowercased() == "yubai" && ["saving", "save"].contains($0.host?.lowercased() ?? "")
+        }) else { return }
+        AppStore.shared.handleCaptureURL(url)
     }
     func windowScene(_ windowScene: UIWindowScene, performActionFor shortcut: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
         completionHandler(HomeActionDelegate.route(shortcut))
