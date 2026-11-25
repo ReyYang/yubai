@@ -286,6 +286,7 @@ public struct EntrySaveInput: Equatable, Sendable {
     public var relatedEntryID: UUID?
     public var keepInFixedSavings: Bool
     public var preserveTime: Bool
+    public var recoveryParticipants: [RecoveryParticipant]? = nil
 
     public init(
         type: EntryType,
@@ -385,6 +386,47 @@ public enum EntrySaveMapper {
         return .monthly(amount)
     }
 
+    public static func edit(_ id: UUID, input: EntrySaveInput, in ledger: inout Ledger, now: Date) throws {
+        guard let original = ledger.entries.first(where: { $0.id == id && $0.deletedAt == nil }) else {
+            throw YubaiError.invalid("找不到账单。")
+        }
+        var input = input
+        input.preserveTime = true
+        input.repeatMonthly = false
+        let change = try makeChange(input, in: ledger, now: now)
+        guard case .addEntry(let draft)? = change.items.first else { throw YubaiError.invalid("无法编辑这笔账单。") }
+        var edited = original
+        edited.nature = draft.nature
+        edited.amount = draft.amount
+        edited.date = draft.date
+        edited.accountID = draft.accountID
+        edited.otherAccountID = draft.otherAccountID
+        edited.intoFixedSavings = draft.intoFixedSavings
+        edited.fromReserve = draft.fromReserve
+        edited.pendingRecovery = draft.pendingRecovery
+        edited.personalExpense = draft.personalExpense ?? (draft.nature == original.nature ? original.personalExpense : nil)
+        if edited.pendingRecovery != .split {
+            edited.recoveryParticipants = nil
+        } else if original.recoveryParticipants == nil {
+            edited.recoveryParticipants = draft.recoveryParticipants
+        }
+        edited.countsFromCycleStart = draft.countsFromCycleStart
+        edited.originalCurrency = draft.originalCurrency
+        edited.originalAmount = draft.originalAmount
+        edited.category = draft.category
+        edited.subcategory = draft.subcategory
+        edited.subcategoryUserEdited = true
+        if !input.purpose.isEmpty && input.purpose != original.displayTitle { edited.purpose = input.purpose }
+        if edited.nature != original.nature {
+            edited.relatedEntryID = nil
+            edited.planID = nil
+            edited.occurrence = nil
+            edited.rentID = nil
+            edited.rentPeriod = nil
+        }
+        try ManualBookkeeping.edit(edited, in: &ledger, now: now)
+    }
+
     public static func makeChange(_ input: EntrySaveInput, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
         guard let source = ledger.accounts.first(where: { $0.id == input.accountID }) else {
             throw YubaiError.invalid("先选择一个账户。")
@@ -467,6 +509,10 @@ public enum EntrySaveMapper {
                 draft.categoryUserEdited = true
                 draft.pendingRecovery = pendingRecovery
                 draft.personalExpense = myShare
+                if let myShare, myShare < cnyCents {
+                    draft.recoveryParticipants = input.recoveryParticipants
+                        ?? [RecoveryParticipant(name: "TA", amount: cnyCents - myShare)]
+                }
                 draft.originalCurrency = originalCurrency
                 draft.originalAmount = originalAmount
             }

@@ -8,6 +8,8 @@ public struct SpendingPart: Codable, Identifiable, Equatable, Sendable {
     public var name: String
     public var amount: Int64?
     public var share: Int?
+    /// A fixed budget for this part in a ledger with legacy percentage parts.
+    public var fixedAmountOverride: Int64?
     public var categories: [String]
     /// An explicit unassigned override must differ from nil (automatic category).
     public static let unassignedID = UUID(uuidString: "00000000-0000-0000-0000-000000000000")!
@@ -61,7 +63,7 @@ public enum SpendingParts {
         if entry.nature == .refund, let id = entry.relatedEntryID,
            let original = entriesByID.map({ $0[id] }) ?? ledger.entries.first(where: { $0.id == id }) { source = original }
         guard source.planID == nil, source.rentID == nil, !source.fromReserve else { return 0 }
-        return Finance.spendingAmount(entry, ledger: ledger)
+        return EntryRecovery.spendableAmount(entry, original: source, in: ledger)
     }
 
     public static func summary(_ ledger: Ledger, now: Date = Dates.now) -> SpendingPartsSummary {
@@ -70,7 +72,10 @@ public enum SpendingParts {
         let entriesByID = rows.contains(where: { $0.nature == .refund }) ? Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) }) : nil
         var spent: [UUID: Int64] = [:]; var total: Int64 = 0
         for entry in rows {
-            let value = flexibleAmount(entry, in: ledger, entriesByID: entriesByID); total += value
+            let source = entry.relatedEntryID.flatMap { entriesByID?[$0] } ?? entry
+            guard !(entry.nature == .refund && EntryRecovery.goesToReserve(original: source, cycleStart: funds.cycleStart)) else { continue }
+            let value = flexibleAmount(entry, in: ledger, entriesByID: entriesByID)
+            total += value
             if value != 0, let part = part(for: entry, in: ledger, entriesByID: entriesByID) { spent[part.id, default: 0] += value }
         }
         let base = max(0, funds.available + total)
@@ -78,7 +83,8 @@ public enum SpendingParts {
             abs($0.timeIntervalSince(funds.cycleStart)) <= 36 * 3600
         } == true
         let parts = ledger.spendingParts.map { part in
-            let allowance = ledger.partsMode == .amount ? max(0, part.amount ?? 0) : fraction(base, share: part.share ?? 0)
+            let allowance = ledger.partsMode == .amount ? max(0, part.amount ?? 0)
+                : part.fixedAmountOverride ?? fraction(base, share: part.share ?? 0)
             return SpendingPartBalance(part: part, baseAllowance: allowance,
                 allowance: allowance + (carryApplies ? ledger.partCarry[part.id, default: 0] : 0), spent: spent[part.id, default: 0])
         }

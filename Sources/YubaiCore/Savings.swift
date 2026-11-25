@@ -47,13 +47,13 @@ extension Ledger {
     }
 
     public func fixedSavingsTotal(now: Date = Dates.now) -> Int64 {
-        (fixedSavings ?? 0) + migratedSavingCredit + fixedSavingsFromIncome(now: now) - reserveSpent(now: now) - reserveCovered(now: now) + savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } - carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount }
+        (fixedSavings ?? 0) + migratedSavingCredit + fixedSavingsFromIncome(now: now) + recoveryReserveCredit(now: now) - reserveSpent(now: now) - reserveCovered(now: now) + savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } - carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount }
     }
 
     /// Reverse all derived income and withdrawals to keep the stored base
     /// nonnegative; editing/deleting source entries reverses their contribution.
     public mutating func setFixedSavingsTotal(_ total: Int64, now: Date = Dates.now) {
-        let base = max(0, min(Money.limit + migratedSavingCredit, total) - fixedSavingsFromIncome(now: now) + reserveSpent(now: now) + reserveCovered(now: now) - savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } + carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount })
+        let base = max(0, min(Money.limit + migratedSavingCredit, total) - fixedSavingsFromIncome(now: now) - recoveryReserveCredit(now: now) + reserveSpent(now: now) + reserveCovered(now: now) - savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } + carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount })
         migratedSavingCredit = min(migratedSavingCredit, base)
         fixedSavings = base - migratedSavingCredit
     }

@@ -12,13 +12,14 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var nature: Nature {
         didSet {
             if nature != .income && nature != .transfer { intoFixedSavings = false }
-            if nature != .expense { fromReserve = false; pendingRecovery = nil; personalExpense = nil }
+            if nature != .expense { fromReserve = false; pendingRecovery = nil; personalExpense = nil; recoveryParticipants = nil }
             if nature != .income { countsFromCycleStart = nil }
         }
     }
     public var intoFixedSavings = false { didSet { if nature != .income && nature != .transfer { intoFixedSavings = false } } }
     public var fromReserve = false { didSet { if nature != .expense { fromReserve = false } } }
     public var pendingRecovery: PendingRecovery? { didSet { if nature != .expense { pendingRecovery = nil } } }
+    public var recoveryParticipants: [RecoveryParticipant]?
     public var personalExpense: Int64? { didSet { if nature != .expense { personalExpense = nil } } }
     public var countsFromCycleStart: Date? { didSet { if nature != .income { countsFromCycleStart = nil } } }
     public var originalCurrency: BillCurrency?
@@ -45,7 +46,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         self.originalAmount = originalAmount
     }
     private enum CodingKeys: String, CodingKey {
-        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, pendingRecovery, personalExpense, countsFromCycleStart, originalCurrency, originalAmount, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
+        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, pendingRecovery, recoveryParticipants, personalExpense, countsFromCycleStart, originalCurrency, originalAmount, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -57,6 +58,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         let reserve = try c.decodeIfPresent(Bool.self, forKey: .fromReserve) ?? false
         fromReserve = nature == .expense && reserve
         pendingRecovery = nature == .expense ? try c.decodeIfPresent(PendingRecovery.self, forKey: .pendingRecovery) : nil
+        recoveryParticipants = try c.decodeIfPresent([RecoveryParticipant].self, forKey: .recoveryParticipants)
         personalExpense = nature == .expense ? try c.decodeIfPresent(Int64.self, forKey: .personalExpense) : nil
         countsFromCycleStart = nature == .income ? try c.decodeIfPresent(Date.self, forKey: .countsFromCycleStart) : nil
         originalCurrency = try c.decodeIfPresent(BillCurrency.self, forKey: .originalCurrency)
@@ -76,6 +78,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         if intoFixedSavings { try c.encode(true, forKey: .intoFixedSavings) }
         if fromReserve { try c.encode(true, forKey: .fromReserve) }
         try c.encodeIfPresent(pendingRecovery, forKey: .pendingRecovery)
+        try c.encodeIfPresent(recoveryParticipants, forKey: .recoveryParticipants)
         try c.encodeIfPresent(personalExpense, forKey: .personalExpense)
         try c.encodeIfPresent(countsFromCycleStart, forKey: .countsFromCycleStart)
         try c.encodeIfPresent(originalCurrency, forKey: .originalCurrency)
@@ -445,6 +448,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 e.intoFixedSavings = draft.intoFixedSavings
                 e.fromReserve = draft.fromReserve
                 e.pendingRecovery = draft.pendingRecovery
+                e.recoveryParticipants = draft.recoveryParticipants
                 if e.nature == .expense, let personal = draft.personalExpense { e.personalExpense = personal }
                 e.countsFromCycleStart = draft.countsFromCycleStart
                 e.originalCurrency = draft.originalCurrency
