@@ -41,6 +41,9 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
 
     private func openInbox() {
         openAssistantHub()
+        XCTAssertTrue(element("yubaiScroll").waitForExistence(timeout: 5))
+        // The scripted suggestion is enqueued by the asynchronous cadence run.
+        XCTAssertTrue(element("openButlerInbox").waitForExistence(timeout: 15))
         tap("openButlerInbox")
     }
 
@@ -357,7 +360,9 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("emptyMemories").exists)
     }
     func testEmptySavingWishBillsBudgetAndFrequentActionsAreConnected() {
-        launch("v47-c-empty"); XCTAssertFalse(element("openSaving").exists); app.open(URL(string: "yubai://saving")!); XCTAssertTrue(element("emptyState_saving").exists)
+        launch("v47-c-empty"); XCTAssertFalse(element("openSaving").exists)
+        openAssistantHub(); tap("openSaving")
+        XCTAssertTrue(element("emptyState_saving").waitForExistence(timeout: 5))
         XCTAssertFalse(element("reserveTotal").exists)
         XCTAssertFalse(element("takeSavings").exists)
         XCTAssertTrue(element("savingFirstRule").exists)

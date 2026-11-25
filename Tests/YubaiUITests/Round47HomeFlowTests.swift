@@ -379,7 +379,10 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     func testSettingsLivesOnHomeAndTheHubStillReachesExistingPages() {
         launch()
         XCTAssertTrue(element("openSettings").exists)
-        tap("tab_insights"); XCTAssertFalse(element("openSettings").exists)
+        XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "rootHeaderRegion").count, 1)
+        tap("tab_insights")
+        XCTAssertTrue(element("tab_insights").isSelected)
+        XCTAssertTrue(waitForDisappearance(element("openSettings")))
         tap("tab_ledger"); tap("openSettings")
         XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
         tap("openAssistantHub")
@@ -474,11 +477,15 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
 
     func testFirstEntryLeavesSalaryPendingAndOffersIncomeCapture() {
-        launch("v47-first"); add("28")
+        launch("v47-first")
+        XCTAssertTrue(element("firstOpenScene").exists)
+        add("28")
+        XCTAssertFalse(element("firstOpenScene").exists)
         XCTAssertTrue(app.staticTexts["工资未到账"].waitForExistence(timeout: 5))
         XCTAssertTrue(element("recordSalary").isHittable)
         tap("recordSalary")
         XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("entryNature_income").isSelected)
         XCTAssertFalse(app.staticTexts["工资未到账"].isHittable)
     }
     func testCancellingSalaryCaptureLeavesSalaryPendingAfterRelaunch() {

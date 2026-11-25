@@ -103,16 +103,27 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertEqual(element("ledgerWaterBar").value as? String, "花得比日子快")
     }
     func testSavingLessStopsAtZeroWithoutRescueCard() {
-        launch("v47r-less"); expect("availableFunds", contains: "¥0.00"); expect("ledgerStatus", contains: "这个月少攒 ¥200.00")
-        XCTAssertFalse(element("deficitRescueCard").exists)
-        formula(); expect("formulaRow_saving", contains: "原来 2,000.00 · 少攒 200.00"); expect("formulaResult", contains: "¥0.00")
+        launch("v47r-less")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥0.00")
+        XCTAssertTrue(element("fundsFormula").label.contains("还能花"))
+        XCTAssertFalse(element("coverFromReserve").exists)
+        formula()
+        expect("formulaRow_saving", contains: "1,800.00")
+        XCTAssertEqual(element("formulaResult").label, "0.00")
     }
     func testDeficitNamesBillAndRescueIsUndoable() {
-        launch("v47r-deficit"); expect("availableFunds", contains: "¥350.00")
-        XCTAssertTrue(app.staticTexts["缺口"].exists); XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '房租'")).firstMatch.exists)
-        expect("coverFromReserve", contains: "拿出来用 ¥350.00"); XCTAssertFalse(element("dismissHomeCard").exists)
-        tap("coverFromReserve"); expect("availableFunds", contains: "¥0.00"); gone("deficitRescueCard")
-        tap("undoLastChange"); expect("availableFunds", contains: "¥350.00"); XCTAssertTrue(element("deficitRescueCard").exists)
+        launch("v47r-deficit")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
+        expect("coverFromReserve", contains: "补上 350.00")
+        formula(); tap("formulaRow_bills")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '房租'")).firstMatch.waitForExistence(timeout: 5))
+        backToHome()
+        tap("coverFromReserve")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥0.00")
+        gone("coverFromReserve")
+        tap("undoLastChange")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
+        expect("coverFromReserve", contains: "补上 350.00")
     }
     func testDeficitRescueScrollsAboveCompactChromeBeforeTapInAllAppearances() {
         for mode in [(false, false, false), (true, false, false), (true, true, false), (true, false, true), (true, true, true)] {
@@ -155,10 +166,15 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         app.terminate(); launchApp(app); gone("deficitRescueCard"); expect("availableFunds", contains: "¥350.00")
     }
     func testDeficitFormulaShowsZeroSavingAndPositiveDeficit() {
-        launch("v47r-deficit"); formula(); expect("formulaRow_saving", contains: "这个月攒不了"); expect("formulaResult", contains: "¥350.00")
-        XCTAssertFalse(element("formulaResult").label.contains("−"))
-        tap("formulaRow_saving"); expect("formulaEditResult", contains: "改完缺口"); expect("formulaEditResult", contains: "350.00")
-        tap("amountSheetCancel")
+        launch("v47r-deficit")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
+        formula()
+        expect("formulaRow_saving", contains: "先攒，0.00")
+        XCTAssertEqual(element("formulaResult").label, "350.00")
+        tap("formulaRow_saving")
+        XCTAssertTrue(element("savingsPage").waitForExistence(timeout: 5))
+        backToHome()
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
     }
     func testKnownSalaryWithoutPostedIncomeUsesSpentFallback() {
         launch("v47r-no-income"); XCTAssertTrue(app.staticTexts["这个月花了"].exists)
@@ -447,8 +463,10 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     func testFloorPreviewIsConditionalAndReplacesCurrentGap() {
         launch("v47r-reconcile-floor"); tap("tab_yubai"); tap("openAccounts"); tap("reconcileAll")
         reconcile("9774"); expect("reconcileSpendableAfter", contains: "1,464.00"); expect("reconcileApply", contains: "−2,400.00")
-        tap("reconcileApply"); backToHome(); expect("availableFunds", contains: "¥1,464.00")
+        tap("reconcileApply"); backToHome()
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥1,464.00")
         formula(); expect("formulaRow_balanceGap", contains: "400.00")
+        XCTAssertEqual(element("formulaResult").label, "1,464.00")
     }
     func testNextPeriodYearlyAndQuarterlyBillCardsDismissOrOpenBill() {
         for script in ["v47r-next-bill", "v47r-next-quarterly"] {

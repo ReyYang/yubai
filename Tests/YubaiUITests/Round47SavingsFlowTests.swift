@@ -50,6 +50,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     private func back() { tap("BackButton") }
     private func saved() {
         app.open(URL(string: "yubai://saving")!)
+        XCTAssertTrue(element("savingTabScroll").waitForExistence(timeout: 10))
         XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5))
     }
     private func gone(_ id: String) {
