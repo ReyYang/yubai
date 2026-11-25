@@ -40,7 +40,7 @@ struct DesignSystemGalleryView: View {
     enum IsolatedComponent: String {
         case sheet = "Sheet", categoryPicker = "CategoryPicker", entryPills = "EntryPills"
         case hero = "Hero", dayBars = "DayBars", budgetRow = "BudgetRow", listRow = "ListRow"
-        case tabBar = "TabBar", alertCard = "AlertCard", floatingCard = "FloatingCard"
+        case tabBar = "TabBar", alertCard = "AlertCard", floatingCard = "FloatingCard", segmented = "Segmented"
         case effectLine = "EffectLine", keypad = "Keypad", icon = "Icon", categoryPanel = "CategoryPanel"
     }
     let section: Section?
@@ -122,7 +122,7 @@ struct DesignSystemGalleryView: View {
         case .keypad: DSKeypad(pressedKey: "5")
         case .icon: iconSpecimens
         case .categoryPanel: EntryCategoryGallery()
-        case .hero, .dayBars, .budgetRow, .listRow, .tabBar, .alertCard, .floatingCard:
+        case .hero, .dayBars, .budgetRow, .listRow, .tabBar, .alertCard, .floatingCard, .segmented:
             homeSpecimen(component).frame(maxWidth: HomeSpec.galleryWidth, alignment: .leading)
                 .environment(\.dsAnimationsEnabled, false)
         }
@@ -174,6 +174,9 @@ struct DesignSystemGalleryView: View {
                 DSAlertCard(title: "衣服比上期多 181%", detail: "", value: "899.00")
                 DSAlertCard(title: "上期留下", detail: "已转入机动余钱", value: "+1,204.30", tone: .positive)
             }.frame(maxWidth: HomeSpec.galleryContentWidth)
+        case .segmented:
+            DSSegmented(options: ["支出", "收入"], selection: $selectedSegment)
+                .frame(maxWidth: HomeSpec.galleryContentWidth)
         case .floatingCard:
             VStack(alignment: .trailing, spacing: DS.Space.s20) {
                 DSFloatingCard(name: "换手机", amount: "−6,999.00", impact: "走机动余钱 · 还剩",

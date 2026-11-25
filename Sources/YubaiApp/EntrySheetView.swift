@@ -858,31 +858,42 @@ private struct EntryKeypadTrayView: View {
     let model: EntrySheetViewModel
     let safeBottom: CGFloat
     let save: () -> Void
+    var body: some View {
+        let _ = EntryRenderDiagnostics.hit(.keypad)
+        DSKeypad(canSave: model.draft.expression.canSave, onKey: model.pressAmountKey, onSave: save)
+            .padding(.bottom, safeBottom)
+            .frame(minHeight: max(EntrySpec.trayHeight, EntrySpec.keypadGridHeight + DS.Space.s12 + safeBottom), alignment: .top)
+            .background(DS.Color.tray)
+    }
+}
+
+struct DSKeypad: View {
+    var pressedKey: String?
+    var canSave = true
+    var onKey: (String) -> Void = { _ in }
+    var onSave: () -> Void = {}
     private let keys = ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
 
     var body: some View {
-        let _ = EntryRenderDiagnostics.hit(.keypad)
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: DSLayout.keypadColumns), spacing: DS.Space.s8) {
             ForEach(keys, id: \.self) { key in
                 if key == "⌫" {
-                    EntryBackspaceKey { model.pressAmountKey(key) }
+                    EntryBackspaceKey { onKey(key) }
                 } else {
                     Button {
-                        if key == "记下" { save() } else { model.pressAmountKey(key) }
+                        if key == "记下" { onSave() } else { onKey(key) }
                     } label: {
-                        EntryKeyLabel(key: key)
+                        EntryKeyLabel(key: key).scaleEffect(key == pressedKey ? DSMotion.Press.scale : 1)
                     }
                     .buttonStyle(EntryTactileButtonStyle())
                     .accessibilityLabel(spoken(key))
                     .accessibilityHint(key == "记下" ? "保存并关闭录入面板" : "输入" + spoken(key))
                     .accessibilityIdentifier(key == "记下" ? "saveQuickEntry" : "keypad_" + (key == "−" ? "-" : key))
-                    .disabled(key == "记下" && !model.draft.expression.canSave)
+                    .disabled(key == "记下" && !canSave)
                 }
             }
         }
         .padding(DS.Space.s8)
-        .padding(.bottom, safeBottom)
-        .frame(minHeight: max(EntrySpec.trayHeight, EntrySpec.keypadGridHeight + DS.Space.s12 + safeBottom), alignment: .top)
         .background(DS.Color.tray)
     }
 

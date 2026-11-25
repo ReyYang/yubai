@@ -115,8 +115,10 @@ private struct BudgetPage: View {
             }
             .contentMargins(.horizontal, DS.Space.s20)
             .contentMargins(.bottom, DS.Space.s20)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("formulaPage")
         }.background(DS.Color.bg.ignoresSafeArea())
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier(editing ? "spendingPartsPage" : "budgetDetail")
     }
 
@@ -184,13 +186,15 @@ private struct BudgetPage: View {
                         Text(HomeDisplay.money(abs(row.amount), hidden: hidden)).dsText(HomeSpec.headerNumber)
                             .foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                             .frame(minWidth: HomeSpec.formulaAmount, alignment: .trailing)
-                    }.frame(minHeight: DS.Size.iconTile).contentShape(Rectangle())
+                    }.frame(minHeight: DS.Size.iconTile)
+                        .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin).contentShape(Rectangle())
                 }.buttonStyle(EntryTactileButtonStyle())
                     .accessibilityLabel(formulaLabel(row.kind) + "，" + (hidden ? "金额已隐藏" : Money.text(row.amount, currency: false)))
                     .accessibilityIdentifier("formulaRow_" + row.kind.rawValue)
             }
         }.padding(.vertical, HomeSpec.heroLabelGap).padding(.horizontal, DS.Space.s16)
-            .dsSurface(DS.Color.raised, radius: DS.Radius.m).accessibilityIdentifier("formulaCard")
+            .dsSurface(DS.Color.raised, radius: DS.Radius.m)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
     }
 
     private func formulaLabel(_ kind: SpendableRow.Kind) -> String {
@@ -274,6 +278,7 @@ private struct BudgetPage: View {
                     .padding(.horizontal, DS.Space.s12)
                     .frame(minWidth: HomeSpec.amountPillWidth, minHeight: HomeSpec.amountPill, alignment: .trailing)
                     .dsPill(DS.Color.surface)
+                    .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin).contentShape(Rectangle())
             }.buttonStyle(EntryTactileButtonStyle()).accessibilityLabel(row.name + " 预算")
                 .accessibilityValue(HomeDisplay.money(row.baseAmount, hidden: hidden))
                 .accessibilityIdentifier("editBudget_" + row.name)
@@ -307,6 +312,7 @@ private struct BudgetKeypadOverlay: View {
     @State private var motion = EntrySheetMotion(settled: false)
     @State private var expression: EntryAmountExpression
     @State private var replaceAmount = true
+    @State private var saves = 0
 
     init(target: BudgetAmountTarget, close: @escaping () -> Void, commit: @escaping (Int64?) -> Bool) {
         self.target = target
@@ -323,6 +329,7 @@ private struct BudgetKeypadOverlay: View {
                     .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: close))
             }.ignoresSafeArea(.container, edges: .bottom)
         }.accessibilityAddTraits(.isModal).accessibilityAction(.escape, cancel)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("budgetKeypad")
     }
 
@@ -334,7 +341,7 @@ private struct BudgetKeypadOverlay: View {
                 HStack {
                     Button(action: cancel) {
                         DSIconView(icon: .close, size: DS.Size.icon, color: DS.Color.ink3)
-                    }.dsPressStyle().accessibilityLabel("取消")
+                    }.dsPressStyle().accessibilityLabel("取消").accessibilityIdentifier("cancelBudgetKeypad")
                     Text(target.title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).frame(maxWidth: .infinity)
                     if target.id != nil {
                         Button { save(nil) } label: {
@@ -349,7 +356,10 @@ private struct BudgetKeypadOverlay: View {
             }.contentShape(Rectangle())
                 .gesture(DragGesture().onChanged { motion.drag($0) }
                     .onEnded { motion.release($0, reduced: reduced, onClose: close) })
-            DSKeypad(onKey: press)
+            DSKeypad(canSave: expression.canSave, onKey: press, onSave: {
+                if let amount = expression.evaluatedCents { save(amount) }
+            }).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
+                .sensoryFeedback(DSMotion.Haptic.save, trigger: saves)
         }.padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s12)
             .padding(.bottom, max(DS.Space.s12, bottom))
             .dsSurface(DS.Color.raised, radius: DS.Radius.sheet)
@@ -359,14 +369,11 @@ private struct BudgetKeypadOverlay: View {
 
     private func save(_ amount: Int64?) {
         guard !motion.closing, commit(amount) else { return }
+        if amount != nil { saves += 1 }
         motion.close(reduced: reduced, sealed: true, onClose: close)
     }
 
     private func press(_ key: String) {
-        if key == "记下" {
-            if let amount = expression.evaluatedCents, expression.canSave { save(amount) }
-            return
-        }
         if replaceAmount && (key.first?.isNumber == true || key == ".") { expression.reset() }
         replaceAmount = false
         expression.press(key)

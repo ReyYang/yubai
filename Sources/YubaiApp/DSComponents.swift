@@ -459,38 +459,6 @@ struct DSEntryPills: View {
     }
 }
 
-struct DSKeypad: View {
-    var pressedKey: String?
-    var onKey: (String) -> Void = { _ in }
-    private let keys = ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
-    @State private var saves = 0
-    var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: DSLayout.keypadColumns), spacing: DS.Space.s8) {
-            ForEach(keys, id: \.self) { key in
-                Button {
-                    onKey(key)
-                    if key == "记下" { saves += 1 }
-                } label: {
-                    Group {
-                        if key == "⌫" {
-                            DSIconView(icon: .backspace, size: 24, color: DS.Color.ink)
-                        } else {
-                            Text(key).dsText(key == "记下" ? DS.Font.tTitle : DS.Font.nKey)
-                                .foregroundStyle(key == "记下" ? DS.Color.onAccent : DS.Color.ink)
-                        }
-                    }
-                        .frame(maxWidth: .infinity, minHeight: DS.Size.keyH)
-                        .dsSurface(key == "记下" ? DS.Color.accent : (["⌫", "+", "−"].contains(key) ? DS.Color.keyFn : DS.Color.key), radius: DS.Radius.s)
-                        .dsShadow(DS.Shadow.key)
-                }.dsPressStyle()
-                    .scaleEffect(key == pressedKey ? DSMotion.Press.scale : 1)
-                    .accessibilityLabel(key == "⌫" ? "退格" : key)
-            }
-        }.padding(DS.Space.s8).background(DS.Color.tray).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
-            .sensoryFeedback(DSMotion.Haptic.save, trigger: saves)
-    }
-}
-
 struct DSCategoryPicker: View {
     struct Category: Identifiable {
         let id: String

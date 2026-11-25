@@ -34,10 +34,10 @@ struct BillFloatingCardOverlay: View {
                 .onTapGesture { close() }.accessibilityHidden(true)
             ViewThatFits(in: .vertical) {
                 bill.fixedSize(horizontal: false, vertical: true)
+                    .modifier(BillDragPosition(reduced: reduced, enabled: shown && !closing, close: { close() }))
                 ScrollView { bill }.scrollBounceBehavior(.basedOnSize)
             }
             .padding(DS.Space.s16)
-            .modifier(BillDragPosition(reduced: reduced, enabled: shown && !closing, close: { close() }))
             .scaleEffect(shown || reduced ? 1 : DSMotion.Role.floatCard.initialScale)
             .opacity(shown ? 1 : 0)
         }.accessibilityAddTraits(.isModal).accessibilityAction(.escape) { close() }
@@ -84,7 +84,7 @@ struct BillFloatingCardOverlay: View {
     }
 
     private func receive(_ person: UUID?) {
-        guard let account = ManualBookkeeping.defaultAccount(in: store.current, nature: .refund) else {
+        guard let account = EntryRecovery.defaultAccount(for: entry, in: store.current, now: store.financialNow) else {
             store.error = "请先添加收款账户。"
             return
         }
@@ -228,6 +228,7 @@ private struct BillMenuCard: View {
                        effectTail: impact.tail, foreign: foreign, route: route, recovery: recovery,
                        recategorizationEnabled: canRecategorize)
             .onAppear { menu = menuInitiallyOpen }
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("billFloatingCard")
     }
 }
@@ -276,18 +277,19 @@ private struct BillRecoveryCard: View {
     }
 
     private func personRow(_ person: EntryRecovery.Person) -> some View {
-        HStack(spacing: DS.Space.s8) {
+        let pending = person.receipt == nil && !status.isSettled
+        return HStack(spacing: DS.Space.s8) {
             Text(person.participant.name).dsText(DS.Font.tSubStrong).lineLimit(1)
-                .foregroundStyle(person.receipt == nil ? DS.Color.warnInk : DS.Color.accentInk)
+                .foregroundStyle(pending ? DS.Color.warnInk : DS.Color.accentInk)
                 .frame(width: HomeSpec.tile32, height: HomeSpec.tile32)
-                .dsPill(person.receipt == nil ? DS.Color.raised : DS.Color.accentSoft)
+                .dsPill(pending ? DS.Color.raised : DS.Color.accentSoft)
             VStack(alignment: .leading, spacing: HomeSpec.heroLabelGap) {
                 Text(HomeDisplay.money(person.participant.amount, hidden: hidden))
                     .dsText(DS.Font.tBody).fontWeight(.semibold).monospacedDigit().foregroundStyle(DS.Color.ink)
-                Text(person.receipt.map(receiptLabel) ?? "待收回").dsText(DS.Font.tCaption)
-                    .foregroundStyle(person.receipt == nil ? DS.Color.warnInk : DS.Color.accentInk)
+                Text(person.receipt.map(receiptLabel) ?? (pending ? "待收回" : "已收回")).dsText(DS.Font.tCaption)
+                    .foregroundStyle(pending ? DS.Color.warnInk : DS.Color.accentInk)
             }.dsFillWidth()
-            if person.receipt == nil {
+            if pending {
                 action("收到", height: DS.Size.iconTile) { receive(person.id) }
                     .accessibilityLabel(person.participant.name + " 收到")
             } else {
@@ -303,6 +305,7 @@ private struct BillRecoveryCard: View {
                 .padding(.horizontal, DS.Space.s16)
                 .frame(maxWidth: fullWidth ? .infinity : nil, minHeight: height)
                 .dsSurface(DS.Color.raised, radius: DS.Radius.s)
+                .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin).contentShape(Rectangle())
         }.buttonStyle(EntryTactileButtonStyle())
     }
 }

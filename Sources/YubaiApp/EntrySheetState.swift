@@ -223,8 +223,11 @@ struct EntrySheetDraft: Equatable {
 
     func account(_ id: UUID?) -> Account? { ledger.accounts.first { $0.id == id } }
     func accounts(destination: Bool) -> [Account] {
-        ledger.accounts.filter { account in
-            guard !account.archived else { return false }
+        let original = editingID.flatMap { id in ledger.entries.first { $0.id == id } }
+        let originalID = destination ? original?.otherAccountID : original?.accountID
+        let selectedID = destination ? draft.destinationID : draft.accountID
+        return EntrySaveMapper.selectableAccounts(in: ledger, keeping: originalID).filter { account in
+            if account.id == originalID && account.id == selectedID { return true }
             if destination {
                 guard draft.isRoute, account.id != draft.accountID else { return false }
                 return draft.type != .deposit || [.investment, .bank, .cash].contains(account.kind)

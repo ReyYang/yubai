@@ -35,7 +35,7 @@ enum HomeFixture: Equatable {
     var now: Date {
         switch self {
         case .home(.empty), .home(.nopay): Self.day(10, time: "22:00")
-        case .home(.worst): Dates.parse("2025-12-08 22:00")!
+        case .home(.worst): Dates.parse("2025-12-09 22:00")!
         case .bill(.income, _): Dates.parse("2025-12-09 22:00")!
         default: Self.day(23, time: "22:00")
         }
@@ -44,6 +44,16 @@ enum HomeFixture: Equatable {
     func shows(_ entry: Entry) -> Bool {
         guard case .home = self else { return true }
         return ![Self.dailySource, Self.formulaSource].contains(entry.source)
+    }
+
+    // The canvas has independent stress-test rows and chart samples for this variant.
+    private static let stressSource = "大额样例"
+
+    func chartLedger(from ledger: Ledger) -> Ledger {
+        guard self == .home(.worst) else { return ledger }
+        var samples = ledger
+        samples.entries.removeAll { $0.source == Self.stressSource }
+        return samples
     }
 
     private static let dailySource = "日线样例"
@@ -107,8 +117,8 @@ enum HomeFixture: Equatable {
         }
 
         func spend(_ name: String, _ amount: Int64, _ category: String, _ date: Date,
-                   on account: Account? = nil, reimbursable: Bool = false) {
-            _ = add(name, amount, category, date, account: account) {
+                   on account: Account? = nil, reimbursable: Bool = false, source: String = "手动") {
+            _ = add(name, amount, category, date, account: account, source: source) {
                 if reimbursable { $0.pendingRecovery = .reimbursement }
             }
         }
@@ -191,7 +201,7 @@ enum HomeFixture: Equatable {
             case .over: daily = [72_000, 81_800, 78_000, 116_500, 77_600, 59_800, 84_000, 91_200, 75_500, 128_460, 68_800, 76_300, 54_310, 36_280]
             case .nopay: daily = [12_860]
             case .empty: daily = [0]
-            case .worst: daily = usual + [0, 0, 1_299_900, 3_000, 4_000, 2_000, 0, 0, 0, 0, 0, 0, 0, 38_820, 1_550]
+            case .worst: daily = usual + [0, 0, 1_299_900, 3_000, 4_000, 2_000, 0, 0, 0, 0, 0, 0, 0, 0, 38_820, 1_550]
             default: break
             }
 
@@ -202,15 +212,15 @@ enum HomeFixture: Equatable {
                 addSalary(1_850_000, source: "手动")
                 _ = add("先攒", 500_000, "内部移动", Self.day(10), nature: .investBuy, destination: fund)
             case .worst:
-                spend("星巴克臻选上海烘焙工坊（南京西路店）", 6_800, "咖啡", now, reimbursable: true)
-                spend("iPhone", 1_299_900, "数码与电子产品", now.addingTimeInterval(-1), on: credit)
-                _ = add("成田机场免税店", 750_500, "购物", now.addingTimeInterval(-2), account: credit) {
+                spend("星巴克臻选上海烘焙工坊（南京西路店）", 6_800, "咖啡", now, reimbursable: true, source: Self.stressSource)
+                spend("iPhone", 1_299_900, "数码与电子产品", now.addingTimeInterval(-1), on: credit, source: Self.stressSource)
+                _ = add("成田机场免税店", 750_500, "购物", now.addingTimeInterval(-2), account: credit, source: Self.stressSource) {
                     $0.originalCurrency = .jpy
                     $0.originalAmount = 15_800_000
                     $0.pendingRecovery = .split
                     $0.personalExpense = 375_250
                 }
-                spend("打", 1, "交通", now.addingTimeInterval(-3))
+                spend("打", 1, "交通", now.addingTimeInterval(-3), source: Self.stressSource)
                 _ = add("年终奖", 100_000_000, "工资", Dates.parse("2025-09-30")!, nature: .income)
             default:
                 if mode != .search {
@@ -253,7 +263,7 @@ enum HomeFixture: Equatable {
             for (index, desired) in daily.enumerated() {
                 let date = Dates.addDays(index, to: start)
                 if date > now { break }
-                let posted = ledger.entries.filter { Dates.day($0.date) == date && $0.nature == .expense }.reduce(0) { $0 + $1.amount }
+                let posted = ledger.entries.filter { Dates.day($0.date) == date && $0.nature == .expense && $0.source != Self.stressSource }.reduce(0) { $0 + $1.amount }
                 var balance = max(0, Int64(desired) - posted)
                 for category in remaining.indices where balance > 0 && remaining[category] > 0 {
                     let value = min(balance, remaining[category])

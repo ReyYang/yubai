@@ -12,6 +12,11 @@ struct YubaiTabView: View {
     var body: some View {
         Page(spacing: YubaiSpace.space12, topPadding: YubaiSpace.space8, identifier: "yubaiScroll", rootTab: .yubai) {
             askArea
+            if !store.inboxItems.isEmpty {
+                Card(style: .list) {
+                    destination(.todo, "待办", detail: "\(store.inboxItems.count) 件", id: "openButlerInbox")
+                }
+            }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
                     paydayEntry

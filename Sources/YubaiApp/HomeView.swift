@@ -136,6 +136,7 @@ private struct HomePage: View {
                         .padding(.bottom, toastClearance)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("entriesScroll")
                 .onChange(of: scrollRequest) {
                     cancelSearch()
@@ -163,9 +164,10 @@ private struct HomePage: View {
     private var period: SpendableBreakdown { Finance.spendableBreakdown(ledger, now: now) }
     private var hero: some View {
         let period = period
-        let series = DailySpending(in: ledger, period: period)
+        let chartLedger = fixture?.chartLedger(from: ledger) ?? ledger
+        let series = DailySpending(in: chartLedger, period: period)
         let bars = HomeDisplay.bars(series, fixture: fixture != nil)
-        let amount = period.income == 0 ? 0 : period.rawR < 0 ? -period.rawR : period.available
+        let amount = period.income > 0 && period.rawR < 0 ? -period.rawR : period.available
         let over = period.income > 0 && period.rawR < 0
         let days = HomeDisplay.daysLeft(period)
         let daily = Int64((Double(period.available) / Double(days)).rounded())
@@ -361,7 +363,8 @@ struct HomeTopBar: View {
                 DSIconView(icon: .settings, size: HomeSpec.navIcon, color: DS.Color.ink)
                     .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
             }.dsPressStyle().accessibilityLabel("设置").accessibilityIdentifier("openSettings")
-        }.padding(.horizontal, DS.Space.s20).accessibilityIdentifier("rootHeaderRegion")
+        }.padding(.horizontal, DS.Space.s20)
+            .accessibilityElement(children: .contain).accessibilityIdentifier("rootHeaderRegion")
     }
 }
 
@@ -379,10 +382,12 @@ private struct HomeStatus: View {
                     Text(action).dsText(HomeSpec.smallStrong).monospacedDigit().foregroundStyle(DS.Color.ink)
                         .padding(.horizontal, DS.Space.s12).frame(height: HomeSpec.statusButton)
                         .dsSurface(DS.Color.raised, radius: DS.Radius.s)
+                        .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin).contentShape(Rectangle())
                 }.buttonStyle(EntryTactileButtonStyle()).accessibilityIdentifier(identifier)
             }
         }.padding(.leading, DS.Space.s12).padding(.trailing, HomeSpec.gap6)
-            .frame(minHeight: HomeSpec.statusHeight).dsSurface(DS.Color.warnSoft, radius: DS.Radius.s)
+            .frame(height: HomeSpec.statusHeight).dsSurface(DS.Color.warnSoft, radius: DS.Radius.s)
+            .frame(minHeight: action == nil ? nil : DS.Size.tapMin)
             .padding(.top, DS.Space.s12)
     }
 }

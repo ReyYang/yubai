@@ -258,7 +258,7 @@ struct TodoView: View {
     private var ids: [String] { items.map(\.id) }
     private var top: HomeTask? { deck.ids.first.flatMap { id in items.first { $0.id == id } } }
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "butlerInboxScroll") {
             if let top {
                 HomeTaskCard(item: top)
                     .id(top.id)

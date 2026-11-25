@@ -75,7 +75,7 @@ enum HomeRenderCounts {
         #if DEBUG
         guard enabled else { return }
         counts[body, default: 0] += 1
-        logger.debug("\(body, privacy: .public)=\(counts[body, default: 0], privacy: .public)")
+        logger.log("\(body, privacy: .public)=\(counts[body, default: 0], privacy: .public)")
         #endif
     }
 }
