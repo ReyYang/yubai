@@ -397,4 +397,56 @@ final class EntrySheetLogicTests: XCTestCase {
         XCTAssertEqual(expression.evaluatedCents, 99_999_999_999)
     }
 
+    func testEntryEffectShowsOnlyMoneySetAsideOrRecovered() throws {
+        var ledger = makeLedger()
+        ledger.fixedSavings = 842_000
+        let bank = ledger.accounts[0]
+        let wallet = ledger.accounts[1]
+        let fund = ledger.accounts[3]
+        var input = EntrySaveInput(type: .expense, amountCents: 699_900, category: "购物",
+                                   accountID: bank.id, date: now)
+        func effect(_ input: EntrySaveInput) -> EntryEffect? {
+            EntrySaveMapper.effect(for: input, in: ledger, now: now)
+        }
+
+        XCTAssertNil(effect(input))
+        input.exception = .reserve
+        let reserve = try XCTUnwrap(effect(input))
+        XCTAssertEqual(reserve, .reserve(142_100))
+        XCTAssertEqual(reserve.text, "机动余钱还剩 1,421.00")
+        XCTAssertEqual(reserve.displayText(hidesAmount: true), "••••")
+        XCTAssertFalse(reserve.warning)
+
+        input.exception = nil
+        input.amountCents = 5_800
+        input.repeatMonthly = true
+        XCTAssertEqual(effect(input)?.text, "下期起每月先留 58.00")
+
+        input.repeatMonthly = false
+        input.exception = .split
+        input.amountCents = 7_800
+        input.personalExpenseCents = 2_600
+        XCTAssertEqual(effect(input)?.text, "待收回 52.00")
+        XCTAssertTrue(effect(input)?.warning == true)
+        input.exception = .reimbursement
+        input.currency = .jpy
+        input.exchangeRate = Decimal(string: "0.0475")
+        input.amountCents = 328_000
+        XCTAssertEqual(effect(input)?.text, "暂扣 155.80")
+        XCTAssertTrue(effect(input)?.warning == true)
+
+        input = EntrySaveInput(type: .income, amountCents: 5_800, accountID: bank.id,
+                               date: now, incomeNextCycle: true)
+        XCTAssertNil(effect(input))
+        input.type = .transfer
+        input.destinationAccountID = wallet.id
+        XCTAssertNil(effect(input))
+        input.type = .deposit
+        XCTAssertNil(effect(input))
+        input.repeatMonthly = true
+        XCTAssertNil(effect(input))
+        input.destinationAccountID = fund.id
+        XCTAssertEqual(effect(input), .monthly(5_800))
+    }
+
 }

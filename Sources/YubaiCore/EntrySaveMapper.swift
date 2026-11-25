@@ -328,6 +328,30 @@ public struct EntrySaveInput: Equatable, Sendable {
     }
 }
 
+public enum EntryEffect: Equatable, Sendable {
+    case reserve(Int64), monthly(Int64), split(Int64), reimbursement(Int64)
+
+    public var text: String {
+        switch self {
+        case .reserve(let amount): "机动余钱还剩 " + Money.text(amount, currency: false)
+        case .monthly(let amount): "下期起每月先留 " + Money.text(amount, currency: false)
+        case .split(let amount): "待收回 " + Money.text(amount, currency: false)
+        case .reimbursement(let amount): "暂扣 " + Money.text(amount, currency: false)
+        }
+    }
+
+    public func displayText(hidesAmount: Bool) -> String {
+        hidesAmount ? "••••" : text
+    }
+
+    public var warning: Bool {
+        switch self {
+        case .split, .reimbursement: true
+        case .reserve, .monthly: false
+        }
+    }
+}
+
 public enum EntrySaveMapper {
     public static func cnyAmount(for input: EntrySaveInput, in ledger: Ledger, now: Date) -> Int64? {
         guard input.amountCents > 0 else { return nil }
@@ -337,6 +361,27 @@ public enum EntrySaveMapper {
             return quote.convert(input.amountCents)
         }
         return FixedFlows.exchangeRate(for: input.currency, in: ledger, now: now)?.convert(input.amountCents)
+    }
+
+    public static func effect(for input: EntrySaveInput, in ledger: Ledger, now: Date) -> EntryEffect? {
+        guard input.recordedNature == nil, input.exception != nil || input.repeatMonthly,
+              let amount = cnyAmount(for: input, in: ledger, now: now), amount > 0 else { return nil }
+        if input.type == .expense, let exception = input.exception {
+            switch exception {
+            case .reserve:
+                var updated = ledger
+                guard let change = try? makeChange(input, in: ledger, now: now),
+                      (try? change.apply(to: &updated)) != nil else { return nil }
+                return .reserve(updated.fixedSavingsTotal(now: now))
+            case .split: return .split(amount - min(amount, max(0, input.personalExpenseCents ?? 0)))
+            case .reimbursement: return .reimbursement(amount)
+            }
+        }
+        guard input.exception == nil, input.repeatMonthly, input.type != .transfer else { return nil }
+        if input.type == .deposit {
+            guard ledger.accounts.contains(where: { $0.id == input.destinationAccountID && $0.kind == .investment }) else { return nil }
+        }
+        return .monthly(amount)
     }
 
     public static func makeChange(_ input: EntrySaveInput, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
