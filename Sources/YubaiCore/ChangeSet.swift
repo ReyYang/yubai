@@ -298,7 +298,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard validDate(occurrence) else { throw YubaiError.invalid("安排发生日无效。") }
                 guard let i = active(id), let p = next.plans.first(where: { $0.id == plan }) else { skip(position); continue }
                 guard next.entries[i].planID == nil, next.entries[i].rentID == nil, next.entries[i].relatedEntryID == nil else { skip(position); continue }
-                guard next.entries[i].nature == p.nature, p.accountID == nil || p.accountID == next.entries[i].accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
+                guard next.entries[i].nature == p.nature, p.accountID == nil || p.accountID == next.entries[i].accountID,
+                      p.otherAccountID == nil || p.otherAccountID == next.entries[i].otherAccountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
                 guard p.occurrenceIndex(on: occurrence) != nil, !p.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
                 next.entries[i].planID = plan; next.entries[i].occurrence = Dates.day(occurrence); touch(i)
             case .linkRent(let id, let rent, let period):
@@ -453,7 +454,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 if let id = draft.planID, let occurrence = draft.occurrence {
                     guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,
                           !plan.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
-                    guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
+                    guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID,
+                          plan.otherAccountID == nil || plan.otherAccountID == e.otherAccountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
                     e.planID = id; e.occurrence = Dates.day(occurrence)
                 } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
                 e.source = source; e.classificationReason = stamp; e.userEdited = true

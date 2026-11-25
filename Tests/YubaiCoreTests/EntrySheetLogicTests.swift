@@ -276,4 +276,125 @@ final class EntrySheetLogicTests: XCTestCase {
         XCTAssertNil(legacyEntry.originalCurrency)
         XCTAssertNil(legacyEntry.originalAmount)
     }
+    func testInvestmentPlanPostsBothLegsOnFutureManualAndAutomaticPayments() throws {
+        var ledger = makeLedger()
+        let bank = ledger.accounts[0]
+        let investment = ledger.accounts[3]
+        let change = try EntrySaveMapper.makeChange(
+            EntrySaveInput(type: .deposit, amountCents: 100_000, purpose: "定投", accountID: bank.id,
+                           destinationAccountID: investment.id, date: now, repeatMonthly: true),
+            in: ledger, now: now
+        )
+        try change.apply(to: &ledger)
+        let plan = try XCTUnwrap(ledger.plans.last)
+        XCTAssertEqual(plan.otherAccountID, investment.id)
+        let decoded = try LedgerCodec.decode(LedgerCodec.encode(ledger))
+        XCTAssertEqual(decoded.plans.last?.otherAccountID, investment.id)
+        let nextDate = try XCTUnwrap(Dates.parse("2026-12-23 14:20:00"))
+        let priorBalance = Finance.balance(investment, in: ledger, at: nextDate)
+
+        func verify(_ result: Ledger) {
+            XCTAssertEqual(result.entries.last?.otherAccountID, investment.id)
+            XCTAssertEqual(result.entries.last?.planID, plan.id)
+            XCTAssertEqual(Finance.balance(investment, in: result, at: nextDate), priorBalance + 100_000)
+            XCTAssertEqual(Finance.balance(bank, in: result, at: nextDate),
+                           Finance.balance(bank, in: ledger, at: nextDate) - 100_000)
+        }
+
+        var manual = decoded
+        let settlement = try FixedFlows.settle(planID: plan.id, occurrence: nextDate, in: manual, now: nextDate)
+        try settlement.apply(to: &manual)
+        verify(manual)
+
+        var automatic = decoded
+        let index = try XCTUnwrap(automatic.plans.firstIndex(where: { $0.id == plan.id }))
+        automatic.plans[index].autoPay = true
+        let autopay = try XCTUnwrap(FixedFlows.autoSettle(in: automatic, now: nextDate))
+        try autopay.apply(to: &automatic)
+        verify(automatic)
+        XCTAssertNil(FixedFlows.autoSettle(in: automatic, now: nextDate))
+
+        var legacy = decoded
+        legacy.plans[index].otherAccountID = nil
+        legacy = try LedgerCodec.decode(LedgerCodec.encode(legacy))
+        XCTAssertNil(legacy.plans[index].otherAccountID)
+        let legacySettlement = try FixedFlows.settle(planID: plan.id, occurrence: nextDate, in: legacy, now: nextDate)
+        try legacySettlement.apply(to: &legacy)
+        verify(legacy)
+    }
+
+    func testCashDepositCountsOnceAcrossCycleClose() throws {
+        var ledger = Ledger()
+        let anchor = try XCTUnwrap(Dates.parse("2026-11-01 00:00:00"))
+        let bank = Account(name: "银行", kind: .bank, at: anchor)
+        let wallet = Account(name: "现金", kind: .cash, at: anchor)
+        ledger.accounts = [bank, wallet]
+        ledger.cycleAnchor = .calendarMonth
+        ledger.entries = [Entry(date: Dates.addDays(1, to: anchor), amount: 100_000, nature: .income,
+                                accountID: bank.id, title: "收入", category: "工资奖金")]
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).available, 100_000)
+        let deposit = try EntrySaveMapper.makeChange(
+            EntrySaveInput(type: .deposit, amountCents: 30_000, accountID: bank.id,
+                           destinationAccountID: wallet.id, date: now),
+            in: ledger, now: now
+        )
+        try deposit.apply(to: &ledger)
+        XCTAssertEqual(ledger.fixedSavingsTotal(now: now), 30_000)
+        let projected = Finance.spendableBreakdown(ledger, now: now)
+        XCTAssertEqual(projected.available, 70_000)
+        XCTAssertEqual(projected.rows.first(where: { $0.kind == .deposit })?.amount, -30_000)
+        let nextCycle = try XCTUnwrap(Dates.parse("2026-12-01 12:00:00"))
+        var reconciled = ledger
+        let reconciliationDate = Dates.addDays(1, to: now)
+        try Reconciliation.apply(&reconciled, actual: [wallet.id: 30_000], now: reconciliationDate)
+        XCTAssertEqual(reconciled.fixedSavings, 30_000)
+        XCTAssertEqual(Finance.spendableBreakdown(reconciled, now: reconciliationDate).available, 70_000)
+        Savings.closeCycles(&reconciled, now: nextCycle)
+        XCTAssertEqual(reconciled.savingHistory.last?.leftover, 70_000)
+        XCTAssertEqual(reconciled.fixedSavingsTotal(now: nextCycle), 100_000)
+
+        Savings.closeCycles(&ledger, now: nextCycle)
+        XCTAssertEqual(ledger.savingHistory.last?.leftover, 70_000)
+        XCTAssertEqual(ledger.fixedSavings, 70_000)
+        XCTAssertEqual(ledger.fixedSavingsTotal(now: nextCycle), 100_000)
+        Savings.closeCycles(&ledger, now: nextCycle)
+        XCTAssertEqual(ledger.fixedSavingsTotal(now: nextCycle), 100_000)
+    }
+
+    func testImportMergePreservesManualRecoveryDeferredIncomeAndCurrency() throws {
+        let account = try XCTUnwrap(makeLedger().accounts.first)
+        let deferred = Dates.addDays(3, to: now)
+        for nature in [Nature.expense, .income] {
+            var manual = Entry(date: now, amount: 25_000, nature: nature, accountID: account.id,
+                               title: "手记", category: nature == .income ? "工资奖金" : "餐饮")
+            manual.recordedAt = now
+            if nature == .expense { manual.pendingRecovery = .split; manual.personalExpense = 10_000 }
+            if nature == .income { manual.countsFromCycleStart = deferred }
+            manual.originalCurrency = .usd
+            manual.originalAmount = 3_500
+
+            let imported = Entry(date: Dates.addDays(1, to: now), amount: manual.amount, nature: nature,
+                                 accountID: account.id, title: "导入", category: Classification.pendingCategory)
+            XCTAssertTrue(BillImporter.manualMatches(manual, imported: imported, accountIsUnknown: false))
+            let merged = BillImporter.mergedImport(imported, preserving: manual, accountIsUnknown: false)
+            XCTAssertEqual(merged.id, manual.id)
+            XCTAssertEqual(merged.date, imported.date)
+            XCTAssertEqual(merged.pendingRecovery, nature == .expense ? .split : nil)
+            XCTAssertEqual(merged.personalExpense, nature == .expense ? 10_000 : nil)
+            XCTAssertEqual(merged.countsFromCycleStart, nature == .income ? deferred : nil)
+            XCTAssertEqual(merged.originalCurrency, .usd)
+            XCTAssertEqual(merged.originalAmount, 3_500)
+        }
+    }
+
+    func testExpressionRejectsTotalsBeyondNineIntegerDigits() throws {
+        XCTAssertEqual(try EntryAmountExpression.evaluate("999999999.98+0.01"), 99_999_999_999)
+        XCTAssertThrowsError(try EntryAmountExpression.evaluate("999999999.99+0.01"))
+        XCTAssertThrowsError(try EntryAmountExpression.evaluate("-999999999.99-0.01"))
+        var expression = EntryAmountExpression(expression: "999999999.99+")
+        expression.press("1")
+        XCTAssertEqual(expression.expression, "999999999.99+")
+        XCTAssertEqual(expression.evaluatedCents, 99_999_999_999)
+    }
+
 }

@@ -37,6 +37,7 @@ extension FixedFlows {
                         inflow: entry.nature.inflow, category: entry.category, nature: entry.nature)
         plan.monthlyDay = Dates.calendar.component(.day, from: entry.date)
         plan.accountID = entry.accountID
+        plan.otherAccountID = entry.nature.paired ? entry.otherAccountID : nil
         plan.intoFixedSavings = entry.intoFixedSavings
         return plan
     }

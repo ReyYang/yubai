@@ -78,7 +78,7 @@ struct FormulaView: View {
             let entries = store.evidenceEntries(Set(item.entryIDs), activeOnly: true)
             if entries.count == 1, let entry = entries.first { return HomeButler.privacyText(entry.displayTitle, hidden: hide) + " · " + NowFormat.monthDay(entry.date) }
             return "\(item.entryIDs.count) 笔"
-        case .spent: return "\(item.entryIDs.count) 笔"
+        case .spent, .deposit: return "\(item.entryIDs.count) 笔"
         case .bills: return "到 " + NowFormat.monthDay(value.cycleEnd) + " · \(item.occurrences.count) 样"
         case .carry: return item.date.map { NowFormat.monthDay($0) + " 从已存撤回" }
         case .withdrawal: return item.date.map { NowFormat.monthDay($0) + " 从已存" }
@@ -91,7 +91,7 @@ struct FormulaView: View {
         case .income:
             if item.entryIDs.count == 1, let id = item.entryIDs.first { store.present(.editEntry(id)) }
             else { showEntries(value.interval, entryIDs: Set(item.entryIDs)) }
-        case .spent: showEntries(value.interval, entryIDs: Set(item.entryIDs))
+        case .spent, .deposit: showEntries(value.interval, entryIDs: Set(item.entryIDs))
         case .saving: store.present(.formulaEdit)
         case .carry, .withdrawal: store.tabRouteRequest = .reserve
         case .balanceGap: showEntries(value.interval, entryIDs: Set(item.entryIDs))

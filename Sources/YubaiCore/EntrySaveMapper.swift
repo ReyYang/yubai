@@ -40,10 +40,11 @@ public enum EntryException: String, CaseIterable, Equatable, Sendable {
 }
 
 /// Pure, Linux-portable arithmetic expression for the self-drawn entry keypad.
-/// Enforces max 9 integer digits and max 2 decimal digits per operand.
+/// Enforces nine integer digits for each operand and the running total, with two decimal places.
 public struct EntryAmountExpression: Equatable, Sendable {
     public static let maxIntegerDigits = 9
     public static let maxDecimalDigits = 2
+    private static let maximumCents: Int64 = 99_999_999_999
 
     public private(set) var expression: String
 
@@ -63,10 +64,6 @@ public struct EntryAmountExpression: Equatable, Sendable {
         expression == "0" || expression.isEmpty
     }
 
-    public var hasPendingOperator: Bool {
-        expression.last == "+" || expression.last == "-"
-    }
-
     public var isExpression: Bool {
         expression.dropFirst().contains(where: { $0 == "+" || $0 == "-" })
     }
@@ -77,7 +74,7 @@ public struct EntryAmountExpression: Equatable, Sendable {
 
     public var canSave: Bool {
         guard let cents = evaluatedCents else { return false }
-        return cents > 0 && cents <= Money.limit
+        return cents > 0 && cents <= Self.maximumCents
     }
 
     public var formattedDisplay: String {
@@ -190,7 +187,7 @@ public struct EntryAmountExpression: Equatable, Sendable {
                     continue
                 }
                 total += try parseOperand(operand) * sign
-                guard (-Money.limit...Money.limit).contains(total) else {
+                guard (-maximumCents...maximumCents).contains(total) else {
                     throw YubaiError.invalid("金额超出范围。")
                 }
                 operand = ""
@@ -207,7 +204,7 @@ public struct EntryAmountExpression: Equatable, Sendable {
         } else if !allowTrailingOperator {
             throw YubaiError.invalid("请输入完整金额。")
         }
-        guard (-Money.limit...Money.limit).contains(total) else {
+        guard (-maximumCents...maximumCents).contains(total) else {
             throw YubaiError.invalid("金额超出范围。")
         }
         return total
@@ -504,8 +501,11 @@ public enum EntrySaveMapper {
                   destination.id != source.id else {
                 throw YubaiError.invalid("存入的两个账户必须不同。")
             }
-            let isCashOrBank = source.kind == .cash || source.kind == .bank
-            let isInvestBuy = isCashOrBank && destination.kind == .investment
+            guard source.kind == .cash || source.kind == .bank,
+                  [.investment, .bank, .cash].contains(destination.kind) else {
+                throw YubaiError.invalid("请选择可存入的账户。")
+            }
+            let isInvestBuy = destination.kind == .investment
             let nature: Nature = isInvestBuy ? .investBuy : .transfer
             let intoFixedSavings = !isInvestBuy
 
