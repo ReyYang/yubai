@@ -285,6 +285,10 @@ public struct EntrySaveInput: Equatable, Sendable {
     public var exception: EntryException?
     public var incomeNextCycle: Bool
     public var personalExpenseCents: Int64?
+    public var recordedNature: Nature?
+    public var relatedEntryID: UUID?
+    public var keepInFixedSavings: Bool
+    public var preserveTime: Bool
 
     public init(
         type: EntryType,
@@ -300,7 +304,11 @@ public struct EntrySaveInput: Equatable, Sendable {
         repeatMonthly: Bool = false,
         exception: EntryException? = nil,
         incomeNextCycle: Bool = false,
-        personalExpenseCents: Int64? = nil
+        personalExpenseCents: Int64? = nil,
+        recordedNature: Nature? = nil,
+        relatedEntryID: UUID? = nil,
+        keepInFixedSavings: Bool = false,
+        preserveTime: Bool = false
     ) {
         self.type = type
         self.amountCents = amountCents
@@ -316,6 +324,10 @@ public struct EntrySaveInput: Equatable, Sendable {
         self.exception = exception
         self.incomeNextCycle = incomeNextCycle
         self.personalExpenseCents = personalExpenseCents
+        self.recordedNature = recordedNature
+        self.relatedEntryID = relatedEntryID
+        self.keepInFixedSavings = keepInFixedSavings
+        self.preserveTime = preserveTime
     }
 }
 
@@ -345,9 +357,31 @@ public enum EntrySaveMapper {
         func patchDraft(_ change: inout ChangeSet, transform: (inout EntryDraft) -> Void) {
             change.items = change.items.map { item in
                 guard case .addEntry(var draft) = item else { return item }
+                if input.preserveTime { draft.date = input.date }
                 transform(&draft)
                 return .addEntry(draft)
             }
+        }
+
+        if let nature = input.recordedNature {
+            let category = nature.paired ? "内部移动" : input.category
+            var change = try ManualBookkeeping.change(
+                amount: cnyCents, nature: nature, accountID: source.id, otherAccountID: input.destinationAccountID,
+                day: input.date, purpose: input.purpose, category: category, now: now
+            )
+            patchDraft(&change) { draft in
+                draft.subcategory = nature.paired ? nil : input.subcategory
+                draft.originalCurrency = originalCurrency
+                draft.originalAmount = originalAmount
+            }
+            if nature == .refund, let original = input.relatedEntryID,
+               case .addEntry(let draft)? = change.items.first {
+                guard ledger.entries.contains(where: { $0.id == original && $0.deletedAt == nil && $0.nature == .expense }) else {
+                    throw YubaiError.invalid("找不到原始支出。")
+                }
+                change.items.append(.linkRefund(refund: draft.id, original: original))
+            }
+            return change
         }
 
         switch input.type {
@@ -416,7 +450,7 @@ public enum EntrySaveMapper {
                     purpose: input.purpose,
                     category: resolvedCategory,
                     now: now,
-                    intoFixedSavings: false
+                    intoFixedSavings: input.keepInFixedSavings
                 )
             } else {
                 change = try ManualBookkeeping.change(
@@ -427,7 +461,7 @@ public enum EntrySaveMapper {
                     purpose: input.purpose,
                     category: resolvedCategory,
                     now: now,
-                    intoFixedSavings: false,
+                    intoFixedSavings: input.keepInFixedSavings,
                     fromReserve: false
                 )
             }

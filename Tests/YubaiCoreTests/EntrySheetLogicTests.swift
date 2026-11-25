@@ -195,6 +195,26 @@ final class EntrySheetLogicTests: XCTestCase {
         XCTAssertEqual(onJan12.income, januarySalary.amount)
     }
 
+    func testPrefilledRefundKeepsTheLinkAndTheExplicitTime() throws {
+        var ledger = makeLedger()
+        let bank = ledger.accounts[0]
+        let purchase = Entry(date: Dates.addDays(-1, to: now), amount: 6_000, accountID: bank.id,
+                             title: "午饭", category: "餐饮")
+        ledger.entries.append(purchase)
+        let refundDate = try XCTUnwrap(Dates.parse("2026-11-23 09:15:00"))
+        let input = EntrySaveInput(type: .income, amountCents: 2_000, purpose: "午饭退款", accountID: bank.id,
+                                   date: refundDate, recordedNature: .refund, relatedEntryID: purchase.id,
+                                   preserveTime: true)
+        let change = try EntrySaveMapper.makeChange(input, in: ledger, now: now)
+        try change.apply(to: &ledger)
+        let refund = try XCTUnwrap(ledger.entries.last)
+        XCTAssertEqual(refund.nature, .refund)
+        XCTAssertEqual(refund.relatedEntryID, purchase.id)
+        XCTAssertEqual(refund.category, purchase.category)
+        XCTAssertEqual(refund.date, refundDate)
+        XCTAssertEqual(Finance.spendingAmount(refund, ledger: ledger), -2_000)
+    }
+
     func testTransferRepaymentDepositAndMonthlyRepeatMapping() throws {
         var ledger = makeLedger()
         let bank = ledger.accounts[0]
