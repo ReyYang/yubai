@@ -1086,10 +1086,11 @@ struct RootView: View {
     private var hasToast: Bool { !store.locked && (store.unsortedUndo != nil || store.toast != nil) }
     #if os(iOS)
     @State private var keyboardVisible = false
+    @State private var tabBarHeight = HomeSpec.tabHeight
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     private var toastBottomPadding: CGFloat {
         if keyboardVisible || tabBarHidden { return YubaiSpace.none }
-        return HomeSpec.tabHeight
+        return tabBarHeight
     }
     #endif
     var body: some View {
@@ -1294,6 +1295,10 @@ struct RootView: View {
                 if target == store.destination { store.rootScrollRequest[target, default: 0] += 1 }
                 else { store.destination = target }
             }), onEntry: addEntry)
+            // The bar's background alone extends into the bottom safe area.
+            .onGeometryChange(for: CGFloat.self) { max(HomeSpec.tabHeight, $0.size.height) } action: {
+                tabBarHeight = $0
+            }
             .accessibilityElement(children: .contain).accessibilityIdentifier("mainNavigation")
             .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
             #if DEBUG && targetEnvironment(simulator)
@@ -1397,7 +1402,7 @@ struct RootView: View {
         }.background(YubaiColor.canvas)
         #else
         destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            .environment(\.yubaiRootNavigationHeight, HomeSpec.tabHeight)
+            .environment(\.yubaiRootNavigationHeight, tabBarHeight)
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {

@@ -110,6 +110,7 @@ private struct HomePage: View {
     let recordSalary: () -> Void
     let cover: (Int64) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
     @Environment(\.yubaiToastClearance) private var toastClearance
     @State private var searching = HomeFixture.current?.isSearch == true
     @State private var query = HomeFixture.current?.isSearch == true ? "打车" : ""
@@ -132,8 +133,7 @@ private struct HomePage: View {
                             billDays.padding(.top, DS.Space.s8)
                         }
                     }.padding(.horizontal, DS.Space.s20)
-                        .padding(.bottom, HomeSpec.tabHeight)
-                        .padding(.bottom, toastClearance)
+                        .padding(.bottom, navigationHeight + DS.Space.s12 + toastClearance)
                 }
                 .scrollDismissesKeyboard(.interactively)
                 .accessibilityElement(children: .contain)

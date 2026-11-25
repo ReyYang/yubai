@@ -338,24 +338,30 @@ private struct BudgetKeypadOverlay: View {
             VStack(spacing: DS.Space.s4) {
                 Capsule(style: .continuous).fill(DS.Color.grabber)
                     .frame(width: HomeSpec.sheetGrabberWidth, height: DS.Size.barCalm)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, DS.Space.s4)
+                    .contentShape(Rectangle())
+                    .gesture(DragGesture().onChanged { motion.drag($0) }
+                        .onEnded { motion.release($0, reduced: reduced, onClose: close) })
+                    .accessibilityHidden(true)
                 HStack {
                     Button(action: cancel) {
                         DSIconView(icon: .close, size: DS.Size.icon, color: DS.Color.ink3)
+                            .frame(width: DS.Size.tapMin, height: DS.Size.tapMin).contentShape(Rectangle())
                     }.dsPressStyle().accessibilityLabel("取消").accessibilityIdentifier("cancelBudgetKeypad")
                     Text(target.title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).frame(maxWidth: .infinity)
                     if target.id != nil {
                         Button { save(nil) } label: {
                             Text("删除").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.warnInk)
-                        }.dsPressStyle()
+                                .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin).contentShape(Rectangle())
+                        }.dsPressStyle().accessibilityIdentifier("deleteBudgetKeypad")
                     } else {
                         Color.clear.frame(width: DS.Size.tapMin)
                     }
                 }
                 Text(expression.formattedDisplay).dsText(DS.Font.nDetail).foregroundStyle(DS.Color.ink)
                     .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).accessibilityIdentifier("budgetKeypadAmount")
-            }.contentShape(Rectangle())
-                .gesture(DragGesture().onChanged { motion.drag($0) }
-                    .onEnded { motion.release($0, reduced: reduced, onClose: close) })
+            }
             DSKeypad(canSave: expression.canSave, onKey: press, onSave: {
                 if let amount = expression.evaluatedCents { save(amount) }
             }).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
