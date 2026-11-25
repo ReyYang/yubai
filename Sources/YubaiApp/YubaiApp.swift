@@ -967,7 +967,12 @@ enum AppSheet: Identifiable {
     #if os(macOS)
     @NSApplicationDelegateAdaptor(LedgerTerminationDelegate.self) private var terminationDelegate
     #endif
+    #if DEBUG && os(iOS)
+    // Defer ledger initialization when the launch route is a standalone fixture.
+    private var store: AppStore { AppStore.shared }
+    #else
     @State private var store = AppStore.shared
+    #endif
     private var colorScheme: ColorScheme? {
         switch store.preferences.appearance {
         case "dark": .dark
@@ -994,7 +999,17 @@ enum AppSheet: Identifiable {
             DesignSystemGalleryView()
                 .environment(\.dsReduceMotionOverride, UITestSupport.script != nil ? UITestSupport.reduceMotion : nil)
         }
-        else { applicationRoot }
+        else {
+            #if os(iOS)
+            switch BakeoffFixture.argument("-YubaiBakeoff") {
+            case "swiftui": BakeoffSwiftScreen()
+            case "uikit": BakeoffUIKitHost().ignoresSafeArea()
+            default: applicationRoot
+            }
+            #else
+            applicationRoot
+            #endif
+        }
         #else
         applicationRoot
         #endif
@@ -1544,5 +1559,12 @@ private final class TimedSlot<Value> {
         }
         return .terminateLater
     }
+}
+#endif
+
+#if DEBUG && os(iOS)
+private struct BakeoffUIKitHost: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> BakeoffUIKitScreen { BakeoffUIKitScreen() }
+    func updateUIViewController(_ controller: BakeoffUIKitScreen, context: Context) {}
 }
 #endif

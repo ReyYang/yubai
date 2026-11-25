@@ -12,12 +12,13 @@ def ident(name): return hashlib.sha1(name.encode()).hexdigest()[:24].upper()
 def add(name, value):
     key = ident(name); objects[key] = value; return key
 def quote(value): return json.dumps(str(value), ensure_ascii=False)
-source_files = sorted((root / "Sources/YubaiApp").glob("*.swift"))
+source_files = sorted((root / "Sources/YubaiApp").rglob("*.swift"))
 refs, builds = [], []
 for file in source_files:
-    ref = add(str(file.relative_to(root)), f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quote(file.name)}; sourceTree = "<group>";')
+    app_path = file.relative_to(root / "Sources/YubaiApp")
+    ref = add(str(file.relative_to(root)), f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quote(app_path)}; sourceTree = "<group>";')
     refs.append(ref)
-    builds.append(add("build:" + file.name, f'isa = PBXBuildFile; fileRef = {ref};'))
+    builds.append(add("build:" + str(app_path), f'isa = PBXBuildFile; fileRef = {ref};'))
 assets = add("assets", 'isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>";')
 asset_build = add("asset-build", f'isa = PBXBuildFile; fileRef = {assets};')
 refs.append(assets)
