@@ -2,7 +2,7 @@ import SwiftUI
 import YubaiCore
 
 struct DSInlineTag {
-    enum Tone { case warning, positive }
+    enum Tone { case warning, positive, quiet }
     let title: String
     var tone: Tone = .warning
 }
@@ -15,30 +15,36 @@ struct DSListRow: View {
     var tag: DSInlineTag? = nil
     var separator = true
 
+    var detailAmount: String? = nil
+    var amountColor = DS.Color.ink
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: HomeSpec.heroLabelGap) {
             HStack(spacing: DS.Space.s12) {
                 DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.iconQuiet)
-                HStack(spacing: DS.Space.s4) {
+                HStack(spacing: HomeSpec.gap6) {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
                     if let tag {
-                        Text(tag.title).dsText(DS.Font.tTag).lineLimit(1)
-                            .foregroundStyle(tag.tone == .warning ? DS.Color.warnInk : DS.Color.accentInk)
-                            .padding(.horizontal, DS.Space.s4)
-                            .dsPill(tag.tone == .warning ? DS.Color.warnSoft : DS.Color.accentSoft)
+                        Text(tag.title).dsText(DS.Font.tTag)
+                            .foregroundStyle(tag.tone == .warning ? DS.Color.warnInk : tag.tone == .positive ? DS.Color.accentInk : DS.Color.ink3)
+                            .padding(.horizontal, HomeSpec.gap6)
+                            .dsPill(tag.tone == .warning ? DS.Color.warnSoft : tag.tone == .positive ? DS.Color.accentSoft : DS.Color.surface)
                             .fixedSize()
                     }
                 }.dsFillWidth()
-                Text(amount).dsText(DS.Font.nSpine).foregroundStyle(DS.Color.ink)
-                    .lineLimit(1).fixedSize()
+                Text(amount).dsText(DS.Font.nSpine).foregroundStyle(amountColor)
+                    .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).layoutPriority(1)
             }
-            if let detail {
-                Text(detail).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).dsFillWidth()
+            if detail != nil || detailAmount != nil {
+                HStack(spacing: DS.Space.s8) {
+                    Text(detail ?? "").lineLimit(1)
+                    Spacer(minLength: 0)
+                    if let detailAmount { Text(detailAmount).monospacedDigit().fixedSize() }
+                }.dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
                     .padding(.leading, DS.Size.icon + DS.Space.s12)
             }
         }
-        .padding(.vertical, DS.Space.s8)
-        .frame(minHeight: detail == nil ? DS.Size.rowBill : DS.Size.rowBill2)
+        .frame(minHeight: detail == nil && detailAmount == nil ? DS.Size.rowBill : DS.Size.rowBill2)
         .dsFillWidth()
         .overlay(alignment: .top) {
             if separator {
@@ -53,12 +59,19 @@ struct DSListRow: View {
 struct DSDayHeader: View {
     let title: String
     let total: String
+    var today = false
+    var first = true
+
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text(title).dsText(DS.Font.tSubStrong)
+        HStack(spacing: HomeSpec.gap6) {
+            if today { Circle().fill(DS.Color.accent).frame(width: HomeSpec.gap6, height: HomeSpec.gap6) }
+            Text(title).dsText(DS.Font.tSubStrong).foregroundStyle(today ? DS.Color.accentInk : DS.Color.ink)
             Spacer(minLength: DS.Space.s8)
-            Text(total).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3)
-        }.foregroundStyle(DS.Color.ink).frame(minHeight: DS.Size.chipH).dsFillWidth()
+            Text(total).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+        }.padding(.top, first ? DS.Space.s8 : DS.Space.s20)
+            .padding(.bottom, DS.Space.s4)
+            .frame(minHeight: first ? DS.Size.chipH : DS.Size.tapMin)
+            .dsFillWidth().accessibilityElement(children: .combine)
     }
 }
 
@@ -68,20 +81,23 @@ struct DSBudget: Identifiable {
     let total: String
     let remaining: String
     let usedFraction: Double
+    var overspent = false
     var isWarning: Bool { usedFraction >= DSInteraction.warningFraction }
-    var usedText: String { usedFraction.formatted(.percent.precision(.fractionLength(0))) }
+    var usedText: String { min(1, usedFraction).formatted(.percent.precision(.fractionLength(0))) }
+    var displayRemaining: String { overspent ? "超 " + remaining : remaining }
 }
 
 private struct DSProgress: View {
     let fraction: Double
     var warning = false
     var amber = false
+    var accent = false
     var height = DS.Size.barCalm
     var body: some View {
         GeometryReader { geometry in
             Capsule(style: .continuous).fill(amber ? DS.Color.warnTrack : DS.Color.track)
                 .overlay(alignment: .leading) {
-                    Capsule(style: .continuous).fill(warning ? DS.Color.warn : DS.Color.fillCalm)
+                    Capsule(style: .continuous).fill(warning ? DS.Color.warn : accent ? DS.Color.accent : DS.Color.fillCalm)
                         .frame(width: geometry.size.width * CGFloat(min(1, max(0, fraction))))
                 }
         }.frame(height: height).clipShape(Capsule(style: .continuous)).accessibilityHidden(true)
@@ -98,10 +114,10 @@ struct DSBudgetRow: View {
                     Text(budget.name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2)
                     Text("/ \(budget.total)").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
                     Spacer(minLength: DS.Space.s8)
-                    Text(budget.remaining).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
+                    Text(budget.displayRemaining).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
                 }
                 DSProgress(fraction: budget.usedFraction)
-            }.padding(.vertical, DS.Space.s8).frame(minHeight: DS.Size.rowBill2).dsFillWidth()
+            }.padding(.vertical, DS.Space.s8).frame(minHeight: HomeSpec.budgetRow).dsFillWidth()
                 .accessibilityElement(children: .combine)
         }
     }
@@ -116,7 +132,8 @@ struct DSAmberTile: View {
                 Spacer(minLength: 0)
                 Text("已用 \(budget.usedText)").dsText(DS.Font.tCaption)
             }.foregroundStyle(DS.Color.warnInk)
-            Text(budget.remaining).dsText(DS.Font.nTile).foregroundStyle(DS.Color.ink)
+            Text(budget.displayRemaining).dsText(DS.Font.nTile).foregroundStyle(DS.Color.ink)
+                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
             Text("/ \(budget.total)").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
             DSProgress(fraction: budget.usedFraction, warning: true, amber: true,
                        height: DS.Size.barAmber)
@@ -217,50 +234,111 @@ struct DSHero: View {
     let days: [Day]
     let budgets: [DSBudget]
     var onAmount: () -> Void = {}
+    var title = "还能花"
+    var tint = DS.Color.ink
+    var titleTint = DS.Color.ink3
+    var guide: CGFloat? = HomeSpec.barGuide
+    var onBudget: (() -> Void)? = nil
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Button(action: onAmount) {
+                let layout = typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: DS.Space.s8))
+                    : AnyLayout(HStackLayout(alignment: .bottom, spacing: DS.Space.s8))
+                layout {
+                    VStack(alignment: .leading, spacing: HomeSpec.heroLabelGap) {
+                        HStack(spacing: HomeSpec.heroLabelGap) {
+                            Text(title).dsText(DS.Font.tSub)
+                            DSIconView(icon: .chevron, size: HomeSpec.chevron, color: titleTint)
+                        }.foregroundStyle(titleTint)
+                        Text(amount).dsText(DS.Font.nHero).foregroundStyle(tint).lineLimit(1)
+                            .minimumScaleFactor(HomeSpec.numberMinimumScale)
+                            .contentTransition(reduceMotion ? .identity : .numericText())
+                            .animation(reduceMotion ? nil : DSMotion.standardAnimation, value: amount)
+                            .accessibilityLabel(amount.contains("•") ? "金额已隐藏" : amount)
+                            .accessibilityIdentifier("availableFunds")
+                    }.dsFillWidth()
+                    VStack(alignment: .trailing, spacing: 0) {
+                        if !daily.isEmpty { Text("每天 \(daily)").dsText(DS.Font.tLabelStrong).monospacedDigit() }
+                        Text("还剩 \(remainingDays) 天").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
+                    }.foregroundStyle(DS.Color.ink).fixedSize().padding(.bottom, HomeSpec.heroDailyBottom)
+                }.contentShape(Rectangle())
+            }.dsPressStyle().accessibilityLabel("还能花，查看算式").accessibilityValue(amount.contains("•") ? "金额已隐藏" : amount)
+                .accessibilityIdentifier("fundsFormula")
+            DSDayBars(days: days, guide: guide).padding(.top, DS.Space.s8)
+            DSHomeBudgetColumns(budgets: budgets, onBudget: onBudget)
+        }.dsFillWidth()
+    }
+
+    private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+}
+
+struct DSHomeBudgetColumns: View {
+    let budgets: [DSBudget]
+    var onBudget: (() -> Void)?
+
+    var body: some View {
+        if !budgets.isEmpty {
+            HStack(spacing: DS.Space.s12) {
+                ForEach(budgets.prefix(DSLayout.heroBudgets)) { budget in
+                    if let onBudget {
+                        Button(action: onBudget) { budgetColumn(budget) }.dsPressStyle()
+                    } else { budgetColumn(budget) }
+                }
+            }.padding(.top, DS.Space.s12)
+        }
+    }
+
+    private func budgetColumn(_ budget: DSBudget) -> some View {
+        VStack(alignment: .leading, spacing: DS.Space.s4) {
+            Text(budget.name).dsText(DS.Font.tCaption).lineLimit(1)
+                .foregroundStyle(budget.isWarning ? DS.Color.warnInk : DS.Color.ink3)
+            HStack(spacing: DS.Space.s4) {
+                if budget.overspent { Text("超").dsText(HomeSpec.tinyStrong) }
+                Text(budget.remaining).dsText(HomeSpec.headerNumber).lineLimit(1)
+                    .minimumScaleFactor(HomeSpec.numberMinimumScale)
+            }.foregroundStyle(budget.isWarning ? DS.Color.warnInk : DS.Color.ink)
+            DSProgress(fraction: budget.usedFraction, warning: budget.isWarning, accent: true, height: DS.Size.barMini)
+        }.dsFillWidth().accessibilityElement(children: .combine)
+    }
+}
+
+struct DSDayBars: View {
+    let days: [DSHero.Day]
+    var guide: CGFloat? = HomeSpec.barGuide
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
     @Environment(\.dsAnimationsEnabled) private var enabled
     @State private var appeared = false
-    private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
 
     var body: some View {
-        VStack(spacing: DS.Space.s12) {
-            HStack(alignment: .bottom, spacing: DS.Space.s8) {
-                Button(action: onAmount) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: DS.Space.s4) {
-                            Text("还能花").dsText(DS.Font.tSub)
-                            DSIconView(icon: .chevron, size: DS.Font.tCaption.size)
-                        }.foregroundStyle(DS.Color.ink3)
-                        Text(amount).dsText(DS.Font.nHero).foregroundStyle(DS.Color.ink).lineLimit(1)
-                    }.dsFillWidth()
-                }.dsPressStyle()
-                VStack(alignment: .trailing, spacing: DS.Space.s4) {
-                    Text("每天 \(daily)").dsText(DS.Font.tLabelStrong).monospacedDigit()
-                    Text("还剩 \(remainingDays) 天").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-                }.foregroundStyle(DS.Color.ink).fixedSize()
+        let reduceMotion = reduceMotionOverride ?? systemReduceMotion
+        HStack(alignment: .bottom, spacing: DS.Size.dayBarGap) {
+            ForEach(days) { day in
+                RoundedRectangle(cornerRadius: HomeSpec.barRadius, style: .continuous)
+                    .fill(day.color).frame(height: day.height)
+                    .animation(enabled && !reduceMotion ? DSMotion.standardAnimation : nil, value: day.height)
+                    .opacity(reduceMotion && enabled && !appeared ? 0 : 1)
+                    .animation(enabled && reduceMotion ? DSMotion.reduceMotionAnimation : nil, value: appeared)
+                    .scaleEffect(x: 1, y: reduceMotion || !enabled || appeared ? 1 : 0, anchor: .bottom)
+                    .animation(enabled && !reduceMotion ? DSMotion.standardAnimation.delay(Double(day.id) * DSMotion.Role.barGrow.staggerDelay) : nil, value: appeared)
             }
-            HStack(alignment: .bottom, spacing: DS.Size.dayBarGap) {
-                ForEach(Array(days.enumerated()), id: \.element.id) { index, day in
-                    Capsule(style: .continuous).fill(day.color).frame(height: day.height)
-                        .scaleEffect(x: 1, y: reduceMotion || !enabled || appeared ? 1 : 0, anchor: .bottom)
-                        .animation(enabled ? DSMotion.animation(.barGrow, reduceMotion: reduceMotion)?.delay(Double(index) * DSMotion.Role.barGrow.staggerDelay) : nil, value: appeared)
+        }.frame(height: DS.Size.dayBarsH, alignment: .bottom)
+            .overlay(alignment: .bottom) {
+                if let guide {
+                    Canvas { context, size in
+                        var line = Path()
+                        line.move(to: CGPoint(x: 0, y: size.height - guide))
+                        line.addLine(to: CGPoint(x: size.width, y: size.height - guide))
+                        context.stroke(line, with: .color(DS.Color.ink3), style: StrokeStyle(lineWidth: DS.Stroke.hairline, dash: [DS.Space.s4]))
+                    }.allowsHitTesting(false)
                 }
-            }.frame(height: DS.Size.dayBarsH, alignment: .bottom)
-                .overlay(alignment: .bottom) {
-                    Rectangle().strokeBorder(DS.Color.chevron, style: StrokeStyle(lineWidth: DS.Stroke.hairline, dash: [DS.Space.s4]))
-                        .frame(height: DS.Stroke.hairline)
-                }.accessibilityHidden(true)
-            HStack(spacing: DS.Space.s12) {
-                ForEach(budgets.prefix(DSLayout.heroBudgets)) { budget in
-                    VStack(alignment: .leading, spacing: DS.Space.s4) {
-                        Text(budget.name).dsText(DS.Font.tCaption)
-                        Text(budget.remaining).dsText(DS.Font.tLabel).fontWeight(.medium).monospacedDigit()
-                        DSProgress(fraction: budget.usedFraction, warning: budget.isWarning, height: DS.Size.barMini)
-                    }.foregroundStyle(budget.isWarning ? DS.Color.warnInk : DS.Color.ink3).dsFillWidth()
-                }
-            }
-        }.dsFillWidth().onAppear { appeared = true }
+            }.accessibilityHidden(true)
+            .onAppear { appeared = true }
     }
 }
 
@@ -268,29 +346,35 @@ struct DSTabBar: View {
     enum Tab: String { case home, overview }
     @Binding var selection: Tab
     var onEntry: () -> Void
+
     var body: some View {
-        HStack(spacing: DS.Space.s12) {
-            tab(.home, title: "首页", icon: DS.Icon.tabHome)
+        HStack(spacing: 0) {
+            tab(.home, title: "首页", icon: .tabHome)
+            Spacer(minLength: 0)
             Button(action: onEntry) {
-                Label { Text("记一笔").dsText(DS.Font.tTitle) } icon: {
-                    DSIconView(icon: .add, size: DS.Font.tTitle.size)
-                }.labelStyle(.titleAndIcon).lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                    .foregroundStyle(DS.Color.onAccent).padding(.horizontal, DS.Space.s28)
-                    .frame(minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
-            }.dsPressStyle()
-            tab(.overview, title: "全景", icon: DS.Icon.tabOverview)
-        }.padding(.horizontal, DS.Space.s12).padding(.vertical, DS.Space.s12)
-            .dsFillWidth().dsBarMaterial(in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+                HStack(spacing: HomeSpec.gap6) {
+                    DSIconView(icon: .add, size: DS.Size.brandTile, color: DS.Color.onAccent)
+                    Text("记一笔").dsText(DS.Font.tBody).fontWeight(.semibold)
+                }.foregroundStyle(DS.Color.onAccent).lineLimit(1)
+                    .frame(minWidth: HomeSpec.entryWidth, minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
+            }.dsPressStyle().accessibilityIdentifier("addEntry")
+            Spacer(minLength: 0)
+            tab(.overview, title: "全景", icon: .tabOverview)
+        }.padding(.horizontal, DS.Space.s12).frame(minHeight: HomeSpec.tabHeight)
+            .background { DS.Color.raised.ignoresSafeArea(edges: .bottom) }
+            .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
     }
+
     private func tab(_ tab: Tab, title: String, icon: DS.Icon) -> some View {
         Button { selection = tab } label: {
             VStack(spacing: 0) {
-                DSIconView(icon: icon, size: DS.Size.icon,
+                DSIconView(icon: icon, size: HomeSpec.navIcon,
                            color: selection == tab ? DS.Color.accentInk : DS.Color.ink3)
-                Text(title).dsText(DS.Font.tTab)
+                Text(title).dsText(DS.Font.tTab).fontWeight(selection == tab ? .semibold : .regular)
             }.foregroundStyle(selection == tab ? DS.Color.accentInk : DS.Color.ink3)
-                .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin)
+                .frame(minWidth: HomeSpec.tabWidth, minHeight: DS.Size.ctaH)
         }.dsPressStyle().accessibilityAddTraits(selection == tab ? .isSelected : [])
+            .accessibilityIdentifier(tab == .home ? "tab_ledger" : "tab_insights")
     }
 }
 
@@ -301,18 +385,31 @@ struct DSAskBar: View {
         HStack(spacing: DS.Space.s8) {
             Button(action: onAsk) {
                 HStack(spacing: DS.Space.s8) {
-                    DSIconView(icon: .search, size: DS.Size.icon, color: DS.Color.ink3)
+                    DSIconView(icon: .search, size: DS.Size.brandTile, color: DS.Color.ink3)
                     Text("问余白 · 搜账单").dsText(DS.Font.tLabel).lineLimit(1).dsFillWidth()
                 }.frame(minHeight: DS.Size.askH)
-            }.dsPressStyle()
+            }.dsPressStyle().accessibilityIdentifier("openLedgerSearch")
             Button(action: onVoice) {
-                DSIconView(icon: .voice, size: DS.Size.icon, color: DS.Color.ink3)
-                    .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
-            }.dsPressStyle().accessibilityLabel("语音记账")
-        }
-            .foregroundStyle(DS.Color.ink3).padding(.leading, DS.Space.s16)
+                DSIconView(icon: .voice, size: DS.Size.brandTile, color: DS.Color.ink2)
+                    .frame(width: HomeSpec.tile32, height: HomeSpec.tile32)
+            }.dsPressStyle().accessibilityLabel("语音输入")
+        }.foregroundStyle(DS.Color.ink3)
+            .padding(.leading, HomeSpec.askInset).padding(.trailing, DS.Space.s8)
             .dsPill(DS.Color.raised)
             .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
+    }
+}
+
+struct DSHomeSearchField: View {
+    @Binding var text: String
+    var focus: FocusState<Bool>.Binding
+    var onSubmit: () -> Void
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text("问余白 · 搜账单").foregroundStyle(DS.Color.ink3))
+            .textFieldStyle(.plain).dsText(DS.Font.tLabel).tint(DS.Color.accent)
+            .foregroundStyle(DS.Color.ink).focused(focus).onSubmit(onSubmit)
+            .accessibilityLabel("搜账单").accessibilityIdentifier("entriesSearch")
     }
 }
 
@@ -477,21 +574,23 @@ struct DSFloatingMenu: View {
     var onRecategorize: () -> Void = {}
     var onDuplicate: () -> Void = {}
     var onDelete: () -> Void = {}
+    var recategorizationEnabled = true
     var body: some View {
         VStack(spacing: 0) {
-            item("编辑", icon: DS.Icon.edit, action: onEdit)
-            item("改分类", icon: DS.Icon.recategorize, action: onRecategorize)
+            item("编辑", icon: DS.Icon.edit, action: onEdit).accessibilityIdentifier("entryDetailEdit")
+            item("改分类", icon: DS.Icon.recategorize, action: onRecategorize).accessibilityIdentifier("entryDetailRecategorize")
+                .disabled(!recategorizationEnabled)
             item("再记一笔一样的", icon: DS.Icon.duplicate, action: onDuplicate)
-            item("删除", icon: DS.Icon.delete, warning: true, action: onDelete)
-                .padding(.top, DS.Space.s4)
+            item("删除", icon: DS.Icon.delete, warning: true, action: onDelete).accessibilityIdentifier("deleteEntryDetail")
+                .padding(.top, HomeSpec.gap6)
                 .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
-        }.padding(.vertical, DS.Space.s4).frame(width: DS.Size.menuW)
+        }.padding(.vertical, HomeSpec.gap6).frame(width: DS.Size.menuW)
             .background(DS.Color.raised).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous)).dsShadow(DS.Shadow.float)
     }
     private func item(_ title: String, icon: DS.Icon, warning: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label { Text(title).dsText(DS.Font.tBody) } icon: {
-                DSIconView(icon: icon, size: DS.Size.icon)
+                DSIconView(icon: icon, size: DS.Size.brandTile, color: warning ? DS.Color.warnInk : DS.Color.ink)
             }
                 .foregroundStyle(warning ? DS.Color.warnInk : DS.Color.ink)
                 .dsFillWidth().frame(minHeight: DS.Size.tapMin).padding(.horizontal, DS.Space.s16)
@@ -499,8 +598,12 @@ struct DSFloatingMenu: View {
     }
 }
 
-/// Place above the page in a ZStack; scrim and card share the presentation lifetime.
 struct DSFloatingCard: View {
+    struct Route {
+        let title: String
+        let icon: DS.Icon
+    }
+
     let name: String
     let amount: String
     let impact: String
@@ -514,52 +617,89 @@ struct DSFloatingCard: View {
     var onRecategorize: () -> Void = {}
     var onDuplicate: () -> Void = {}
     var onDelete: () -> Void = {}
+    var amountColor = DS.Color.ink
+    var effectValue = ""
+    var effectTail = ""
+    var foreign = false
+    var route: (Route, Route)?
+    var recovery: AnyView?
+    var recategorizationEnabled = true
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
-    @Environment(\.dsAnimationsEnabled) private var enabled
-    @State private var appeared = false
-    private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
     var body: some View {
-        ZStack {
-            DS.Color.scrim.ignoresSafeArea().onTapGesture(perform: onDone).accessibilityHidden(true)
-            VStack(alignment: .trailing, spacing: DS.Space.s20) {
-                VStack(spacing: DS.Space.s8) {
-                    HStack {
-                        Spacer(minLength: 0)
-                        Button(action: onMore) {
-                            DSIconView(icon: .more, size: DS.Size.icon, color: DS.Color.ink3)
-                                .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
-                        }.dsPressStyle().accessibilityLabel("更多操作")
-                    }
-                    Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink3)
-                    Text(amount).dsText(DS.Font.nDetail).foregroundStyle(DS.Color.ink)
-                    Text(impact).dsText(DS.Font.tSub).foregroundStyle(DS.Color.accentInk)
-                        .lineLimit(1).truncationMode(.middle)
-                        .padding(.horizontal, DS.Space.s12).dsPill(DS.Color.accentSoft)
-                    if let warning {
-                        Text(warning).dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.warnInk)
-                            .dsFillWidth().dsSurface(DS.Color.warnSoft, radius: DS.Radius.m,
-                                                    padding: EdgeInsets(top: DS.Space.s12, leading: DS.Space.s16, bottom: DS.Space.s12, trailing: DS.Space.s16))
-                    }
-                    if let note {
-                        Label { Text(note).dsText(DS.Font.tLabel) } icon: {
-                            DSIconView(icon: .edit, size: DS.Font.tLabel.size)
-                        }.foregroundStyle(DS.Color.ink2)
-                    }
-                    Text(metadata).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).padding(.top, DS.Space.s12)
-                    DSButton("完成", kind: .secondary, action: onDone).padding(.top, DS.Space.s4)
-                }.padding(.horizontal, DS.Space.s20).padding(.bottom, DS.Space.s20)
-                    .dsFillWidth().background(DS.Color.raised)
-                    .clipShape(.rect(cornerRadius: DS.Radius.float, style: .continuous)).dsShadow(DS.Shadow.float)
-                if showsMenu {
-                    DSFloatingMenu(onEdit: onEdit, onRecategorize: onRecategorize, onDuplicate: onDuplicate, onDelete: onDelete)
+        VStack(spacing: 0) {
+            HStack {
+                Spacer(minLength: 0)
+                Button(action: onMore) {
+                    DSIconView(icon: .more, size: DS.Size.icon, color: DS.Color.ink2)
+                        .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
+                }.dsPressStyle().accessibilityLabel("更多操作").accessibilityIdentifier("billMore")
+            }.padding(.trailing, DS.Space.s12)
+            VStack(spacing: 0) {
+                Text(name).dsText(HomeSpec.billName).foregroundStyle(DS.Color.ink3).multilineTextAlignment(.center)
+                Text(amount).dsText(DS.Font.nDetail).foregroundStyle(amountColor)
+                    .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                if let route {
+                    HStack(spacing: HomeSpec.gap6) {
+                        routePill(route.0, positive: false)
+                        DSIconView(icon: .chevron, size: DS.Space.s16, color: DS.Color.ink3)
+                        routePill(route.1, positive: true)
+                    }.padding(.top, DS.Space.s8)
                 }
-            }.padding(DS.Space.s16)
-                .opacity(appeared || !enabled ? 1 : 0)
-                .animation(enabled ? DSMotion.animation(.floatCard, reduceMotion: reduceMotion, property: .opacity) : nil, value: appeared)
-                .scaleEffect(reduceMotion || appeared || !enabled ? 1 : DSInteraction.floatScale)
-                .animation(enabled ? DSMotion.animation(.floatCard, reduceMotion: reduceMotion) : nil, value: appeared)
-        }.onAppear { appeared = true }
+                if !impact.isEmpty {
+                    HStack(spacing: DS.Space.s4) {
+                        Text(impact).foregroundStyle(foreign ? DS.Color.ink3 : DS.Color.accentInk)
+                        if !effectValue.isEmpty { Text(effectValue).fontWeight(.semibold) }
+                        if !effectTail.isEmpty { Text(effectTail) }
+                    }.dsText(DS.Font.tLabel).monospacedDigit()
+                        .foregroundStyle(foreign ? DS.Color.ink : DS.Color.accentInk)
+                        .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                        .padding(.horizontal, DS.Space.s12).frame(minHeight: HomeSpec.effectHeight)
+                        .dsPill(foreign ? DS.Color.surface : DS.Color.accentSoft).padding(.top, HomeSpec.formulaTop)
+                }
+            }.padding(.horizontal, HomeSpec.billCenterInset)
+            if let recovery { recovery.padding(.horizontal, DS.Space.s16).padding(.top, HomeSpec.recoveryTop) }
+            else if let warning {
+                Text(warning).dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.warnInk)
+                    .dsFillWidth().padding(DS.Space.s16).dsSurface(DS.Color.warnSoft, radius: DS.Radius.m)
+                    .padding(.horizontal, DS.Space.s16).padding(.top, HomeSpec.recoveryTop)
+            }
+            VStack(spacing: HomeSpec.gap6) {
+                if let note, !note.isEmpty {
+                    HStack(spacing: HomeSpec.gap6) {
+                        DSIconView(icon: .edit, size: HomeSpec.chevron, color: DS.Color.ink3)
+                        Text(note).dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink2).multilineTextAlignment(.center)
+                    }
+                }
+                Text(metadata).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                    .multilineTextAlignment(.center)
+            }.padding(.horizontal, HomeSpec.billCenterInset).padding(.top, HomeSpec.billCenterInset)
+            DSButton("完成", kind: .secondary, action: onDone)
+                .padding(.horizontal, DS.Space.s20).padding(.top, DS.Space.s20)
+                .accessibilityIdentifier("closeBill")
+        }.frame(maxWidth: .infinity)
+            .padding(.top, HomeSpec.billCardTop).padding(.bottom, DS.Space.s20)
+            .dsSurface(DS.Color.raised, radius: DS.Radius.float).dsShadow(DS.Shadow.float)
+            .overlay(alignment: .topTrailing) {
+                if showsMenu {
+                    DSFloatingMenu(onEdit: onEdit, onRecategorize: onRecategorize, onDuplicate: onDuplicate,
+                                   onDelete: onDelete, recategorizationEnabled: recategorizationEnabled)
+                        .padding(.top, HomeSpec.menuTop).padding(.trailing, DS.Space.s12)
+                        .transition(reduceMotion ? .opacity : .scale(scale: DSInteraction.floatScale, anchor: .topTrailing).combined(with: .opacity))
+                }
+            }.animation(reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation, value: showsMenu)
+    }
+
+    private var reduceMotion: Bool { reduceMotionOverride ?? systemReduceMotion }
+
+    private func routePill(_ route: Route, positive: Bool) -> some View {
+        HStack(spacing: HomeSpec.gap6) {
+            DSIconView(icon: route.icon, size: HomeSpec.routeIcon, color: positive ? DS.Color.accentInk : DS.Color.ink2)
+            Text(route.title).dsText(HomeSpec.routeName).lineLimit(1)
+        }.foregroundStyle(positive ? DS.Color.accentInk : DS.Color.ink2)
+            .padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.chipH)
+            .dsPill(positive ? DS.Color.accentSoft : DS.Color.surface)
     }
 }
 
@@ -676,17 +816,17 @@ struct DSAlertCard: View {
     var body: some View {
         Button(action: onTap) {
             HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
-                VStack(alignment: .leading, spacing: DS.Space.s4) {
-                    Text(title).dsText(DS.Font.tLabelStrong)
-                    if !detail.isEmpty { Text(detail).dsText(DS.Font.tSub) }
+                HStack(spacing: DS.Space.s8) {
+                    Text(title).dsText(DS.Font.tLabelStrong).fixedSize()
+                    if !detail.isEmpty { Text(detail).dsText(DS.Font.tSub).lineLimit(1) }
                 }.dsFillWidth()
                 Text(value).dsText(tone == .positive ? DS.Font.nSpine : DS.Font.tLabel).monospacedDigit().fixedSize()
                 if tone == .warning {
                     DSIconView(icon: .chevron, size: DS.Font.tCaption.size, color: DS.Color.warnInk)
                 }
             }.foregroundStyle(tone == .warning ? DS.Color.warnInk : DS.Color.accentInk)
-                .frame(minHeight: DS.Size.tapMin)
-                .padding(.horizontal, DS.Space.s16).padding(.vertical, tone == .warning ? DS.Space.s8 : 0)
+                .frame(minHeight: tone == .positive ? DS.Size.tapMin : nil)
+                .padding(.horizontal, DS.Space.s16).padding(.vertical, tone == .warning ? HomeSpec.formulaTop : 0)
                 .background(tone == .warning ? DS.Color.warnSoft : DS.Color.accentSoft)
                 .clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
         }.dsPressStyle()

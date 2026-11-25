@@ -29,11 +29,16 @@ struct EntrySheetOverlay: View {
             ZStack(alignment: .bottom) {
                 EntryScrimView(motion: motion, color: DS.Color.scrim, close: cancel)
                     .ignoresSafeArea()
-                EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
-                               calendarFocus: $calendarFocus, drag: drag, close: cancel, save: save, receipt: onReceipt)
-                    .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
-                    .accessibilityHidden(model.categoryPanel || model.drawer == .calendar)
-                if model.categoryPanel {
+                if model.categoryOnly {
+                    EntryCategoryPanelView(model: model, safeBottom: bottom, maxHeight: maxHeight, confirm: save)
+                        .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
+                } else {
+                    EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
+                                   calendarFocus: $calendarFocus, drag: drag, close: cancel, save: save, receipt: onReceipt)
+                        .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
+                        .accessibilityHidden(model.categoryPanel || model.drawer == .calendar)
+                }
+                if model.categoryPanel && !model.categoryOnly {
                     DS.Color.scrim
                         .contentShape(Rectangle())
                         .onTapGesture { model.dismissCategoryPanel() }
@@ -55,7 +60,8 @@ struct EntrySheetOverlay: View {
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.categoryPanel)
         }
         .accessibilityAction(.escape) {
-            if model.drawer == .calendar { model.drawer = nil }
+            if model.categoryOnly { cancel() }
+            else if model.drawer == .calendar { model.drawer = nil }
             else if model.categoryPanel { model.dismissCategoryPanel() }
             else { cancel() }
         }
@@ -859,10 +865,10 @@ private struct EntryKeypadTrayView: View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: DSLayout.keypadColumns), spacing: DS.Space.s8) {
             ForEach(keys, id: \.self) { key in
                 if key == "⌫" {
-                    EntryBackspaceKey { model.draft.expression.press(key) }
+                    EntryBackspaceKey { model.pressAmountKey(key) }
                 } else {
                     Button {
-                        if key == "记下" { save() } else { model.draft.expression.press(key) }
+                        if key == "记下" { save() } else { model.pressAmountKey(key) }
                     } label: {
                         EntryKeyLabel(key: key)
                     }
@@ -977,6 +983,7 @@ struct EntryCategoryPanelView: View {
     @Bindable var model: EntrySheetViewModel
     let safeBottom: CGFloat
     let maxHeight: CGFloat
+    var confirm: (() -> Void)? = nil
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.categoryPanel)
@@ -987,10 +994,13 @@ struct EntryCategoryPanelView: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 Button {
-                    model.categoryEditing.toggle()
-                    model.drawer = nil
+                    if let confirm { confirm() }
+                    else {
+                        model.categoryEditing.toggle()
+                        model.drawer = nil
+                    }
                 } label: {
-                    Text(model.categoryEditing ? "完成" : "编辑").dsText(DS.Font.tLabel)
+                    Text(confirm != nil || model.categoryEditing ? "完成" : "编辑").dsText(DS.Font.tLabel)
                         .foregroundStyle(DS.Color.accentInk)
                         .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin, alignment: .trailing)
                 }
@@ -1034,8 +1044,14 @@ struct EntryCategoryPanelView: View {
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityIdentifier("entryCategoryPicker")
-        .accessibilityAction(.escape) { model.dismissCategoryPanel() }
-        .onKeyPress(.escape) { model.dismissCategoryPanel(); return .handled }
+        .accessibilityAction(.escape) {
+            if confirm == nil { model.dismissCategoryPanel() }
+        }
+        .onKeyPress(.escape) {
+            guard confirm == nil else { return .ignored }
+            model.dismissCategoryPanel()
+            return .handled
+        }
     }
 
     private func chips(category: String) -> some View {

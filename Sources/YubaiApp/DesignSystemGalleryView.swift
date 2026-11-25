@@ -39,6 +39,8 @@ struct DesignSystemGalleryView: View {
     }
     enum IsolatedComponent: String {
         case sheet = "Sheet", categoryPicker = "CategoryPicker", entryPills = "EntryPills"
+        case hero = "Hero", dayBars = "DayBars", budgetRow = "BudgetRow", listRow = "ListRow"
+        case tabBar = "TabBar", alertCard = "AlertCard", floatingCard = "FloatingCard"
         case effectLine = "EffectLine", keypad = "Keypad", icon = "Icon", categoryPanel = "CategoryPanel"
     }
     let section: Section?
@@ -120,6 +122,67 @@ struct DesignSystemGalleryView: View {
         case .keypad: DSKeypad(pressedKey: "5")
         case .icon: iconSpecimens
         case .categoryPanel: EntryCategoryGallery()
+        case .hero, .dayBars, .budgetRow, .listRow, .tabBar, .alertCard, .floatingCard:
+            homeSpecimen(component).frame(maxWidth: HomeSpec.galleryWidth, alignment: .leading)
+                .environment(\.dsAnimationsEnabled, false)
+        }
+    }
+
+    @ViewBuilder private func homeSpecimen(_ component: IsolatedComponent) -> some View {
+        switch component {
+        case .hero, .dayBars:
+            let fixture = HomeFixture.home(.normal)
+            let ledger = fixture.makeLedger().ledger
+            let period = Finance.spendableBreakdown(ledger, now: fixture.now)
+            let bars = HomeDisplay.bars(DailySpending(in: ledger, period: period), fixture: true)
+            if component == .hero {
+                DSHero(amount: Money.text(period.available), daily: "391.78", remainingDays: 16,
+                       days: bars.days, budgets: HomeBudgets(in: ledger, now: fixture.now).home.map {
+                           HomeDisplay.dsBudget($0, hidden: false)
+                       }, guide: bars.guide)
+                    .frame(maxWidth: HomeSpec.galleryContentWidth)
+            } else {
+                DSDayBars(days: bars.days, guide: bars.guide).frame(maxWidth: HomeSpec.galleryContentWidth)
+            }
+        case .budgetRow:
+            VStack(spacing: DS.Space.s12) {
+                HStack(spacing: HomeSpec.budgetTileGap) {
+                    DSAmberTile(budget: Self.budgets[0])
+                    DSAmberTile(budget: Self.budgets[1])
+                }
+                VStack(spacing: .zero) {
+                    DSBudgetRow(budget: Self.budgets[2])
+                    DSBudgetRow(budget: Self.budgets[3])
+                }.padding(.top, HomeSpec.calmTop)
+            }.frame(maxWidth: HomeSpec.galleryContentWidth)
+        case .listRow:
+            VStack(spacing: .zero) {
+                DSDayHeader(title: "昨天", total: "−243.10")
+                DSListRow(icon: .catGrocery, name: "盒马", amount: "−128.60", separator: false)
+                DSListRow(icon: .catFun, name: "电影票", amount: "−78.00", detail: "信用卡", tag: .init(title: "待 AA"))
+                DSListRow(icon: .catTransport, name: "打车", amount: "−36.50", detail: "信用卡", tag: .init(title: "待报销"))
+                DSDayHeader(title: "11月20日", total: "−42.00", first: false)
+                DSListRow(icon: .catFood, name: "午饭", amount: "−42.00", separator: false)
+            }.frame(maxWidth: HomeSpec.galleryContentWidth)
+        case .tabBar:
+            VStack(spacing: DS.Space.s20) {
+                DSAskBar()
+                DSTabBar(selection: $tab, onEntry: {})
+            }.frame(maxWidth: HomeSpec.galleryContentWidth)
+        case .alertCard:
+            VStack(spacing: DS.Space.s12) {
+                DSAlertCard(title: "衣服比上期多 181%", detail: "", value: "899.00")
+                DSAlertCard(title: "上期留下", detail: "已转入机动余钱", value: "+1,204.30", tone: .positive)
+            }.frame(maxWidth: HomeSpec.galleryContentWidth)
+        case .floatingCard:
+            VStack(alignment: .trailing, spacing: DS.Space.s20) {
+                DSFloatingCard(name: "换手机", amount: "−6,999.00", impact: "走机动余钱 · 还剩",
+                               metadata: "购物 · 今天 14:20 · 招行信用卡", effectValue: "1,421.00")
+                    .frame(maxWidth: HomeSpec.galleryContentWidth, alignment: .leading)
+                    .dsFillWidth()
+                DSFloatingMenu()
+            }
+        default: EmptyView()
         }
     }
 
@@ -362,12 +425,6 @@ struct DesignSystemGalleryView: View {
                 VStack(spacing: DS.Space.s20) {
                     DSAskBar()
                     DSTabBar(selection: $tab, onEntry: { sheetPresented = true })
-                        .background {
-                            // Keep system glass, with visible backing if the off-screen effect is empty.
-                            if section != nil {
-                                RoundedRectangle(cornerRadius: DS.Radius.m, style: .continuous).fill(DS.Color.surface)
-                            }
-                        }
                 }
             }
         case .entryPills:

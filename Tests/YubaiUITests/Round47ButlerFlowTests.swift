@@ -21,7 +21,11 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
     private func tap(_ id: String) {
-        if id == "openSettings" && element("mainNavigation").exists { tap("tab_yubai") }
+        if id == "tab_yubai" {
+            if !element("openSettings").exists { tap("tab_ledger") }
+            tap("openSettings"); tap("openAssistantHub")
+            return
+        }
         let target = element(id)
         tapControl(target, in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
     }
@@ -359,12 +363,18 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         frequentMenu(); XCTAssertTrue(element("emptyState_frequent").exists)
         tap("emptyAction_frequent"); XCTAssertTrue(element("frequentEntryPurpose").waitForExistence(timeout: 5))
     }
-    func testSearchNoResultsHasTwoDistinctExits() {
+    func testSearchNoResultsOffersCancelAndAsk() {
         launch(); tap("tab_ledger"); tap("openLedgerSearch")
-        let field = element("entriesSearch"); field.tap(); field.typeText("星巴克")
-        XCTAssertTrue(element("emptyState_search").waitForExistence(timeout: 5))
-        tap("emptySecondary_search"); XCTAssertTrue(element("emptyState_search").exists)
-        tap("emptyAction_search"); XCTAssertFalse(element("emptyState_search").exists)
+        let field = element("entriesSearch")
+        field.typeText("未见的搜索词")
+        let summary = element("entriesSearchTotal")
+        XCTAssertTrue(summary.waitForExistence(timeout: 5))
+        XCTAssertTrue(summary.label.contains("0 笔"))
+        tap("askHomeSearch")
+        XCTAssertTrue(element("askPage").waitForExistence(timeout: 5))
+        tap("BackButton")
+        tap("entriesSearchCancel")
+        XCTAssertTrue(waitForDisappearance(field))
     }
     func testNoKeyDefaultsSuggestionToggleOffAndNeverRequests() {
         launch("v47-c-empty"); settings()

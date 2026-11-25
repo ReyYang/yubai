@@ -3,6 +3,7 @@ import YubaiCore
 
 /// Conversation and global management, with current facts beside each route.
 struct YubaiTabView: View {
+    var asDestination = false
     @Environment(AppStore.self) private var store
     @State private var input = ""
     @State private var repeatCount = 0
@@ -39,14 +40,14 @@ struct YubaiTabView: View {
                     EntryFormDivider()
                     destination(.imports, "导入账单", id: "openImports")
                     EntryFormDivider()
-                    destination(.settings, "设置", id: "openSettings")
+                    if !asDestination { destination(.settings, "设置", id: "openSettings") }
                 }
             }
         }.rootScrollContentMargins(for: .yubai)
-            .rootPageHeader { RootHeader(title: "余白") }
+            .rootPageHeader { if !asDestination { RootHeader(title: "余白") } }
             .amountPrivacy(store.preferences.hideAmounts).navigationTitle("余白").yubaiNavigation()
             #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
+            .toolbar(asDestination ? .visible : .hidden, for: .navigationBar)
             #endif
             .task(id: store.ledgerRevision) {
                 let ledger = store.current, now = store.financialNow
@@ -100,7 +101,7 @@ struct YubaiTabView: View {
     private var wishStatus: String {
         let wishes = store.current.wishlist.filter { $0.status == .thinking }
         guard !wishes.isEmpty else { return "0 个" }
-        let saved = LedgerHomeModel.make(store).savedTotal ?? 0
+        let saved = store.homeSaving.total
         let funded = wishes.filter { $0.amount <= saved }.min { $0.amount < $1.amount }
         return "\(wishes.count) 个" + (funded.map { " · " + $0.title + "够了" } ?? "")
     }
@@ -112,7 +113,7 @@ struct YubaiTabView: View {
         return count == 0 ? "" : "盯住 \(count) 类"
     }
     private var savingStatus: String {
-        LedgerHomeModel.make(store).savedTotal.map { amount2($0, hide: store.preferences.hideAmounts) } ?? ""
+        store.homeSaving.started ? amount2(store.homeSaving.total, hide: store.preferences.hideAmounts) : ""
     }
     private var accountStatus: String {
         "\(store.accounts.filter { !$0.archived }.count) 个"

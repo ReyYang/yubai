@@ -27,7 +27,7 @@ struct WhereAnswerCard: View {
                             store.ledgerPreset = LedgerPreset(mode: .whereTo); store.destination = .ledger
                         }.buttonStyle(PrimaryButtonStyle(compact: true)).accessibilityIdentifier("askShowWhere")
                         if let category = answer.comparisons.first?.category {
-                            TabNavigationLink(.categoryBudget(category)) { BudgetView(initialCategory: category) } label: { Text("给" + Classification.displayCategory(category) + "定个预算") }
+                            TabNavigationLink(.categoryBudget(category)) { BudgetDetailView(initialCategory: category) } label: { Text("给" + Classification.displayCategory(category) + "定个预算") }
                                 .buttonStyle(SecondaryButtonStyle(background: YubaiColor.card, compact: true)).accessibilityIdentifier("askCategoryBudget")
                         }
                     }.padding(.top, YubaiSpace.space8)
