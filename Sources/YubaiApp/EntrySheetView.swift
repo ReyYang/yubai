@@ -292,8 +292,7 @@ private struct EntryAmountBlockView: View {
                 .fixedSize()
                 .accessibilityLabel("币种，" + model.draft.currency.unit)
                 .accessibilityHint("选择外币和汇率")
-                Text(model.draft.expression.isExpression ? Money.text(model.money, currency: false)
-                     : model.draft.expression.isEmpty ? "0.00" : model.draft.expression.formattedDisplay)
+                Text(amountText)
                     .dsText(DS.Font.nEntry)
                     .foregroundStyle(model.draft.type == .income ? DS.Color.accentInk : DS.Color.ink)
                     .lineLimit(1)
@@ -301,19 +300,19 @@ private struct EntryAmountBlockView: View {
                     .contentTransition(reduced ? .identity : .numericText())
                     .animation(reduced ? nil : DSMotion.snappyAnimation, value: model.money)
                     .accessibilityLabel("金额")
-                    .accessibilityValue(model.draft.expression.formattedDisplay)
+                    .accessibilityValue(model.hidesAmounts ? "金额已隐藏" : model.draft.expression.formattedDisplay)
                     .accessibilityHint("用下方键盘输入")
                     .accessibilityIdentifier("entryKeypadAmount")
                 EntryAmountCaretView(steady: model.settled)
             }
             .frame(minHeight: EntrySpec.amountHeight)
             if model.draft.expression.isExpression {
-                Text(model.draft.expression.formattedDisplay + " = " + Money.text(model.money, currency: false))
+                Text(model.hidesAmounts ? "••••" : model.draft.expression.formattedDisplay + " = " + Money.text(model.money, currency: false))
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
             }
             if model.draft.currency != .cny, let rate = model.signedRate, let local = model.localMoney {
-                Text("≈ \(Money.text(local)) · 1 \(model.draft.currency.rawValue) = \(NSDecimalNumber(decimal: rate).stringValue)")
+                Text(model.hidesAmounts ? "••••" : "≈ \(Money.text(local)) · 1 \(model.draft.currency.rawValue) = \(NSDecimalNumber(decimal: rate).stringValue)")
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
             }
@@ -333,6 +332,7 @@ private struct EntryAmountBlockView: View {
                     .frame(minHeight: EntrySpec.currencyHeight)
                     .padding(.horizontal, DS.Space.s8)
                     .padding(.vertical, DS.Space.s4)
+                    .frame(minHeight: DS.Size.tapMin)
                 }
                 .buttonStyle(EntryTactileButtonStyle())
                 .accessibilityLabel("用途")
@@ -342,6 +342,13 @@ private struct EntryAmountBlockView: View {
             }
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private var amountText: String {
+        if model.hidesAmounts { return "••••" }
+        let expression = model.draft.expression
+        if expression.isExpression { return Money.text(model.money, currency: false) }
+        return expression.isEmpty ? "0.00" : expression.formattedDisplay
     }
 }
 
@@ -466,7 +473,7 @@ private struct EntrySubcategoryRowView: View {
                             .frame(minHeight: DS.Size.tapMin)
                     }
                     .buttonStyle(EntryTactileButtonStyle())
-                    .accessibilityLabel("新子类")
+                    .accessibilityLabel("小类")
                     .accessibilityHint("在当前分类内添加小类")
                 }
             }
@@ -505,22 +512,11 @@ private struct EntryTransferRouteView: View {
     let model: EntrySheetViewModel
 
     var body: some View {
-        VStack(spacing: DS.Space.s8) {
-            if model.draft.type == .transfer && model.draft.originalNature == nil {
-                FlowLayout {
-                    ForEach(EntryTransferMode.allCases) { mode in
-                        EntryPill(title: mode.rawValue, selected: model.draft.transferMode == mode, hint: "切换转账方式") {
-                            model.select(transferMode: mode)
-                        }
-                    }
-                }
-            }
-            HStack(alignment: .top, spacing: EntrySpec.compactPadding) {
-                accountPill(destination: false)
-                DS.Icon.chevron.view(size: EntrySpec.routeIcon, color: DS.Color.ink3)
-                    .padding(.top, EntrySpec.pillLeading)
-                accountPill(destination: true)
-            }
+        HStack(alignment: .top, spacing: EntrySpec.compactPadding) {
+            accountPill(destination: false)
+            DS.Icon.chevron.view(size: EntrySpec.routeIcon, color: DS.Color.ink3)
+                .padding(.top, EntrySpec.pillLeading)
+            accountPill(destination: true)
         }
     }
 
@@ -546,7 +542,7 @@ private struct EntryTransferRouteView: View {
             .accessibilityLabel((destination ? "转入，" : "转出，") + title)
             .accessibilityHint(destination ? "选择目标账户" : "选择来源账户")
             if model.routeShowsBalance, let account {
-                Text("余 " + (model.hidesAmounts ? "••••" : Money.text(Finance.balance(account, in: model.ledger, at: model.now), currency: false)))
+                Text(model.hidesAmounts ? "••••" : "余 " + Money.text(Finance.balance(account, in: model.ledger, at: model.now), currency: false))
                     .dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3)
             }
         }
@@ -573,7 +569,7 @@ private struct EntryAACardView: View {
                 .accessibilityHidden(true)
                 Spacer(minLength: .zero)
                 Text("我承担").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3)
-                Text(Money.text(model.myShare, currency: false)).dsText(DS.Font.tLabelStrong)
+                Text(model.hidesAmounts ? "••••" : Money.text(model.myShare, currency: false)).dsText(DS.Font.tLabelStrong)
                     .monospacedDigit().foregroundStyle(DS.Color.ink)
                     .minimumScaleFactor(EntrySpec.amountMinimumScale)
                 DS.Icon.chevron.view(size: DS.Font.tCaption.size, color: DS.Color.chevron)
@@ -585,7 +581,8 @@ private struct EntryAACardView: View {
             .dsSurface(DS.Color.surface, radius: DS.Radius.m)
         }
         .buttonStyle(EntryTactileButtonStyle())
-        .accessibilityLabel("我承担 " + Money.text(model.myShare))
+        .accessibilityLabel("我承担")
+        .accessibilityValue(model.hidesAmounts ? "金额已隐藏" : Money.text(model.myShare))
         .accessibilityHint("平分金额或调整个人实付")
     }
 }
@@ -724,9 +721,9 @@ private struct EntryExpandedPanelView: View {
                 DSDatePickerPanel(date: Binding(get: { model.draft.date }, set: { model.setDate($0) }))
             case .subcategory where !model.categoryPanel:
                 HStack(spacing: DS.Space.s8) {
-                    EntryInlineAddView(title: "新子类", text: $model.inputText,
+                    EntryInlineAddView(title: "小类", text: $model.inputText,
                                        autoFocus: model.autoFocusSubcategory, action: model.addSubcategory)
-                    EntryPill(title: nil, icon: .close, label: "关闭新子类", hint: "收起小类输入") {
+                    EntryPill(title: nil, icon: .close, label: "关闭小类输入", hint: "收起小类输入") {
                         model.toggleDrawer(.subcategory)
                     }
                 }
@@ -735,7 +732,7 @@ private struct EntryExpandedPanelView: View {
                     HStack {
                         Text("总金额").dsText(DS.Font.tPill)
                         Spacer()
-                        Text(Money.text(model.localMoney ?? 0)).dsText(DS.Font.tLabelStrong).monospacedDigit()
+                        Text(model.hidesAmounts ? "••••" : Money.text(model.localMoney ?? 0)).dsText(DS.Font.tLabelStrong).monospacedDigit()
                         EntryPill(title: "平分", hint: "按\(model.splitCount) 人平均计算") {
                             model.draft.personalShare = ""
                             model.drawer = nil
@@ -744,7 +741,7 @@ private struct EntryExpandedPanelView: View {
                     HStack {
                         Text("个人实付").dsText(DS.Font.tPill)
                         DSInlineTextField(title: "个人实付", text: $model.draft.personalShare, decimal: true,
-                                          autoFocus: false) { model.drawer = nil }
+                                          autoFocus: false, secure: model.hidesAmounts) { model.drawer = nil }
                         EntryPill(title: nil, icon: .done, label: "完成分摊", hint: "保留个人实付") { model.drawer = nil }
                     }
                 }
@@ -774,7 +771,7 @@ private struct EntryInlineAddView: View {
                     .padding(.horizontal, DS.Space.s8)
                     .frame(minHeight: EntrySpec.panelAddHeight)
                     .dsPill(DS.Color.accent)
-                    .frame(minWidth: DS.Size.tapMin)
+                    .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
             }
             .buttonStyle(EntryTactileButtonStyle())
             .accessibilityHint(title)
@@ -1038,7 +1035,7 @@ private struct EntryCategoryPanelView: View {
                     model.draft.subcategory = nil
                 }
                 if model.drawer == .subcategory {
-                    EntryInlineAddView(title: "新子类", text: $model.inputText, autoFocus: model.autoFocusSubcategory,
+                    EntryInlineAddView(title: "小类", text: $model.inputText, autoFocus: model.autoFocusSubcategory,
                                        action: model.addSubcategory)
                 }
                 Button { model.toggleDrawer(.subcategory) } label: {
@@ -1052,7 +1049,7 @@ private struct EntryCategoryPanelView: View {
                     .frame(minHeight: DS.Size.tapMin)
                 }
                 .buttonStyle(EntryTactileButtonStyle())
-                .accessibilityLabel("新子类")
+                .accessibilityLabel("小类")
                 .accessibilityHint("在当前分类内添加小类")
             }
         }

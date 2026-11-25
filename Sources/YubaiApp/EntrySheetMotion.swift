@@ -60,6 +60,7 @@ struct SpringFlight {
         if dragOrigin == nil {
             EntryRenderDiagnostics.mark("drag")
             fadeTask?.cancel()
+            if opacity != 1 { withAnimation(nil) { opacity = 1 } }
             let current = position(at: .now)
             dragOrigin = current
             offset = current

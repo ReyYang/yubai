@@ -252,59 +252,6 @@ extension View {
     }
 }
 
-struct EntryFormFields<Trailing: View>: View {
-    @Binding var purpose: String
-    var purposeTitle = "用途"
-    var purposeIdentifier = "entryPurpose"
-    var purposeError: String? = nil
-    var nature: Nature
-    let accounts: [Account]
-    let balances: [UUID: Int64]
-    @Binding var accountID: UUID?
-    @Binding var otherAccountID: UUID?
-    @Binding var date: Date
-    var showsTime = false
-    var showsBalance = false
-    var showsRecent = true
-    var showsDate = true
-    var optionalAccount = false
-    var accountTitle: String? = nil
-    var beforeAccount: AnyView? = nil
-    var transferFallback: AnyView? = nil
-    var focus: FocusState<Bool>.Binding
-    var recall: (Entry) -> Void = { _ in }
-    @ViewBuilder var trailing: () -> Trailing
-    var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.space12) {
-            InlineFieldError(message: purposeError)
-            if showsRecent { RecentPurposeChips(selection: $purpose, nature: nature, recall: recall) }
-            if nature == .transfer || (nature.paired && otherAccountID != nil) {
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        EntryFormRow(title: "转出") {
-                            EntryAccountMenu(accounts: accounts, balances: balances, selection: Binding(get: { accountID }, set: { next in
-                                accountID = next
-                                if nature == .transfer, let next, otherAccountID == next {
-                                    otherAccountID = accounts.first { $0.id != next }?.id
-                                }
-                            }), showsBalance: showsBalance, identifier: "transferSourceAccount")
-                        }
-                        EntryFormDivider()
-                        EntryFormRow(title: "转入") {
-                            if accounts.filter({ $0.id != accountID }).isEmpty, let transferFallback { transferFallback }
-                            else {
-                                EntryAccountMenu(accounts: accounts.filter { $0.id != accountID }, balances: balances, selection: $otherAccountID, showsBalance: showsBalance)
-                                    .accessibilityIdentifier("transferDestinationAccount")
-                            }
-                        }
-                    }
-                }
-            }
-            trailing()
-        }
-    }
-}
-
 struct EntryKeyboardTray<Controls: View, Keys: View>: View {
     @Binding var purpose: String
     var purposeTitle: String = "用途"

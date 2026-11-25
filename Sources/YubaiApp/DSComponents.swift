@@ -822,6 +822,7 @@ struct DSInlineTextField: View {
     @Binding var text: String
     var decimal = false
     var autoFocus = true
+    var secure = false
     var embedded = false
     var previewCaretSize: CGSize?
     var onSubmit: () -> Void = {}
@@ -860,7 +861,14 @@ struct DSInlineTextField: View {
     }
 
     private var field: some View {
-        TextField("", text: $text, prompt: Text(title).foregroundStyle(DS.Color.ink3))
+        let prompt = Text(title).foregroundStyle(DS.Color.ink3)
+        return Group {
+            if secure {
+                SecureField("", text: $text, prompt: prompt)
+            } else {
+                TextField("", text: $text, prompt: prompt)
+            }
+        }
             .accessibilityLabel(title)
             #if os(iOS)
             .keyboardType(decimal ? .decimalPad : .default)

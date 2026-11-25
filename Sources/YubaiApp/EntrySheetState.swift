@@ -1,11 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-enum EntryTransferMode: String, CaseIterable, Identifiable, Sendable {
-    case move = "互转", repay = "还款", cash = "取现"
-    var id: Self { self }
-}
-
 enum EntryDrawer: Equatable {
     case purpose, currency, time, calendar, source, destination, subcategory, newCategory, renameCategory, split
 }
@@ -27,7 +22,6 @@ struct EntrySheetDraft: Equatable {
     var currency: BillCurrency = .cny
     var exchangeRate = ""
     var personalShare = ""
-    var transferMode: EntryTransferMode = .move
     var originalNature: Nature?
     var relatedEntryID: UUID?
     var intoFixedSavings = false
@@ -37,7 +31,7 @@ struct EntrySheetDraft: Equatable {
         switch type {
         case .expense: return .expense
         case .income: return .income
-        case .transfer: return transferMode == .repay ? .repayment : .transfer
+        case .transfer: return .transfer
         case .deposit: return .investBuy
         }
     }
@@ -54,15 +48,8 @@ struct EntrySheetDraft: Equatable {
         default: type = nature.paired ? .transfer : nature.inflow ? .income : .expense
         }
         switch nature {
-        case .expense, .income, .investBuy: break
-        case .transfer where prefill.intoFixedSavings: break
+        case .expense, .income, .investBuy, .transfer, .repayment: break
         default: originalNature = nature
-        }
-        if nature == .repayment { transferMode = .repay }
-        if nature == .transfer, let id = prefill.otherAccountID,
-           ledger.accounts.first(where: { $0.id == id })?.kind == .cash,
-           ledger.accounts.first(where: { $0.id == prefill.accountID })?.kind == .bank {
-            transferMode = .cash
         }
         if let category = prefill.category, !Classification.isPending(category), !isRoute {
             let assignment = ledger.categoryAssignment(category: category, subcategory: prefill.subcategory, income: nature.categoryIncome)
@@ -94,6 +81,7 @@ struct EntryResult: Equatable, Sendable {
     @ObservationIgnored private weak var store: AppStore?
     private var fixtureLedger: Ledger
     let settled: Bool
+    let isPrefilled: Bool
     let fixtureNow: Date?
     var draft: EntrySheetDraft
     var drawer: EntryDrawer?
@@ -119,6 +107,7 @@ struct EntryResult: Equatable, Sendable {
         self.store = store
         fixtureLedger = Ledger()
         settled = false
+        isPrefilled = prefill != nil
         fixtureNow = nil
         if let prefill {
             draft = EntrySheetDraft(prefill: prefill, ledger: store.current)
@@ -139,6 +128,7 @@ struct EntryResult: Equatable, Sendable {
         self.fixtureLedger = fixtureLedger
         self.draft = draft
         settled = true
+        isPrefilled = false
         fixtureNow = now
         self.result = result
         fixtureResult = result
@@ -208,28 +198,23 @@ struct EntryResult: Equatable, Sendable {
 
     func account(_ id: UUID?) -> Account? { ledger.accounts.first { $0.id == id } }
     func accounts(destination: Bool) -> [Account] {
-        let selected = destination ? draft.destinationID : draft.accountID
-        let other = destination ? draft.accountID : draft.destinationID
-        return ledger.accounts.filter { account in
-            guard (!account.archived || account.id == selected), account.id != other else { return false }
-            if account.id == selected && draft.originalNature != nil { return true }
-            if draft.type == .deposit { return destination || account.kind == .bank || account.kind == .cash }
-            guard draft.type == .transfer else { return !destination }
+        ledger.accounts.filter { account in
+            guard !account.archived else { return false }
             if destination {
-                switch draft.transferMode {
-                case .repay: return account.kind == .credit
-                case .cash: return account.kind == .cash
-                case .move: return account.kind != .credit
-                }
+                guard draft.isRoute, account.id != draft.accountID else { return false }
+                return draft.type != .deposit || [.investment, .bank, .cash].contains(account.kind)
             }
-            return draft.transferMode == .move || account.kind == .bank || (!destination && draft.transferMode == .repay && account.kind == .cash)
+            return draft.type != .deposit || account.kind == .bank || account.kind == .cash
         }
     }
+
     private func normalizeAccounts() {
         let sources = accounts(destination: false)
         if !sources.contains(where: { $0.id == draft.accountID }) {
             let suggested = ManualBookkeeping.defaultAccount(in: ledger, nature: draft.nature)?.id
-            draft.accountID = sources.first(where: { $0.id == suggested })?.id ?? sources.first?.id
+            let alternatives = sources.filter { $0.id != draft.destinationID }
+            draft.accountID = alternatives.first(where: { $0.id == suggested })?.id
+                ?? alternatives.first?.id ?? sources.first?.id
         }
         guard draft.isRoute else { return }
         let destinations = accounts(destination: true)
@@ -245,7 +230,6 @@ struct EntryResult: Equatable, Sendable {
         draft.relatedEntryID = nil
         draft.intoFixedSavings = false
         draft.destinationID = nil
-        draft.transferMode = .move
         draft.category = nil
         draft.subcategory = nil
         draft.exception = nil
@@ -254,13 +238,6 @@ struct EntryResult: Equatable, Sendable {
         draft.personalShare = ""
         suggestion = nil
         drawer = nil
-        normalizeAccounts()
-    }
-    func select(transferMode: EntryTransferMode) {
-        guard draft.transferMode != transferMode else { return }
-        draft.transferMode = transferMode
-        draft.originalNature = nil
-        draft.destinationID = nil
         normalizeAccounts()
     }
     func select(category: String) {
@@ -322,8 +299,12 @@ struct EntryResult: Equatable, Sendable {
     }
 
     func selectAccount(_ id: UUID, destination: Bool) {
-        if destination { draft.destinationID = id }
-        else { draft.accountID = id }
+        if destination {
+            draft.destinationID = id
+        } else {
+            if draft.isRoute && draft.destinationID == id { draft.destinationID = draft.accountID }
+            draft.accountID = id
+        }
         normalizeAccounts()
         if !canRepeat { draft.repeatMonthly = false }
         drawer = nil
@@ -469,8 +450,10 @@ struct EntryResult: Equatable, Sendable {
             result.note = "暂扣 " + Money.text(delta, currency: false)
         } else if input.exception == .reserve {
             result.note = "机动余钱 → " + Money.text(updated.fixedSavingsTotal(now: now), currency: false)
-        } else if input.repeatMonthly {
+        } else if input.repeatMonthly && input.type == .expense {
             result.note = "下期起期初预扣 " + Money.text(delta, currency: false)
+        } else if input.repeatMonthly && input.type == .income {
+            result.note = "下期起每月计入 " + Money.text(delta, currency: false)
         } else if input.incomeNextCycle {
             result.note = "本期不变"
         }
@@ -506,7 +489,7 @@ struct EntryResult: Equatable, Sendable {
             if let store {
                 saved = store.update("记一笔", apply)
                 if saved {
-                    store.retainedEntryDraft = nil
+                    if !isPrefilled { store.retainedEntryDraft = nil }
                     store.lastEntryType = draft.type
                     store.lastEntryAccountID = draft.accountID
                 }
@@ -541,7 +524,7 @@ struct EntryResult: Equatable, Sendable {
     #endif
 
     func retainDraft() {
-        guard let store, !didSave else { return }
+        guard let store, !didSave, !isPrefilled || draft.hasContent else { return }
         store.retainedEntryDraft = draft.hasContent ? draft : nil
     }
 }

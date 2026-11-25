@@ -91,7 +91,6 @@ enum EntryFixture: String, CaseIterable {
             result = EntryResult(title: "12.10 起计入", value: "+18,500.00", note: "本期不变")
         case .transfer, .move, .deposit:
             draft.type = self == .deposit ? .deposit : .transfer
-            draft.transferMode = self == .transfer ? .repay : .move
             draft.destinationID = self == .deposit ? funds.id : self == .transfer ? credit.id : wallet.id
             draft.expression = EntryAmountExpression(expression: self == .deposit ? "1000.00" : self == .transfer ? "3216.80" : "2000.00")
             draft.purpose = self == .deposit ? "基金定投" : self == .transfer ? "还信用卡" : "转到支付宝"
