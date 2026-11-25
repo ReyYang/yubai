@@ -322,7 +322,9 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         for large in [false, true] {
             launch(large: large)
             let id = "ledgerEntry_" + self.id(479999)
-            reveal(id); tap(id); tap("billMore")
+            reveal(id)
+            XCTAssertLessThanOrEqual(element(id).frame.maxY, element("mainNavigation").frame.minY)
+            tap(id); tap("billMore")
             XCTAssertTrue(element("deleteEntryDetail").isHittable)
             XCTAssertTrue(element("entryDetailRecategorize").exists)
             XCTAssertFalse(element("entryKeypadAmount").exists)
@@ -363,8 +365,19 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         reveal(key); tap(key); tap("billMore"); tap("entryDetailEdit")
         XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
         XCTAssertEqual(element("entryKeypadAmount").value as? String, "186.40")
+        let pill = element("entryTimePill")
+        XCTAssertTrue(waitForStableFrame(pill))
+        let pillFrame = pill.frame
+        let window = app.windows.firstMatch
+        let windowFrame = window.frame
+        let pillCenter = window.coordinate(withNormalizedOffset: .zero).withOffset(
+            CGVector(dx: pillFrame.midX - windowFrame.minX, dy: pillFrame.midY - windowFrame.minY))
         tap("entryTimePill")
-        XCTAssertTrue(element("entryQuick_昨天").waitForExistence(timeout: 5))
+        let yesterday = element("entryQuick_昨天")
+        XCTAssertTrue(yesterday.waitForExistence(timeout: 5))
+        // The calendar scrim temporarily takes the pill out of the AX tree.
+        pillCenter.tap()
+        XCTAssertTrue(waitForDisappearance(yesterday))
         tap("cancelManualSheet")
         XCTAssertTrue(element(key).waitForExistence(timeout: 5))
     }

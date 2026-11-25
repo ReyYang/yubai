@@ -43,12 +43,24 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         openAssistantHub()
         XCTAssertTrue(element("yubaiScroll").waitForExistence(timeout: 5))
         // The scripted suggestion is enqueued by the asynchronous cadence run.
-        XCTAssertTrue(element("openButlerInbox").waitForExistence(timeout: 15))
+        XCTAssertTrue(element("openButlerInbox").waitForExistence(timeout: 15),
+                      "待办入口未出现（\(app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] ?? "")）")
         tap("openButlerInbox")
     }
 
-    private func wait(_ condition: @escaping () -> Bool) {
-        XCTAssertEqual(XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)], timeout: 10), .completed)
+    private func wait(file: StaticString = #filePath, line: UInt = #line, _ condition: () -> Bool) {
+        XCTAssertTrue(UIConditionWait.run(timeout: 10, read: condition), file: file, line: line)
+    }
+
+    private func waitForRun(_ expected: String, file: StaticString = #filePath, line: UInt = #line) {
+        let target = element("butlerLastRun")
+        var latest = ""
+        let matched = UIConditionWait.run(timeout: 10) {
+            latest = target.value as? String ?? ""
+            return latest.contains(expected)
+        }
+        XCTAssertTrue(matched, "\(app.launchEnvironment["YUBAI_UI_TEST_SCRIPT"] ?? ""): 期望 \(expected)，实际 \(latest)",
+                      file: file, line: line)
     }
     private func openFrequentEntries() {
         openAssistantHub(); tap("openFrequentEntries")
@@ -269,12 +281,12 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
     func testScriptedWrongSumUnknownIDUnknownActionMalformedAndEmptyNeverEnterQueue() {
         for fixture in ["v47-ai-wrong-sum", "v47-ai-unknown-id", "v47-ai-unknown-action", "v47-ai-malformed", "v47-ai-none"] {
             launch(fixture); settings()
-            wait { (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=0") }
+            waitForRun("requests=1;suggestions=0")
             backToRoot(); XCTAssertFalse(element("butlerSuggestionCard").exists); app.terminate()
         }
     }
     func testSeveralSuggestionsStillShowOneCardAtATime() {
-        launch("v47-ai-many"); tap("butlerAIAccept")
+        launch("v47-ai-many"); openInbox(); tap("butlerAIAccept")
         XCTAssertTrue(element("butlerSuggestionCard").waitForExistence(timeout: 5))
         tap("butlerAIEvidence"); tap("butlerAINever"); wait { !self.element("butlerSuggestionCard").exists }
         settings(); XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("suggestions=2;reviews=1;memories=3"))
@@ -469,7 +481,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         launch("v47-ai-topup"); openInbox()
         XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 10))
         settings()
-        wait { (self.element("butlerLastRun").value as? String ?? "").contains("requests=1;suggestions=1") }
+        waitForRun("requests=1;suggestions=1")
         backToRoot(); tap("tab_ledger")
         tap("savingsTopupAll")
         tap("butlerAIAccept")

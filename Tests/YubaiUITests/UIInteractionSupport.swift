@@ -106,9 +106,10 @@ class YubaiUITestCase: XCTestCase {
             ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear",
              "coverFromReserve", "deficitKeep", "saveMemory", "addEntry", "manageQuickRepeats", "takeSavings", "putBackSavings",
-             "confirmSavingsTransfer", "amountSheetCancel", "butlerAICorrectionSave"].contains(identifier) {
+             "confirmSavingsTransfer", "amountSheetCancel", "cancelBudgetKeypad", "deleteBudgetKeypad",
+             "openAssistantHub", "openButlerInbox", "butlerAICorrectionSave"].contains(identifier) {
             query = app.buttons
-        } else if ["butlerAIText", "ledgerStatus", "reserveTotal"].contains(identifier) { query = app.staticTexts }
+        } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
         else if ["mainNavigation", "rootHeaderRegion", "quickRepeatMenu", "savingsTransferSheet", "savingsTransferPreview",
                  "transferSavedPreview", "transferAvailablePreview", "amountSheetAmount", "fixedBottomBar"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
         else if ["entriesSearch", "frequentEntryPurpose"].contains(identifier) { query = app.textFields }

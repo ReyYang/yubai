@@ -95,7 +95,12 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         tap("reconcileField_招行储蓄卡Done")
     }
     func testNormalHeroAndFormulaShareExactAmount() {
-        launch(); expect("availableFunds", contains: "¥1,864.00"); formula(); expect("formulaResult", contains: "¥1,864.00")
+        launch()
+        let hero = element("fundsFormula")
+        XCTAssertTrue(hero.waitForExistence(timeout: 5))
+        XCTAssertEqual(hero.value as? String, "¥1,864.00")
+        formula()
+        XCTAssertEqual(element("formulaResult").label, "1,864.00")
         XCTAssertFalse(element("formulaRow_carry").exists); XCTAssertFalse(element("formulaRow_withdrawal").exists); XCTAssertFalse(element("formulaRow_balanceGap").exists)
     }
     func testFastHeroUsesAmberWaterState() {

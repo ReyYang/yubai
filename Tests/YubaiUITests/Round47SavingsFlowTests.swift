@@ -42,16 +42,21 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     private func keys(_ value: String) { for key in value { tap("keypad_" + String(key)) } }
     private func amount(_ id: String) -> Int64 {
         let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
-        let text = ((target.value as? String) ?? target.label).replacingOccurrences(of: "−", with: "-")
+        let valueText = (target.value as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (valueText.isEmpty ? target.label : valueText).replacingOccurrences(of: "−", with: "-")
         guard let range = text.range(of: #"-?[0-9]+(?:,[0-9]{3})*\.[0-9]{2}"#, options: .regularExpression),
-              let value = Double(text[range].replacingOccurrences(of: ",", with: "")) else { XCTFail(text); return 0 }
+              let value = Double(text[range].replacingOccurrences(of: ",", with: "")) else {
+            XCTFail("\(id): 无法读取金额 ‘\(text)’")
+            return 0
+        }
         return Int64((value * 100).rounded())
     }
     private func back() { tap("BackButton") }
     private func saved() {
         app.open(URL(string: "yubai://saving")!)
         XCTAssertTrue(element("savingTabScroll").waitForExistence(timeout: 10))
-        XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5))
+        let total = element("reserveTotal")
+        XCTAssertTrue(total.waitForExistence(timeout: 5), "reserveTotal 缺失，储蓄空状态存在：\(element("emptyState_saving").exists)")
     }
     private func gone(_ id: String) {
         XCTAssertTrue(waitForDisappearance(element(id)), id)
