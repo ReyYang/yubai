@@ -14,65 +14,16 @@
     }
   }
 
-  struct BakeoffSwiftScreen: View {
-    @Environment(\.accessibilityReduceMotion) private var reduced
-    @State private var state = BakeoffFixture()
-    @State private var hidden = false
-    @State private var offset: CGFloat = 0
-    @State private var dragOrigin: CGFloat?
-    @State private var flight: Flight?
-    @State private var hits = 0
+  private extension EnvironmentValues {
+    @Entry var bakeoffTap: (String) -> Void = { _ in }
+  }
 
-    private struct Flight {
-      var start: CGFloat
-      var target: CGFloat
-      var velocity: CGFloat
-      var date = Date()
-      func position(_ now: Date) -> CGFloat {
-        DSMotion.smooth.value(
-          fromValue: start, toValue: target, initialVelocity: velocity,
-          time: max(0, now.timeIntervalSince(date)))
-      }
-    }
-    private func settle(_ destination: CGFloat, velocity: CGFloat) {
-      if reduced {
-        offset = destination
-        flight = nil
-      } else {
-        flight = Flight(start: offset, target: destination, velocity: velocity)
-      }
-    }
-    private func drag(height: CGFloat) -> some Gesture {
-      DragGesture(minimumDistance: 4, coordinateSpace: .global)
-        .onChanged { value in
-          if dragOrigin == nil {
-            dragOrigin = flight?.position(Date()) ?? offset
-            flight = nil
-          }
-          offset = max(0, (dragOrigin ?? 0) + value.translation.height)
-        }.onEnded { value in
-          dragOrigin = nil
-          let dismiss =
-            offset > height * BakeoffSpec.dismissFraction
-            || (value.velocity.height > BakeoffSpec.dismissVelocity
-              && offset > BakeoffSpec.flickMinimumTravel)
-          settle(dismiss ? height : 0, velocity: value.velocity.height)
-          hidden = dismiss
-        }
-    }
-    private func tap(_ id: String) {
-      if id == "bakeoff.close" {
-        hidden = true
-        settle(BakeoffSpec.mainHeight, velocity: 0)
-        return
-      }
-      if id.hasPrefix("bakeoff.key.") { hits += 1 }
-      var next = state
-      next.tap(id)
-      let moves = next.tab != state.tab || (next.mode == "cats") != (state.mode == "cats")
-      withAnimation(moves && !reduced ? DSMotion.smoothAnimation : nil) { state = next }
+  private struct PanelContent: View {
+    let width: CGFloat
+    let state: BakeoffFixture
+    let picker: Bool
+    @Environment(\.bakeoffTap) private var tap
 
-    }
     private func cell(_ item: BakeoffItem) -> some View {
       let weight: Font.Weight =
         item.weight == .semibold ? .semibold : item.weight == .medium ? .medium : .regular
@@ -106,7 +57,7 @@
         }
       }.frame(width: item.rect.width, height: item.rect.height).contentShape(Rectangle())
     }
-    private func panel(width: CGFloat, picker: Bool) -> some View {
+    var body: some View {
       ZStack(alignment: .topLeading) {
         DS.Color.bg
         ForEach(BakeoffSpec.items(width: width, state: state, picker: picker)) { item in
@@ -134,48 +85,144 @@
           UnevenRoundedRectangle(
             topLeadingRadius: BakeoffSpec.sheetRadius, topTrailingRadius: BakeoffSpec.sheetRadius))
     }
-    var body: some View {
-      GeometryReader { geo in
-        TimelineView(.animation(paused: flight == nil)) { tick in
-          let y = flight?.position(tick.date) ?? offset
-          ZStack(alignment: .bottom) {
-            BakeoffSpec.base.overlay(DS.Color.scrim)
-            if hidden {
-              Button {
-                hidden = false
-                offset = flight?.position(Date()) ?? offset
-                settle(0, velocity: 0)
-              } label: {
-                Text("再开").frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(
-                  Rectangle())
-              }.buttonStyle(KeyStyle())
-                .accessibilityIdentifier("bakeoff.reopen")
-            }
-            ZStack(alignment: .bottom) {
-              panel(width: geo.size.width, picker: false)
-                .accessibilityElement(children: .contain).accessibilityHidden(state.mode == "cats")
-                .allowsHitTesting(state.mode != "cats")
-              if state.mode == "cats" {
-                DS.Color.scrim.opacity(hidden ? 0 : 1).onTapGesture { tap("bakeoff.back") }
-                panel(width: geo.size.width, picker: true).transition(
-                  reduced ? .opacity : .move(edge: .bottom))
-              }
-            }.accessibilityElement(children: .contain).accessibilityIdentifier("bakeoff.sheet")
-              .offset(y: y).simultaneousGesture(drag(height: BakeoffSpec.mainHeight))
-              .allowsHitTesting(!hidden || y < BakeoffSpec.mainHeight - 1)
-              .accessibilityHidden(hidden)
+  }
+
+  @Observable private final class SheetMotion {
+    var hidden = false
+    var offset: CGFloat = 0
+    var flight: Flight?
+    @ObservationIgnored var dragOrigin: CGFloat?
+
+    struct Flight {
+      var start: CGFloat
+      var target: CGFloat
+      var velocity: CGFloat
+      var date = Date()
+      func position(_ now: Date) -> CGFloat {
+        DSMotion.smooth.value(
+          fromValue: start, toValue: target, initialVelocity: velocity,
+          time: max(0, now.timeIntervalSince(date)))
+      }
+    }
+    func settle(_ destination: CGFloat, velocity: CGFloat, reduced: Bool) {
+      if reduced {
+        offset = destination
+        flight = nil
+      } else {
+        flight = Flight(start: offset, target: destination, velocity: velocity)
+      }
+    }
+  }
+
+  /// Only this modifier observes the drag offset and samples the running spring.
+  private struct SheetPosition: ViewModifier {
+    let motion: SheetMotion
+    @Environment(\.accessibilityReduceMotion) private var reduced
+
+    private func drag(height: CGFloat) -> some Gesture {
+      DragGesture(minimumDistance: 4, coordinateSpace: .global)
+        .onChanged { value in
+          if motion.dragOrigin == nil {
+            motion.dragOrigin = motion.flight?.position(Date()) ?? motion.offset
+            motion.flight = nil
           }
+          motion.offset = max(0, (motion.dragOrigin ?? 0) + value.translation.height)
+        }.onEnded { value in
+          motion.dragOrigin = nil
+          let dismiss =
+            motion.offset > height * BakeoffSpec.dismissFraction
+            || (value.velocity.height > BakeoffSpec.dismissVelocity
+              && motion.offset > BakeoffSpec.flickMinimumTravel)
+          motion.settle(dismiss ? height : 0, velocity: value.velocity.height, reduced: reduced)
+          motion.hidden = dismiss
         }
-      }.task(id: flight?.date) {
-        guard let current = flight else { return }
+    }
+    func body(content: Content) -> some View {
+      TimelineView(.animation(paused: motion.flight == nil)) { tick in
+        let y = motion.flight?.position(tick.date) ?? motion.offset
+        content.offset(y: y)
+          .simultaneousGesture(drag(height: BakeoffSpec.mainHeight))
+          .allowsHitTesting(!motion.hidden || y < BakeoffSpec.mainHeight - 1)
+      }
+      .accessibilityHidden(motion.hidden)
+      .task(id: motion.flight?.date) {
+        guard let current = motion.flight else { return }
         let duration = DSMotion.smooth.settlingDuration(
           fromValue: current.start, toValue: current.target, initialVelocity: current.velocity,
           epsilon: 0.001)
         try? await Task.sleep(for: .seconds(duration))
         guard !Task.isCancelled else { return }
-        offset = current.target
-        flight = nil
-      }.ignoresSafeArea().sensoryFeedback(DSMotion.Press.haptic, trigger: hits)
+        motion.offset = current.target
+        motion.flight = nil
+      }
+    }
+  }
+
+  private struct ReopenButton: View {
+    let motion: SheetMotion
+    @Environment(\.accessibilityReduceMotion) private var reduced
+
+    var body: some View {
+      if motion.hidden {
+        Button {
+          motion.hidden = false
+          motion.offset = motion.flight?.position(Date()) ?? motion.offset
+          motion.settle(0, velocity: 0, reduced: reduced)
+        } label: {
+          Text("再开").frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
+        }.buttonStyle(KeyStyle())
+          .accessibilityIdentifier("bakeoff.reopen")
+      }
+    }
+  }
+
+  private struct SheetPanels: View {
+    let width: CGFloat
+    let motion: SheetMotion
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var state = BakeoffFixture()
+    @State private var hits = 0
+
+    private func tap(_ id: String) {
+      if id == "bakeoff.close" {
+        motion.hidden = true
+        motion.settle(BakeoffSpec.mainHeight, velocity: 0, reduced: reduced)
+        return
+      }
+      if id.hasPrefix("bakeoff.key.") { hits += 1 }
+      var next = state
+      next.tap(id)
+      let moves = next.tab != state.tab || (next.mode == "cats") != (state.mode == "cats")
+      withAnimation(moves && !reduced ? DSMotion.smoothAnimation : nil) { state = next }
+    }
+    var body: some View {
+      ZStack(alignment: .bottom) {
+        PanelContent(width: width, state: state, picker: false)
+          .accessibilityElement(children: .contain).accessibilityHidden(state.mode == "cats")
+          .allowsHitTesting(state.mode != "cats")
+        if state.mode == "cats" {
+          DS.Color.scrim.opacity(motion.hidden ? 0 : 1).onTapGesture { tap("bakeoff.back") }
+          PanelContent(width: width, state: state, picker: true).transition(
+            reduced ? .opacity : .move(edge: .bottom))
+        }
+      }.accessibilityElement(children: .contain).accessibilityIdentifier("bakeoff.sheet")
+        .environment(\.bakeoffTap, tap)
+        .sensoryFeedback(DSMotion.Press.haptic, trigger: hits)
+    }
+  }
+
+  struct BakeoffSwiftScreen: View {
+    @State private var motion = SheetMotion()
+
+    var body: some View {
+      GeometryReader { geo in
+        ZStack(alignment: .bottom) {
+          BakeoffSpec.base.overlay(DS.Color.scrim)
+          ReopenButton(motion: motion)
+          SheetPanels(width: geo.size.width, motion: motion)
+            .modifier(SheetPosition(motion: motion))
+        }
+      }.ignoresSafeArea()
     }
   }
 
