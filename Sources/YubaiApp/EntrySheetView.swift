@@ -130,13 +130,14 @@ struct EntrySheetView: View {
             }
             .padding(.top, DS.Space.s20)
             .padding(.horizontal, DS.Space.s20)
-            .padding(.bottom, EntrySpec.bodyBottom)
+            .padding(.bottom, model.drawer == .calendar ? .zero : EntrySpec.bodyBottom)
         }
     }
 
     private var footer: some View {
         VStack(spacing: .zero) {
             EntryResultStripView(model: model)
+                .padding(.top, model.drawer == .calendar ? DS.Space.s12 : .zero)
                 .padding(.horizontal, DS.Space.s16)
                 .padding(.bottom, DS.Space.s12)
             if model.hidesKeypad {
@@ -628,12 +629,16 @@ private struct EntryPillsRowView: View {
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.pillsRow)
+        let calendarOpen = model.drawer == .calendar
         FlowLayout {
-            if model.drawer == .time {
+            if model.drawer == .time || calendarOpen {
                 day("今天", offset: 0)
                 day("昨天", offset: -1)
                 day("前天", offset: -2)
-                EntryPill(title: nil, icon: .cycle, label: "日历", hint: "选择日期和时间") { model.drawer = .calendar }
+                EntryPill(title: nil, icon: .cycle, selected: calendarOpen, label: "日历",
+                          hint: calendarOpen ? "收起日历" : "选择日期和时间") {
+                    model.toggleDrawer(.calendar)
+                }
                 if model.canRepeat && model.draft.exception == nil {
                     EntryPill(title: "每月", icon: .subscription, selected: model.draft.repeatMonthly, hint: "切换每月重复") {
                         model.toggleRepeat()
@@ -715,9 +720,7 @@ private struct EntryExpandedPanelView: View {
                     }
                 }
             case .calendar:
-                DSDatePickerPanel(date: Binding(get: { model.draft.date }, set: { model.setDate($0) })) {
-                    EntryPill(title: nil, icon: .done, label: "完成日期", hint: "收起日历") { model.drawer = nil }
-                }
+                DSDatePickerPanel(date: Binding(get: { model.draft.date }, set: { model.setDate($0) }))
             case .subcategory where !model.categoryPanel:
                 HStack(spacing: DS.Space.s8) {
                     EntryInlineAddView(title: "新子类", text: $model.inputText,

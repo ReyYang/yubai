@@ -873,19 +873,15 @@ struct DSInlineTextField: View {
     }
 }
 
-struct DSDatePickerPanel<Action: View>: View {
+struct DSDatePickerPanel: View {
     @Binding var date: Date
-    @ViewBuilder let action: () -> Action
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: DS.Space.s4) {
-            action()
-            DatePicker("日期和时间", selection: $date, displayedComponents: [.date, .hourAndMinute])
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .tint(DS.Color.accent)
-        }
-        .padding(DS.Space.s12)
-        .dsSurface(DS.Color.surface, radius: DS.Radius.m)
+        DatePicker("日期和时间", selection: $date, displayedComponents: [.date, .hourAndMinute])
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .tint(DS.Color.accent)
+            .padding(DS.Space.s8)
+            .dsSurface(DS.Color.surface, radius: DS.Radius.m)
     }
 }
