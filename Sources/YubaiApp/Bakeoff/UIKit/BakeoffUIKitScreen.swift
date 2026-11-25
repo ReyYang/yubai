@@ -140,6 +140,32 @@
         (self: Self, _: UITraitCollection) in self.view.setNeedsLayout()
       }
     }
+    private var autoplayTask: Task<Void, Never>?
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      guard BakeoffAutoplay.enabled, autoplayTask == nil else { return }
+      autoplayTask = Task { [weak self] in
+        await BakeoffAutoplay { [weak self] input in self?.autoplay(input) ?? 0 }.run()
+      }
+    }
+    override func viewDidDisappear(_ animated: Bool) {
+      super.viewDidDisappear(animated)
+      autoplayTask?.cancel()
+      autoplayTask = nil
+    }
+    private func autoplay(_ input: BakeoffAutoplay.Input) -> CGFloat {
+      switch input {
+      case .tap(let id): tap(id)
+      case .grab: return grab()
+      case .drag(let translation): dragChanged(translation)
+      case .release(let velocity): dragEnded(velocity: velocity, ended: true)
+      case .reopen: open()
+      case .reset:
+        state = BakeoffFixture()
+        render()
+      }
+      return 0
+    }
     override func viewDidLayoutSubviews() {
       super.viewDidLayoutSubviews()
       let b = view.bounds
@@ -219,25 +245,29 @@
     @objc private func open() { settle(dismiss: false, velocity: 0) }
     @objc private func drag(_ pan: SheetPan) {
       switch pan.state {
-      case .began:
-        let displayed = sheet.layer.presentation()?.affineTransform().ty ?? sheet.transform.ty
-        animator?.stopAnimation(true)
-        sheet.transform = CGAffineTransform(translationX: 0, y: displayed)
-        origin = displayed
-      case .changed:
-        sheet.transform = CGAffineTransform(
-          translationX: 0, y: max(0, origin + pan.travel))
-        picker.transform = sheet.transform
-      case .ended, .cancelled:
-        let v = pan.velocity(in: view).y
-        let y = sheet.transform.ty
-        settle(
-          dismiss: pan.state == .ended
-            && (y > BakeoffSpec.mainHeight * BakeoffSpec.dismissFraction
-              || (v > BakeoffSpec.dismissVelocity && y > BakeoffSpec.flickMinimumTravel)),
-          velocity: v)
+      case .began: grab()
+      case .changed: dragChanged(pan.travel)
+      case .ended, .cancelled: dragEnded(velocity: pan.velocity(in: view).y, ended: pan.state == .ended)
       default: break
       }
+    }
+    @discardableResult private func grab() -> CGFloat {
+      let displayed = sheet.layer.presentation()?.affineTransform().ty ?? sheet.transform.ty
+      animator?.stopAnimation(true)
+      sheet.transform = CGAffineTransform(translationX: 0, y: displayed)
+      origin = displayed
+      return displayed
+    }
+    private func dragChanged(_ translation: CGFloat) {
+      sheet.transform = CGAffineTransform(translationX: 0, y: max(0, origin + translation))
+      picker.transform = sheet.transform
+    }
+    private func dragEnded(velocity: CGFloat, ended: Bool) {
+      let y = sheet.transform.ty
+      settle(
+        dismiss: ended && (y > BakeoffSpec.mainHeight * BakeoffSpec.dismissFraction
+          || (velocity > BakeoffSpec.dismissVelocity && y > BakeoffSpec.flickMinimumTravel)),
+        velocity: velocity)
     }
     private func settle(dismiss: Bool, velocity: CGFloat) {
       hidden = dismiss

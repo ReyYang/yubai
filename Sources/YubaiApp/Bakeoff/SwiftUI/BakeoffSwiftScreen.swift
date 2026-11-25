@@ -104,6 +104,31 @@
           time: max(0, now.timeIntervalSince(date)))
       }
     }
+    @discardableResult func grab() -> CGFloat {
+      let displayed = flight?.position(Date()) ?? offset
+      dragOrigin = displayed
+      flight = nil
+      offset = displayed
+      return displayed
+    }
+    func dragChanged(_ translation: CGFloat) {
+      if dragOrigin == nil { grab() }
+      offset = max(0, (dragOrigin ?? 0) + translation)
+    }
+    func dragEnded(velocity: CGFloat, reduced: Bool) {
+      dragOrigin = nil
+      let height = BakeoffSpec.mainHeight
+      let dismiss = offset > height * BakeoffSpec.dismissFraction
+        || (velocity > BakeoffSpec.dismissVelocity && offset > BakeoffSpec.flickMinimumTravel)
+      settle(dismiss ? height : 0, velocity: velocity, reduced: reduced)
+      hidden = dismiss
+    }
+    func reopen(reduced: Bool) {
+      hidden = false
+      offset = flight?.position(Date()) ?? offset
+      settle(0, velocity: 0, reduced: reduced)
+    }
+
     func settle(_ destination: CGFloat, velocity: CGFloat, reduced: Bool) {
       if reduced {
         offset = destination
@@ -119,29 +144,16 @@
     let motion: SheetMotion
     @Environment(\.accessibilityReduceMotion) private var reduced
 
-    private func drag(height: CGFloat) -> some Gesture {
+    private var drag: some Gesture {
       DragGesture(minimumDistance: 4, coordinateSpace: .global)
-        .onChanged { value in
-          if motion.dragOrigin == nil {
-            motion.dragOrigin = motion.flight?.position(Date()) ?? motion.offset
-            motion.flight = nil
-          }
-          motion.offset = max(0, (motion.dragOrigin ?? 0) + value.translation.height)
-        }.onEnded { value in
-          motion.dragOrigin = nil
-          let dismiss =
-            motion.offset > height * BakeoffSpec.dismissFraction
-            || (value.velocity.height > BakeoffSpec.dismissVelocity
-              && motion.offset > BakeoffSpec.flickMinimumTravel)
-          motion.settle(dismiss ? height : 0, velocity: value.velocity.height, reduced: reduced)
-          motion.hidden = dismiss
-        }
+        .onChanged { motion.dragChanged($0.translation.height) }
+        .onEnded { motion.dragEnded(velocity: $0.velocity.height, reduced: reduced) }
     }
     func body(content: Content) -> some View {
       TimelineView(.animation(paused: motion.flight == nil)) { tick in
         let y = motion.flight?.position(tick.date) ?? motion.offset
         content.offset(y: y)
-          .simultaneousGesture(drag(height: BakeoffSpec.mainHeight))
+          .simultaneousGesture(drag)
           .allowsHitTesting(!motion.hidden || y < BakeoffSpec.mainHeight - 1)
       }
       .accessibilityHidden(motion.hidden)
@@ -165,9 +177,7 @@
     var body: some View {
       if motion.hidden {
         Button {
-          motion.hidden = false
-          motion.offset = motion.flight?.position(Date()) ?? motion.offset
-          motion.settle(0, velocity: 0, reduced: reduced)
+          motion.reopen(reduced: reduced)
         } label: {
           Text("再开").frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle())
         }.buttonStyle(KeyStyle())
@@ -195,6 +205,17 @@
       let moves = next.tab != state.tab || (next.mode == "cats") != (state.mode == "cats")
       withAnimation(moves && !reduced ? DSMotion.smoothAnimation : nil) { state = next }
     }
+    private func autoplay(_ input: BakeoffAutoplay.Input) -> CGFloat {
+      switch input {
+      case .tap(let id): tap(id)
+      case .grab: return motion.grab()
+      case .drag(let translation): motion.dragChanged(translation)
+      case .release(let velocity): motion.dragEnded(velocity: velocity, reduced: reduced)
+      case .reopen: motion.reopen(reduced: reduced)
+      case .reset: state = BakeoffFixture()
+      }
+      return 0
+    }
     var body: some View {
       ZStack(alignment: .bottom) {
         PanelContent(width: width, state: state, picker: false)
@@ -208,6 +229,7 @@
       }.accessibilityElement(children: .contain).accessibilityIdentifier("bakeoff.sheet")
         .environment(\.bakeoffTap, tap)
         .sensoryFeedback(DSMotion.Press.haptic, trigger: hits)
+        .task { if BakeoffAutoplay.enabled { await BakeoffAutoplay(send: autoplay).run() } }
     }
   }
 
