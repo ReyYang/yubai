@@ -45,11 +45,12 @@ extension Finance {
         let today = Dates.day(now)
         var confirmations: [Date: Date] = [:]
         for entry in ledger.entries where entry.deletedAt == nil && entry.nature == .income && entry.planID == plan.id {
+            let effective = entry.countsFromCycleStart ?? entry.date
             // A future-dated record made at this evaluation instant is pending.
             // Later actual confirmations still close retrospective intervals.
-            guard !(entry.date > now && entry.recordedAt.map { $0 <= now } == true),
+            guard !(effective > now && entry.recordedAt.map { $0 <= now } == true),
                   let occurrence = entry.occurrence else { continue }
-            let key = Dates.day(occurrence), date = Dates.day(entry.date)
+            let key = Dates.day(occurrence), date = Dates.day(effective)
             confirmations[key] = min(confirmations[key] ?? date, date)
         }
         // Include future confirmed periods for historical end boundaries, and a

@@ -27,10 +27,19 @@ extension Ledger {
     func fixedSavingsFromIncome(now: Date) -> Int64 {
         let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         return entries.reduce(Int64(0)) { total, entry in
-            guard entry.deletedAt == nil, entry.nature == .income, entry.intoFixedSavings,
-                  let account = accountsByID[entry.accountID], account.kind == .cash || account.kind == .bank else { return total }
-            let posting = entry.postingDate(for: account.id)
-            return posting <= now && account.includes(entry, posting: posting) ? total + entry.amount : total
+            guard entry.deletedAt == nil, entry.intoFixedSavings else { return total }
+            if entry.nature == .income,
+               let account = accountsByID[entry.accountID], account.kind == .cash || account.kind == .bank {
+                let posting = entry.postingDate(for: account.id)
+                return posting <= now && account.includes(entry, posting: posting) ? total + entry.amount : total
+            }
+            if entry.nature == .transfer,
+               let destID = entry.otherAccountID, let account = accountsByID[destID],
+               account.kind == .cash || account.kind == .bank {
+                let posting = entry.postingDate(for: account.id)
+                return posting <= now && account.includes(entry, posting: posting) ? total + entry.amount : total
+            }
+            return total
         }
     }
 

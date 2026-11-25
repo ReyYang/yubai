@@ -42,12 +42,13 @@ extension FixedFlows {
     }
 
     /// The first payment and its plan are applied/undone as one ChangeSet.
-    public static func monthlyEntryChange(amount: Int64, nature: Nature, accountID: UUID, day: Date,
+    public static func monthlyEntryChange(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil, day: Date,
                                           purpose: String, category: String, now: Date = Dates.now, intoFixedSavings: Bool = false) throws -> ChangeSet {
         var entry = Entry(date: day, amount: amount, nature: nature, accountID: accountID, title: category, category: category, intoFixedSavings: intoFixedSavings)
         entry.purpose = purpose
+        entry.otherAccountID = nature.paired ? otherAccountID : nil
         let plan = try monthlyPlan(from: entry)
-        var change = try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, day: day,
+        var change = try ManualBookkeeping.change(amount: amount, nature: nature, accountID: accountID, otherAccountID: otherAccountID, day: day,
                                                   purpose: purpose, category: category, link: (plan.id, plan.dueDate), now: now, intoFixedSavings: intoFixedSavings)
         change.items.insert(.addPlan(plan), at: 0)
         return change

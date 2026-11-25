@@ -114,13 +114,28 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
 
 public enum EntryKind: String, Sendable { case transaction, adjustment }
 
+public enum PendingRecovery: String, Codable, CaseIterable, Equatable, Sendable {
+    case reimbursement
+    case split
+}
+
 public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64
     public var kind: EntryKind { nature == .adjustmentIn || nature == .adjustmentOut ? .adjustment : .transaction }
     public var recordedAt: Date? // In-app recording time; imports and old ledgers keep nil.
-    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false }; if nature != .expense { fromReserve = false } } }
-    public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var nature: Nature {
+        didSet {
+            if nature != .income && nature != .transfer { intoFixedSavings = false }
+            if nature != .expense { fromReserve = false; pendingRecovery = nil }
+            if nature != .income { countsFromCycleStart = nil }
+        }
+    }
+    public var intoFixedSavings = false { didSet { if nature != .income && nature != .transfer { intoFixedSavings = false } } }
     public var fromReserve = false { didSet { if nature != .expense { fromReserve = false } } }
+    public var pendingRecovery: PendingRecovery? { didSet { if nature != .expense { pendingRecovery = nil } } }
+    public var countsFromCycleStart: Date? { didSet { if nature != .income { countsFromCycleStart = nil } } }
+    public var originalCurrency: BillCurrency?
+    public var originalAmount: Int64?
     public var spreadFrom: Date?
     public var isUnitemized: Bool { spreadFrom != nil }
     public var accountID: UUID; public var otherAccountID: UUID?
@@ -141,10 +156,10 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var otherDate: Date?; public var mergedIntoID: UUID?; public var personalExpense: Int64?
     public init(date: Date = Dates.now, amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = Classification.pendingCategory, intoFixedSavings: Bool = false, fromReserve: Bool = false) {
         self.date = date; self.amount = amount; self.nature = nature; self.accountID = accountID; self.title = title; self.category = category
-        self.intoFixedSavings = nature == .income && intoFixedSavings
+        self.intoFixedSavings = (nature == .income || nature == .transfer) && intoFixedSavings
         self.fromReserve = nature == .expense && fromReserve
     }
-    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
+    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, pendingRecovery, countsFromCycleStart, originalCurrency, originalAmount, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -153,9 +168,13 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         recordedAt = try c.decodeIfPresent(Date.self, forKey: .recordedAt)
         nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
-        intoFixedSavings = nature == .income && intoFixed
+        intoFixedSavings = (nature == .income || nature == .transfer) && intoFixed
         let reserve = try c.decodeIfPresent(Bool.self, forKey: .fromReserve) ?? false
         fromReserve = nature == .expense && reserve
+        pendingRecovery = nature == .expense ? try c.decodeIfPresent(PendingRecovery.self, forKey: .pendingRecovery) : nil
+        countsFromCycleStart = nature == .income ? try c.decodeIfPresent(Date.self, forKey: .countsFromCycleStart) : nil
+        originalCurrency = try c.decodeIfPresent(BillCurrency.self, forKey: .originalCurrency)
+        originalAmount = try c.decodeIfPresent(Int64.self, forKey: .originalAmount)
         spreadFrom = try c.decodeIfPresent(Date.self, forKey: .spreadFrom)
         accountID = try c.decode(UUID.self, forKey: .accountID)
         otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
@@ -215,6 +234,10 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         if classificationReason != "手动选择" { try c.encode(classificationReason, forKey: .classificationReason) }
         try c.encodeIfPresent(otherDate, forKey: .otherDate); try c.encodeIfPresent(mergedIntoID, forKey: .mergedIntoID)
         try c.encodeIfPresent(personalExpense, forKey: .personalExpense)
+        try c.encodeIfPresent(pendingRecovery, forKey: .pendingRecovery)
+        try c.encodeIfPresent(countsFromCycleStart, forKey: .countsFromCycleStart)
+        try c.encodeIfPresent(originalCurrency, forKey: .originalCurrency)
+        try c.encodeIfPresent(originalAmount, forKey: .originalAmount)
     }
     public func delta(for account: UUID) -> Int64 {
         if accountID == account { return nature.inflow ? amount : -amount }
@@ -1232,6 +1255,8 @@ public struct Ledger: Codable, Equatable, Sendable {
             guard ids.contains(e.accountID), e.amount > 0, e.amount <= Money.limit, !e.title.isEmpty,
                   dateValid(e.date), e.recordedAt.map(dateValid) ?? true, e.otherDate.map(dateValid) ?? true,
                   e.occurrence.map(dateValid) ?? true, e.rentPeriod.map(dateValid) ?? true,
+                  e.countsFromCycleStart.map(dateValid) ?? true,
+                  e.originalAmount.map({ (1...Money.limit).contains($0) }) ?? true,
                   e.spreadFrom.map({ dateValid($0) && Dates.day($0) <= Dates.day(e.date) }) ?? true,
                   e.subcategory.map({ !$0.isEmpty && $0.count <= 200 && !$0.contains("/") }) ?? true,
                   (e.purpose?.count ?? 0) <= 4000 else { throw YubaiError.invalid("交易金额、日期或账户无效。") }

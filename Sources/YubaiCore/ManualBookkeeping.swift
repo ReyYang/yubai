@@ -112,13 +112,13 @@ public enum ManualBookkeeping {
     public static func change(amount: Int64, nature: Nature, accountID: UUID, otherAccountID: UUID? = nil,
                               day: Date, purpose: String, category: String, link: (planID: UUID, occurrence: Date)? = nil, now: Date = Dates.now, intoFixedSavings: Bool = false, fromReserve: Bool = false) throws -> ChangeSet {
         guard amount > 0, amount <= Money.limit, (-2_208_988_800...7_258_118_400).contains(day.timeIntervalSince1970) else { throw YubaiError.invalid("请核对金额和日期。") }
-        if nature == .transfer { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
+        if nature.paired { guard let otherAccountID, otherAccountID != accountID else { throw YubaiError.invalid("转账的两个账户必须不同。") } }
         let purpose = purpose.trimmingCharacters(in: .whitespacesAndNewlines)
         var draft = EntryDraft(date: saveDate(for: day, now: now), amount: amount, amountConfirmed: true,
                                nature: nature, accountID: accountID, title: purpose.isEmpty ? category : purpose,
                                category: category, purpose: purpose.isEmpty ? nil : purpose, intoFixedSavings: intoFixedSavings, fromReserve: fromReserve)
-        draft.categoryUserEdited = nature != .transfer
-        draft.otherAccountID = nature == .transfer ? otherAccountID : nil
+        draft.categoryUserEdited = !nature.paired
+        draft.otherAccountID = nature.paired ? otherAccountID : nil
         draft.planID = link?.planID; draft.occurrence = link?.occurrence
         var change = ChangeSet(source: "手动", reason: "记一笔", items: [.addEntry(draft)])
         change.createdAt = now; return change

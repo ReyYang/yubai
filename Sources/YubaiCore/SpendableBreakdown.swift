@@ -82,7 +82,17 @@ extension Finance {
 
     static func makeSpendableBreakdown(_ ledger: Ledger, now: Date, cycle: CycleInfo, commitments: [Occurrence]) -> SpendableBreakdown {
         let entries = ledger.entries.filter { $0.deletedAt == nil && $0.date >= cycle.start && $0.date <= now }
-        let incomeEntries = entries.filter { $0.kind != .adjustment && $0.nature == .income && !$0.intoFixedSavings }
+        let today = Dates.day(now)
+        let cycleStartDay = Dates.day(cycle.start)
+        let cycleEndDay = Dates.day(cycle.end)
+        let incomeEntries = ledger.entries.filter { entry in
+            guard entry.deletedAt == nil, entry.kind != .adjustment, entry.nature == .income, !entry.intoFixedSavings else { return false }
+            if let deferred = entry.countsFromCycleStart {
+                let effective = Dates.day(deferred)
+                return effective >= cycleStartDay && effective <= cycleEndDay && effective <= today
+            }
+            return entry.date >= cycle.start && entry.date <= now
+        }
         let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         let expenseEntries = entries.filter { entry in
             guard entry.kind != .adjustment, entry.nature == .expense || entry.nature == .refund else { return false }
@@ -90,7 +100,11 @@ extension Finance {
             return !source.fromReserve
         }
         let income = incomeEntries.reduce(Int64(0)) { $0 + $1.amount }
-        let spent = expenseEntries.reduce(Int64(0)) { $0 + spendingAmount($1, ledger: ledger) }
+        // Pending recoveries (待报销 / 待 AA) count full amount against 还能花 now (暂扣).
+        let spent = expenseEntries.reduce(Int64(0)) { total, entry in
+            let amount = (entry.nature == .expense && entry.pendingRecovery != nil) ? entry.amount : spendingAmount(entry, ledger: ledger)
+            return total + amount
+        }
         let transfers = ledger.savingsTransfers.filter { $0.date >= cycle.start && $0.date <= now }
         let covers = ledger.cycleCovers.filter { $0.date >= cycle.start && $0.date <= now && $0.source == .fromReserve }
         let withdrawal = transfers.reduce(Int64(0)) { $0 + ($1.direction == .take ? $1.amount : -$1.amount) } + covers.reduce(0) { $0 + $1.amount }

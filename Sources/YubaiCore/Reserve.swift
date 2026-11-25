@@ -139,6 +139,10 @@ public enum Reserve {
                account.kind == .cash || account.kind == .bank, account.includes(entry, posting: entry.postingDate(for: account.id)) {
                 lines.append(ReserveLine(id: "income:" + entry.id.uuidString, date: entry.date, title: entry.displayTitle, amount: entry.amount, kind: .income(entry.id)))
             }
+            if entry.nature == .transfer, entry.intoFixedSavings, let destID = entry.otherAccountID, let account = accounts[destID],
+               account.kind == .cash || account.kind == .bank, account.includes(entry, posting: entry.postingDate(for: account.id)) {
+                lines.append(ReserveLine(id: "deposit:" + entry.id.uuidString, date: entry.date, title: entry.displayTitle, amount: entry.amount, kind: .income(entry.id)))
+            }
             if entry.fromReserve {
                 lines.append(ReserveLine(id: "purchase:" + entry.id.uuidString, date: entry.date, title: entry.displayTitle, amount: -entry.amount, kind: .purchase(entry.id)))
             } else if entry.nature == .refund, let original = entry.relatedEntryID, reserveIDs.contains(original) {
