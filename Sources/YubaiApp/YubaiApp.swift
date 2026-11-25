@@ -989,7 +989,7 @@ enum AppSheet: Identifiable {
         #endif
     }
     @ViewBuilder private var launchRoot: some View {
-        #if DEBUG
+        #if DEBUG && targetEnvironment(simulator)
         if UITestSupport.designSystemGallery {
             DesignSystemGalleryView()
                 .environment(\.dsReduceMotionOverride, UITestSupport.script != nil ? UITestSupport.reduceMotion : nil)

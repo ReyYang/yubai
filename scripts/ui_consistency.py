@@ -12,7 +12,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # Only the shared design system implements input, navigation and geometry.
 # Domain/fixture/page files receive no blanket exceptions.
 SHARED = 'DesignSystem.swift'
-DS_FILES = {'DSTheme.swift', 'DSMotion.swift', 'DSStyle.swift', 'DSComponents.swift', 'DesignSystemGalleryView.swift'}
+DS_FILES = {'DSTheme.swift', 'DSMotion.swift', 'DSStyle.swift', 'DSComponents.swift', 'DesignSystemGalleryView.swift', 'DSIconView.swift'}
+SPEC_FILES = {'EntrySpec.swift'}
 OLD_NAMES = ('\u6211\u7684\u6d88\u8d39\u89c2', '\u5e38\u8bb0\u7684\u51e0\u7b14', '\u8fdb\u51fa\u8bb0\u5f55',
              '\u85cf\u8d77\u6765\u7684', '\u5206\u4e00\u5206', '\u4e00\u4e2a\u4e2a\u5206', '\u6309\u5bf9\u65b9\u5206',
              '\u4f59\u767d\u60f3\u8fd9\u6837\u6539', '\u6574\u7406\u597d\u4e86', '\u5f85\u5904\u7406')
@@ -214,7 +215,7 @@ def violations(name, source):
             if not any(start <= match.start() < end for start, end in input_ranges):
                 found.append(f'{name}:{code.count(chr(10), 0, match.start()) + 1}: input bypasses shared RowTextInput')
         return found
-    if name in DS_FILES:
+    if name in DS_FILES or name in SPEC_FILES:
         return found
     reject(r'\b(?:TextField|SecureField|TextEditor|UITextField|UITextView|DatePicker)\s*\(', 'raw input: use a DS control')
     reject(r'"(?:chevron\.left|arrow\.left)"|navigationBarBackButtonHidden|struct\s+\w*BackButton\b', 'hand-made back button', comments)

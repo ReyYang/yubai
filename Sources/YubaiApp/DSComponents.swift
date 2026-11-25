@@ -7,7 +7,7 @@ struct DSInlineTag {
 }
 
 struct DSListRow: View {
-    let icon: String
+    let icon: DS.Icon
     let name: String
     let amount: String
     var detail: String? = nil
@@ -17,10 +17,7 @@ struct DSListRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: DS.Space.s12) {
-                Image(systemName: icon)
-                    .font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.list))
-                    .foregroundStyle(DS.Color.iconQuiet).frame(width: DS.Size.icon)
-                    .accessibilityHidden(true)
+                DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.iconQuiet)
                 HStack(spacing: DS.Space.s4) {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
                     if let tag {
@@ -132,7 +129,7 @@ struct DSAmberTile: View {
 struct DSAccordion: View {
     struct Item: Identifiable {
         let id: String
-        let icon: String
+        let icon: DS.Icon
         let title: String
         let subitems: [String]
     }
@@ -152,16 +149,14 @@ struct DSAccordion: View {
                 VStack(spacing: 0) {
                     Button { expandedID = expanded ? nil : item.id } label: {
                         HStack(spacing: DS.Space.s12) {
-                            Image(systemName: item.icon)
-                                .font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.list))
-                                .foregroundStyle(expanded ? DS.Color.accentInk : DS.Color.ink2)
+                            DSIconView(icon: item.icon, size: DS.Size.icon,
+                                       color: expanded ? DS.Color.accentInk : DS.Color.ink2)
                                 .frame(width: DS.Size.iconTile, height: DS.Size.iconTile)
                                 .dsSurface(expanded ? DS.Color.accentSoft : DS.Color.surface, radius: DS.Radius.s)
                             Text(item.title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).dsFillWidth()
                             Text("\(item.subitems.count) 个小类").dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink3)
-                            Image(systemName: DS.Icon.chevron)
-                                .font(.system(size: DS.Font.tPill.size, weight: DS.Icon.Weight.chevron))
-                                .foregroundStyle(expanded ? DS.Color.ink : DS.Color.chevron)
+                            DSIconView(icon: .chevron, size: DS.Font.tPill.size,
+                                       color: expanded ? DS.Color.ink : DS.Color.chevron)
                                 .rotationEffect(.radians(expanded ? .pi / 2 : 0))
                                 .animation(enabled ? DSMotion.animation(.chevronRotate, reduceMotion: reduceMotion) : nil, value: expanded)
                         }.padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.rowCat)
@@ -177,8 +172,9 @@ struct DSAccordion: View {
                                 }.dsPressStyle()
                             }
                             Button { onAdd(item.id) } label: {
-                                Label("添加小类", systemImage: DS.Icon.add).dsText(DS.Font.tLabelStrong)
-                                    .foregroundStyle(DS.Color.accentInk).dsFillWidth().frame(minHeight: DS.Size.rowSub)
+                                Label { Text("添加小类").dsText(DS.Font.tLabelStrong) } icon: {
+                                    DSIconView(icon: .add, size: DS.Font.tLabelStrong.size)
+                                }.foregroundStyle(DS.Color.accentInk).dsFillWidth().frame(minHeight: DS.Size.rowSub)
                                     .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
                             }.dsPressStyle()
                         }.padding(.leading, DS.Space.s12 + DS.Size.iconTile + DS.Space.s12)
@@ -233,7 +229,7 @@ struct DSHero: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: DS.Space.s4) {
                             Text("还能花").dsText(DS.Font.tSub)
-                            Image(systemName: DS.Icon.chevron).font(.system(size: DS.Font.tCaption.size, weight: DS.Icon.Weight.chevron))
+                            DSIconView(icon: .chevron, size: DS.Font.tCaption.size)
                         }.foregroundStyle(DS.Color.ink3)
                         Text(amount).dsText(DS.Font.nHero).foregroundStyle(DS.Color.ink).lineLimit(1)
                     }.dsFillWidth()
@@ -275,8 +271,9 @@ struct DSTabBar: View {
         HStack(spacing: DS.Space.s12) {
             tab(.home, title: "首页", icon: DS.Icon.tabHome)
             Button(action: onEntry) {
-                Label("记一笔", systemImage: DS.Icon.add).dsText(DS.Font.tTitle)
-                    .labelStyle(.titleAndIcon).lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                Label { Text("记一笔").dsText(DS.Font.tTitle) } icon: {
+                    DSIconView(icon: .add, size: DS.Font.tTitle.size)
+                }.labelStyle(.titleAndIcon).lineLimit(1).fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(DS.Color.onAccent).padding(.horizontal, DS.Space.s28)
                     .frame(minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
             }.dsPressStyle()
@@ -284,10 +281,11 @@ struct DSTabBar: View {
         }.padding(.horizontal, DS.Space.s12).padding(.vertical, DS.Space.s12)
             .dsFillWidth().dsBarMaterial(in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
     }
-    private func tab(_ tab: Tab, title: String, icon: String) -> some View {
+    private func tab(_ tab: Tab, title: String, icon: DS.Icon) -> some View {
         Button { selection = tab } label: {
             VStack(spacing: 0) {
-                Image(systemName: icon).font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.nav))
+                DSIconView(icon: icon, size: DS.Size.icon,
+                           color: selection == tab ? DS.Color.accentInk : DS.Color.ink3)
                 Text(title).dsText(DS.Font.tTab)
             }.foregroundStyle(selection == tab ? DS.Color.accentInk : DS.Color.ink3)
                 .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin)
@@ -302,14 +300,15 @@ struct DSAskBar: View {
         HStack(spacing: DS.Space.s8) {
             Button(action: onAsk) {
                 HStack(spacing: DS.Space.s8) {
-                    Image(systemName: DS.Icon.search)
+                    DSIconView(icon: .search, size: DS.Size.icon, color: DS.Color.ink3)
                     Text("问余白 · 搜账单").dsText(DS.Font.tLabel).lineLimit(1).dsFillWidth()
                 }.frame(minHeight: DS.Size.askH)
             }.dsPressStyle()
             Button(action: onVoice) {
-                Image(systemName: DS.Icon.voice).frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
+                DSIconView(icon: .voice, size: DS.Size.icon, color: DS.Color.ink3)
+                    .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
             }.dsPressStyle().accessibilityLabel("语音记账")
-        }.font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.list))
+        }
             .foregroundStyle(DS.Color.ink3).padding(.leading, DS.Space.s16)
             .dsPill(DS.Color.raised)
             .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
@@ -363,13 +362,13 @@ struct DSEntryPills: View {
             }
         }.fixedSize(horizontal: true, vertical: false)
     }
-    private func pill(_ title: String, icon: String?, selected: Bool = false, iconOnly: Bool = false,
+    private func pill(_ title: String, icon: DS.Icon?, selected: Bool = false, iconOnly: Bool = false,
                       action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: DS.Space.s4) {
                 if let icon {
-                    Image(systemName: icon).font(.system(size: DS.Font.tLabel.size, weight: DS.Icon.Weight.list))
-                        .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink3)
+                    DSIconView(icon: icon, size: DS.Font.tLabel.size,
+                               color: selected ? DS.Color.ink : DS.Color.ink3)
                 }
                 if !iconOnly { Text(title).dsText(DS.Font.tPill).fontWeight(selected ? .semibold : .regular) }
             }.lineLimit(1).fixedSize(horizontal: true, vertical: false)
@@ -391,8 +390,14 @@ struct DSKeypad: View {
                     onKey(key)
                     if key == "记下" { saves += 1 }
                 } label: {
-                    Text(key).dsText(key == "记下" ? DS.Font.tTitle : DS.Font.nKey)
-                        .foregroundStyle(key == "记下" ? DS.Color.onAccent : DS.Color.ink)
+                    Group {
+                        if key == "⌫" {
+                            DSIconView(icon: .backspace, size: 24, color: DS.Color.ink)
+                        } else {
+                            Text(key).dsText(key == "记下" ? DS.Font.tTitle : DS.Font.nKey)
+                                .foregroundStyle(key == "记下" ? DS.Color.onAccent : DS.Color.ink)
+                        }
+                    }
                         .frame(maxWidth: .infinity, minHeight: DS.Size.keyH)
                         .dsSurface(key == "记下" ? DS.Color.accent : (["⌫", "+", "−"].contains(key) ? DS.Color.keyFn : DS.Color.key), radius: DS.Radius.s)
                         .dsShadow(DS.Shadow.key)
@@ -407,7 +412,7 @@ struct DSCategoryPicker: View {
     struct Category: Identifiable {
         let id: String
         let name: String
-        let icon: String
+        let icon: DS.Icon
         var suggested = false
     }
     let categories: [Category]
@@ -426,9 +431,8 @@ struct DSCategoryPicker: View {
                         else { selectedID = category.id; selectedSubcategory = nil }
                     } label: {
                         VStack(spacing: DS.Space.s4) {
-                            Image(systemName: category.icon)
-                                .font(.system(size: DS.Font.nKey.size, weight: DS.Icon.Weight.list))
-                                .foregroundStyle(selected ? DS.Color.accentInk : DS.Color.ink2)
+                            DSIconView(icon: category.icon, size: DS.Font.nKey.size,
+                                       color: selected ? DS.Color.accentInk : DS.Color.ink2)
                                 .frame(width: DS.Size.catCircle, height: DS.Size.catCircle)
                                 .dsPill(selected ? DS.Color.accentSoft : DS.Color.surface)
                                 .overlay(alignment: .topTrailing) {
@@ -455,7 +459,7 @@ struct DSCategoryPicker: View {
                         }.dsPressStyle().accessibilityAddTraits(selected ? .isSelected : [])
                     }
                     Button(action: onAdd) {
-                        Image(systemName: DS.Icon.add).foregroundStyle(DS.Color.ink2)
+                        DSIconView(icon: .add, size: DS.Font.tCaption.size, color: DS.Color.ink2)
                             .frame(width: DS.Size.chipH, height: DS.Size.chipH).dsPill()
                     }.dsPressStyle().accessibilityLabel("添加小类")
                 }
@@ -509,9 +513,11 @@ struct DSFloatingMenu: View {
         }.padding(.vertical, DS.Space.s4).frame(width: DS.Size.menuW)
             .background(DS.Color.raised).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous)).dsShadow(DS.Shadow.float)
     }
-    private func item(_ title: String, icon: String, warning: Bool = false, action: @escaping () -> Void) -> some View {
+    private func item(_ title: String, icon: DS.Icon, warning: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon).dsText(DS.Font.tBody)
+            Label { Text(title).dsText(DS.Font.tBody) } icon: {
+                DSIconView(icon: icon, size: DS.Size.icon)
+            }
                 .foregroundStyle(warning ? DS.Color.warnInk : DS.Color.ink)
                 .dsFillWidth().frame(minHeight: DS.Size.tapMin).padding(.horizontal, DS.Space.s16)
         }.dsPressStyle()
@@ -546,7 +552,7 @@ struct DSFloatingCard: View {
                     HStack {
                         Spacer(minLength: 0)
                         Button(action: onMore) {
-                            Image(systemName: DS.Icon.more).foregroundStyle(DS.Color.ink3)
+                            DSIconView(icon: .more, size: DS.Size.icon, color: DS.Color.ink3)
                                 .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
                         }.dsPressStyle().accessibilityLabel("更多操作")
                     }
@@ -560,7 +566,11 @@ struct DSFloatingCard: View {
                             .dsFillWidth().dsSurface(DS.Color.warnSoft, radius: DS.Radius.m,
                                                     padding: EdgeInsets(top: DS.Space.s12, leading: DS.Space.s16, bottom: DS.Space.s12, trailing: DS.Space.s16))
                     }
-                    if let note { Label(note, systemImage: DS.Icon.edit).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2) }
+                    if let note {
+                        Label { Text(note).dsText(DS.Font.tLabel) } icon: {
+                            DSIconView(icon: .edit, size: DS.Font.tLabel.size)
+                        }.foregroundStyle(DS.Color.ink2)
+                    }
                     Text(metadata).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).padding(.top, DS.Space.s12)
                     DSButton("完成", kind: .secondary, action: onDone).padding(.top, DS.Space.s4)
                 }.padding(.horizontal, DS.Space.s20).padding(.bottom, DS.Space.s20)
@@ -588,7 +598,7 @@ struct DSSheet<Content: View>: View {
                 Text(title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
                 HStack {
                     Button { dismiss() } label: {
-                        Image(systemName: DS.Icon.close).foregroundStyle(DS.Color.ink3)
+                        DSIconView(icon: .close, size: DS.Size.icon, color: DS.Color.ink3)
                             .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
                     }.dsPressStyle().accessibilityLabel("关闭")
                     Spacer(minLength: 0)
@@ -697,7 +707,7 @@ struct DSAlertCard: View {
                 }.dsFillWidth()
                 Text(value).dsText(tone == .positive ? DS.Font.nSpine : DS.Font.tLabel).monospacedDigit().fixedSize()
                 if tone == .warning {
-                    Image(systemName: DS.Icon.chevron).font(.system(size: DS.Font.tCaption.size, weight: DS.Icon.Weight.chevron))
+                    DSIconView(icon: .chevron, size: DS.Font.tCaption.size, color: DS.Color.warnInk)
                 }
             }.foregroundStyle(tone == .warning ? DS.Color.warnInk : DS.Color.accentInk)
                 .frame(minHeight: DS.Size.tapMin)

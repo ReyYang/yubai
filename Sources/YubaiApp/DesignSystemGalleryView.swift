@@ -328,8 +328,8 @@ struct DesignSystemGalleryView: View {
             DSButton("全部播放") { allPlays += 1 }.accessibilityIdentifier("ds-motion-all")
             DSButton("按压", kind: .secondary) {}.accessibilityIdentifier("ds-motion-press")
             HStack(spacing: DS.Space.s16) {
-                Image(systemName: DS.Icon.ai).font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.nav))
-                    .foregroundStyle(DS.Color.accentInk).dsBreathe().accessibilityLabel("读取中")
+                DSIconView(icon: .ai, size: DS.Size.icon, color: DS.Color.accentInk)
+                    .dsBreathe().accessibilityLabel("读取中")
                 Text(" ").frame(maxWidth: .infinity, minHeight: DS.Size.askH)
                     .dsSurface(DS.Color.surface, radius: DS.Radius.s).dsShimmer().accessibilityLabel("读取中")
             }
@@ -373,7 +373,7 @@ struct DesignSystemGalleryView: View {
         DSCategoryPicker.Category(id: "coffee", name: "咖啡", icon: DS.Icon.catCoffee, suggested: true),
         DSCategoryPicker.Category(id: "transport", name: "交通", icon: DS.Icon.catTransport),
         DSCategoryPicker.Category(id: "grocery", name: "买菜", icon: DS.Icon.catGrocery),
-        DSCategoryPicker.Category(id: "all", name: "全部", icon: DS.Icon.catShopping)
+        DSCategoryPicker.Category(id: "all", name: "全部", icon: DS.Icon.catAll)
     ]
     private static let slices = [
         DSDonut.Slice(id: "housing", name: "居住", value: 40, amount: "2,800.00"),
