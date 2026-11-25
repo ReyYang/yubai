@@ -1383,6 +1383,9 @@ private struct SurfacePresentationHost: ViewModifier {
             .popover(item: $presentations.popover, attachmentAnchor: .rect(.rect(
                 (presentations.popover?.source ?? .zero).offsetBy(dx: -frame.minX, dy: -frame.minY)))) { $0.content }
             .onChange(of: store.current.id) { _, _ in presentations.sheet = nil; presentations.popover = nil }
+            .onChange(of: store.entrySheet?.id) { _, id in
+                if id != nil { presentations.sheet = nil; presentations.popover = nil }
+            }
             .onChange(of: store.locked) { _, locked in
                 if locked { presentations.sheet = nil; presentations.popover = nil }
             }

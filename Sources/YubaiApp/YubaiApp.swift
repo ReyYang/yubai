@@ -526,6 +526,7 @@ enum AppSheet: Identifiable {
     func resetRootNavigation() {
         destination = .ledger; pickingInsightDates = false; ledgerPreset = nil
         homeReceipt = nil
+        entrySheet = nil; retainedEntryDraft = nil; lastEntryType = .expense; lastEntryAccountID = nil
         unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
         if pagingLocked { pagingLocked = false }
@@ -538,6 +539,10 @@ enum AppSheet: Identifiable {
     var askConversation = AskConversationState()
     var rootScrollRequest: [Destination: Int] = [:]
     var sheet: AppSheet?; var error: String?
+    var entrySheet: EntrySheetViewModel?
+    @ObservationIgnored var retainedEntryDraft: EntrySheetDraft?
+    @ObservationIgnored var lastEntryType = EntryType.expense
+    @ObservationIgnored var lastEntryAccountID: UUID?
     var toastRevision = 0
     var toast: String? { didSet { if toast != nil { toastRevision &+= 1 } } }
     var homeReceipt: ButlerReceipt?
@@ -598,6 +603,10 @@ enum AppSheet: Identifiable {
         localRepository = LedgerRepository(directory: directory)
         locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
         syncAllowed = !args.contains("--test-ledger") && !args.contains("--data-directory") && ProcessInfo.processInfo.environment["YUBAI_DATA_DIR"] == nil
+        #if DEBUG
+        // Fixture previews are isolated from the user's ledger and sync.
+        if EntryFixture.launchMode != nil { return }
+        #endif
         // Keep startup file discovery, fixture encoding, migrations and recovery
         // pruning on the same worker as subsequent disk writes.
         let repository = localRepository
@@ -794,7 +803,30 @@ enum AppSheet: Identifiable {
             undoTrigger &+= 1; undoLedger = nil; undoLabel = nil; toast = "已撤销"
         } catch { self.error = error.localizedDescription }
     }
-    func present(_ sheet: AppSheet, from source: String? = nil) { sheetSource = source; self.sheet = sheet }
+    func present(_ sheet: AppSheet, from source: String? = nil) {
+        switch sheet {
+        case .addEntry: requestCaptureSheet(.addEntry)
+        case .prefilledEntry: requestCaptureSheet(sheet)
+        default: sheetSource = source; self.sheet = sheet
+        }
+    }
+
+    func openEntrySheet(_ prefill: QuickEntryPrefill? = nil) {
+        if let current = entrySheet {
+            guard prefill != nil else { return }
+            current.retainDraft()
+        }
+        sheet = nil
+        sheetSource = nil
+        entrySheet = EntrySheetViewModel(store: self, prefill: prefill)
+    }
+
+    func closeEntrySheet(_ id: UUID) {
+        guard entrySheet?.id == id else { return }
+        entrySheet = nil
+        finishEntrySaveMotion()
+        homeEntrySession = false
+    }
     func setEntrySaveToast(_ message: String) {
         if pendingEntrySave { pendingSaveToast = message }
         else if homeEntrySession && !receiptEntryIDs.isEmpty && freshEntryIDs.isSubset(of: receiptEntryIDs) { return }
@@ -813,7 +845,7 @@ enum AppSheet: Identifiable {
         toast = nil; entrySaveTrigger &+= 1
     }
     func finishEntrySaveMotion() {
-        guard pendingEntrySave, sheet == nil, !locked else { return }
+        guard pendingEntrySave, sheet == nil, entrySheet == nil, !locked else { return }
         pendingEntrySave = false
         if !entrySaveAcknowledged { entrySaveTrigger &+= 1 }
         entrySaveAcknowledged = false
@@ -829,7 +861,7 @@ enum AppSheet: Identifiable {
         if !feedback.needsToast { return }
         saveToastTask = Task { @MainActor in
             do { try await Task.sleep(for: .seconds(YubaiMotion.saveToastDelay)) } catch { return }
-            guard !Task.isCancelled, entrySaveTrigger == trigger, !locked, sheet == nil, toast == nil else { return }
+            guard !Task.isCancelled, entrySaveTrigger == trigger, !locked, sheet == nil, entrySheet == nil, toast == nil else { return }
             toast = message
         }
     }
@@ -989,6 +1021,17 @@ enum AppSheet: Identifiable {
         #endif
     }
     @ViewBuilder private var launchRoot: some View {
+        #if DEBUG
+        if let fixture = EntryFixture.launchMode {
+            EntryFixtureScreen(mode: fixture, theme: EntryFixture.launchTheme)
+        } else {
+            normalLaunchRoot
+        }
+        #else
+        normalLaunchRoot
+        #endif
+    }
+    @ViewBuilder private var normalLaunchRoot: some View {
         #if DEBUG && targetEnvironment(simulator)
         if UITestSupport.designSystemGallery {
             DesignSystemGalleryView()
@@ -1037,12 +1080,13 @@ struct RootView: View {
             else if let failure = store.loadFailure { recoveryView(failure) }
             else { mainContent }
         }
+        .accessibilityHidden(store.entrySheet != nil)
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
         .surfacePresentations()
         #if DEBUG && targetEnvironment(simulator) && os(iOS)
         .background { if UITestSupport.script != nil { UITestDiagnostics() } }
         #endif
-        .sheet(item: $store.sheet, onDismiss: { store.finishEntrySaveMotion(); store.homeEntrySession = false }) { sheet in
+        .sheet(item: $store.sheet, onDismiss: { if store.entrySheet == nil { store.finishEntrySaveMotion(); store.homeEntrySession = false } }) { sheet in
             NavigationStack { sheetView(sheet).surfaceNavigation() }.environment(store).tint(YubaiColor.brandInk)
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
                 .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
@@ -1088,7 +1132,7 @@ struct RootView: View {
             }
         }
         #endif
-        .onChange(of: store.pendingEntrySave) { _, pending in if pending && store.sheet == nil { store.finishEntrySaveMotion() } }
+        .onChange(of: store.pendingEntrySave) { _, pending in if pending && store.sheet == nil && store.entrySheet == nil { store.finishEntrySaveMotion() } }
         .onChange(of: hasToast) { _, showing in if !showing { toastHeight = 0 } }
         .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil } }
         #if os(iOS)
@@ -1106,7 +1150,7 @@ struct RootView: View {
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
-                store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.retainedEntryDraft = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true
             }
         }
         .task(id: phase == .active && !store.locked) {
@@ -1137,12 +1181,23 @@ struct RootView: View {
                 }.padding(YubaiSpace.insetCard).background(YubaiColor.raised)
             }
         }
+        .overlay {
+            if !store.locked, let model = store.entrySheet {
+                EntrySheetOverlay(model: model, onClose: { store.closeEntrySheet(model.id) }, onReceipt: {
+                    guard let screenshot = model.draft.screenshot else { return }
+                    model.retainDraft()
+                    store.closeEntrySheet(model.id)
+                    store.requestCaptureSheet(.screenshotReview(screenshot))
+                })
+                .id(model.id)
+            }
+        }
         .overlay { LedgerPrivacyCover() }
         .onOpenURL { url in
             if store.loadingLedger { store.pendingOpenURL = url }
             else { openURL(url) }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     private func openURL(_ url: URL) {
@@ -1217,7 +1272,7 @@ struct RootView: View {
         }
     }
     @ViewBuilder private var tabBarOverlay: some View {
-        if !tabBarHidden && store.sheet == nil && !store.pickingInsightDates {
+        if !tabBarHidden && store.sheet == nil && store.entrySheet == nil && !store.pickingInsightDates {
             ZStack(alignment: .bottom) {
                 if quickMenuShown {
                     QuickRepeatMenu { quickMenuShown = false }
@@ -1252,7 +1307,7 @@ struct RootView: View {
         quickMenuShown = false
         store.homeEntrySession = true
         if store.accounts.isEmpty { store.beginFirstEntry() }
-        else { store.sheetSource = nil; store.sheet = .addEntry }
+        else { store.requestCaptureSheet(.addEntry) }
     }
     private func showQuickMenu() {
         withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { quickMenuShown.toggle() }
@@ -1320,10 +1375,10 @@ struct RootView: View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if d == .ledger && store.sheet == nil && !store.pickingInsightDates {
+            if d == .ledger && store.sheet == nil && store.entrySheet == nil && !store.pickingInsightDates {
                 HomeEntryPill(title: store.homeHero.isFirstOpen ? "记第一笔" : "记一笔", action: {
                     store.homeEntrySession = true
-                    if store.accounts.isEmpty { store.beginFirstEntry() } else { store.sheet = .addEntry }
+                    if store.accounts.isEmpty { store.beginFirstEntry() } else { store.requestCaptureSheet(.addEntry) }
                 }, quick: { store.sheet = .frequentEntries })
                     .padding(.bottom, YubaiSpace.gapSection)
             }
@@ -1342,8 +1397,7 @@ struct RootView: View {
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
-        case .addEntry: QuickEntryView()
-        case .prefilledEntry(let prefill): QuickEntryView(prefill: prefill)
+        case .addEntry, .prefilledEntry: EmptyView()
         case .screenshotCapture(let data): ScreenshotCaptureView(imageData: data)
         case .screenshotReview(let data): ScreenshotCaptureView(imageData: data)
         case .editEntry(let id): EntryEditView(entryID: id)

@@ -593,7 +593,7 @@ struct LedgerEntryRow: View {
     }
     private func duplicate() {
         guard let saved = store.entriesByID[entry.id] else { return }
-        store.sheetSource = nil; store.sheet = .prefilledEntry(QuickEntryPrefill(entry: saved))
+        store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(entry: saved)))
     }
     private var tile: some View {
         LedgerCategoryIcon(category: entry.categoryName, pending: entry.uncategorized)

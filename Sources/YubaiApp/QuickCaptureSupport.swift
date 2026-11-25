@@ -25,7 +25,11 @@ extension AppStore {
         if loadingLedger || locked { pendingQuickSheet = next }
         else {
             if accounts.isEmpty || !preferences.onboardingComplete { _ = update("开始记账", recordUndo: false, entryMotion: false, showToast: false) { FirstUse.prepareForEntry(&$0, now: Dates.now) } }
-            sheetSource = nil; sheet = next
+            switch next {
+            case .addEntry: openEntrySheet()
+            case .prefilledEntry(let prefill): openEntrySheet(prefill)
+            default: sheetSource = nil; sheet = next
+            }
         }
     }
     func handleCaptureURL(_ url: URL) {
