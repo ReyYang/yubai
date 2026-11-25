@@ -167,8 +167,8 @@ private struct HomePage: View {
         let chartLedger = fixture?.chartLedger(from: ledger) ?? ledger
         let series = DailySpending(in: chartLedger, period: period)
         let bars = HomeDisplay.bars(series, fixture: fixture != nil)
-        let amount = period.income > 0 && period.rawR < 0 ? -period.rawR : period.available
-        let over = period.income > 0 && period.rawR < 0
+        let over = period.showsSpendableDeficit
+        let amount = period.spendableDisplayAmount
         let days = HomeDisplay.daysLeft(period)
         let daily = Int64((Double(period.available) / Double(days)).rounded())
         let elapsed = max(1, period.daysTotal - days + 1)
@@ -179,7 +179,7 @@ private struct HomePage: View {
         } else {
             projected = Int((Double(period.available) / Double(burn)).rounded(.up))
         }
-        let tight = fixture?.isTight == true || (fixture == nil && period.waterBar?.fast == true && projected < days)
+        let tight = fixture?.isTight == true || (fixture == nil && period.available > 0 && period.waterBar?.fast == true && projected < days)
         let tint = over || tight ? DS.Color.warnInk : period.income == 0 ? DS.Color.ink3 : DS.Color.ink
         let budgets = HomeBudgets(in: ledger, now: now).home.map { HomeDisplay.dsBudget($0, hidden: hide) }
         return VStack(spacing: .zero) {

@@ -83,7 +83,7 @@ enum HomeFixture: Equatable {
         var salary = Plan(title: "工资", amount: 1_850_000, dueDate: start, frequency: .monthly, inflow: true, category: "工资", nature: .income)
         salary.accountID = bank.id
         ledger.plans = [salary, Plan(title: "固定订阅", amount: 38_600, dueDate: Dates.parse("2025-12-09")!, category: "订阅")]
-        ledger.fixedSavings = 842_000
+        ledger.fixedSavings = self == .home(.over) ? 1_284_000 : 842_000
         ledger.savingRule = .fixed(500_000)
 
         func add(_ title: String, _ amount: Int64, _ category: String, _ date: Date, account: Account? = nil,
@@ -274,7 +274,7 @@ enum HomeFixture: Equatable {
                 if balance > 0 { _ = add("其他", balance, "其他", date, source: Self.dailySource) }
             }
             if mode != .nopay && mode != .empty {
-                let result: Int64 = mode == .tight ? 126_840 : mode == .over ? -32_650 : mode == .worst ? 12_840_650 : 626_840
+                let result: Int64 = mode == .tight ? 126_840 : mode == .over ? -532_650 : mode == .worst ? 12_840_650 : 626_840
                 let expenses = ledger.entries.filter { $0.nature == .expense && $0.date >= start }.reduce(Int64(0)) { $0 + $1.amount }
                 addSalary(expenses + result + 500_000 + 38_600)
             }

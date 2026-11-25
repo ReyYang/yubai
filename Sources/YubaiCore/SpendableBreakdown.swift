@@ -53,6 +53,8 @@ public struct SpendableBreakdown: Equatable, Sendable {
     public var bills: [FixedFlowOccurrence] = []
     public var incoming: [Occurrence] = []
     public var available: Int64 { max(0, rawR) }
+    public var showsSpendableDeficit: Bool { income > 0 && deficit > 0 }
+    public var spendableDisplayAmount: Int64 { showsSpendableDeficit ? deficit : available }
     public var savingLess: Int64 { min(plannedSaving, max(0, -rawR)) }
     public var deficit: Int64 { max(0, -rawR - plannedSaving) }
     public var offersFormula: Bool { state != .spentFallback }

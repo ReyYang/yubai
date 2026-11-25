@@ -144,8 +144,8 @@ private struct BudgetPage: View {
         let amber = rows.filter(\.isWarning)
         let calm = rows.filter { !$0.isWarning }
         return VStack(alignment: .leading, spacing: .zero) {
-            Text(HomeDisplay.money(period.available, hidden: hidden))
-                .dsText(DS.Font.nHero).foregroundStyle(period.rawR < 0 ? DS.Color.warnInk : DS.Color.ink)
+            Text(HomeDisplay.money(period.spendableDisplayAmount, hidden: hidden))
+                .dsText(DS.Font.nHero).foregroundStyle(period.showsSpendableDeficit ? DS.Color.warnInk : DS.Color.ink)
                 .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                 .padding(.top, DS.Space.s4).accessibilityIdentifier("formulaResult")
             Text("\(BudgetPageDate.text(period.cycleStart)) – \(BudgetPageDate.text(period.cycleEnd)) · 还剩 \(HomeDisplay.daysLeft(period)) 天")
