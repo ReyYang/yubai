@@ -49,9 +49,9 @@ final class Batch2HomeRebuildTests: YubaiUITestCase {
         XCTAssertTrue(UIConditionWait.run(timeout: 6, read: { shopping.frame.minY < food.frame.minY }))
         shopping.tap()
         _ = wait("budgetKeypadAmount")
-        app.buttons["2"].tap()
-        app.buttons["00"].tap()
-        app.buttons["记下"].tap()
+        wait("keypad_2", type: .button).tap()
+        wait("keypad_00", type: .button).tap()
+        wait("saveQuickEntry", type: .button).tap()
         XCTAssertTrue(waitForDisappearance(app.descendants(matching: .any)["budgetKeypadAmount"]))
         XCTAssertEqual(shopping.value as? String, "200.00")
     }
@@ -63,19 +63,20 @@ final class Batch2HomeRebuildTests: YubaiUITestCase {
         XCTAssertTrue(app.staticTexts["还差 1 人"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["11月23日 收到 · 招行储蓄"].exists)
         wait("billMore", type: .button).tap()
-        app.buttons["编辑"].tap()
+        wait("entryDetailEdit", type: .button).tap()
         XCTAssertTrue(wait("saveQuickEntry", type: .button).exists)
         XCTAssertTrue(waitForDisappearance(app.descendants(matching: .any)["billFloatingCard"]))
     }
 
     func testReimbursementRecordsAndUndoRestoresPending() {
         launch("-YubaiBillFixture", "reimburse", menu: true)
-        XCTAssertTrue(app.buttons["编辑"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["entryDetailEdit"].waitForExistence(timeout: 8))
         wait("billMore", type: .button).tap()
         XCTAssertTrue(app.buttons["报销到账了"].waitForExistence(timeout: 5))
         app.buttons["报销到账了"].tap()
         XCTAssertTrue(app.staticTexts["报销到账了"].waitForExistence(timeout: 5))
         wait("closeBill", type: .button).tap()
+        XCTAssertTrue(waitForDisappearance(app.descendants(matching: .any)["billFloatingCard"]))
         wait("undoLastChange", type: .button).tap()
         let original = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "ledgerEntry_", "便利店")).firstMatch
         XCTAssertTrue(original.waitForExistence(timeout: 5))

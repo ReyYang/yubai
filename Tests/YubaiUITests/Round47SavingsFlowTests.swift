@@ -26,6 +26,19 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         tapControl(target, in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
     }
 
+    private func backToHome() {
+        for _ in 0..<8 {
+            if element("tab_ledger").isHittable { return }
+            back()
+        }
+        XCTFail("未回到首页")
+    }
+
+    private func openInbox() {
+        backToHome()
+        tap("openSettings"); tap("openAssistantHub"); tap("openButlerInbox")
+    }
+
     private func keys(_ value: String) { for key in value { tap("keypad_" + String(key)) } }
     private func amount(_ id: String) -> Int64 {
         let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
@@ -227,22 +240,23 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertFalse(element("reserveTotal").exists)
     }
     func testPaydayAllClosesTheQuestionAndPersistsTheNewTotals() {
-        launch("v47-topup"); let before = amount("fundsFormula"); tap("savingsTopupAll"); gone("savingsTopupCard")
+        launch("v47-topup"); let before = amount("fundsFormula"); openInbox(); tap("savingsTopupAll"); gone("savingsTopupCard"); backToHome()
         XCTAssertEqual(amount("fundsFormula"), before - 50_000)
         app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
         XCTAssertFalse(element("savingsTopupCard").exists); XCTAssertEqual(amount("fundsFormula"), before - 50_000)
     }
     func testPaydayPartialClosesWholeQuestionAndUsesTheSameSheet() {
-        launch("v47-topup"); let before = amount("fundsFormula"); tap("savingsTopupPartial")
-        keys("200"); tap("confirmSavingsTransfer"); gone("savingsTransferSheet"); gone("savingsTopupCard")
+        launch("v47-topup"); let before = amount("fundsFormula"); openInbox(); tap("savingsTopupPartial")
+        keys("200"); tap("confirmSavingsTransfer"); gone("savingsTransferSheet"); gone("savingsTopupCard"); backToHome()
         XCTAssertEqual(amount("fundsFormula"), before - 20_000)
-        tap("undoLastChange"); XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5))
+        tap("undoLastChange"); openInbox(); XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5))
     }
     func testPaydayDeclineIsPermanentAndTheNextQueueItemAppears() {
-        launch("v47-topup-queue"); let before = amount("fundsFormula")
+        launch("v47-topup-queue"); let before = amount("fundsFormula"); openInbox()
         XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5)); XCTAssertFalse(element("renewalCard").exists)
         tap("savingsTopupDecline"); gone("savingsTopupCard")
-        XCTAssertEqual(amount("fundsFormula"), before); XCTAssertTrue(element("renewalCard").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("renewalCard").waitForExistence(timeout: 5)); backToHome()
+        XCTAssertEqual(amount("fundsFormula"), before)
         app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
         XCTAssertFalse(element("savingsTopupCard").exists)
     }
@@ -326,7 +340,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     }
     func testTopupPartialPresentationSurvivesDynamicTypeAndClippingAudit() throws {
         for large in [false, true] {
-            launch("v47-topup", large: large)
+            launch("v47-topup", large: large); openInbox()
             tap("savingsTopupPartial")
             XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
             try auditAppText(in: app, dynamicType: true) { issue in
@@ -453,7 +467,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertEqual(amount("fundsFormula"), 35_000)
     }
     func testRevisionCarryRevertAddsItsOwnRowAndUndoRestoresSavings() {
-        launch("v47r-carry"); tap("leftoverKeep")
+        launch("v47r-carry"); openInbox(); tap("leftoverKeep"); backToHome()
         XCTAssertEqual(amount("fundsFormula"), 248_400)
         tap("fundsFormula")
         XCTAssertEqual(amount("formulaRow_carry"), 62_000)

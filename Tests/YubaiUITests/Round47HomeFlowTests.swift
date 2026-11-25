@@ -24,13 +24,11 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     private func id(_ number: Int) -> String { String(format: "47000000-0000-0000-0000-%012d", number) }
     private func element(_ id: String) -> XCUIElement { control(id, in: app) }
     private func tap(_ id: String) {
-        if id == "tab_yubai" {
-            if !element("openSettings").exists { tap("tab_ledger") }
-            tap("openSettings")
-            tap("openAssistantHub")
-            return
-        }
         tapControl(element(id), in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
+    }
+    private func openAssistantHub() {
+        if !element("openSettings").exists { tap("tab_ledger") }
+        tap("openSettings"); tap("openAssistantHub")
     }
     private func reveal(_ id: String) {
         XCTAssertTrue(revealControl(element(id), in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")), id)
@@ -62,7 +60,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
 
     func testSavingFromSettingsHubAndBackReturnsToLedger() {
-        launch(); tap("tab_yubai"); tap("openSaving")
+        launch(); openAssistantHub(); tap("openSaving")
         XCTAssertTrue(element("savingTabScroll").waitForExistence(timeout: 5))
         XCTAssertFalse(element("mainNavigation").exists)
         tap("BackButton"); tap("BackButton"); tap("BackButton")
@@ -426,7 +424,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     func testSettingsHubOpensCommonEntriesWithoutAdding() {
         launch()
         let amount = element("fundsFormula").value as? String
-        tap("tab_yubai"); tap("openFrequentEntries")
+        openAssistantHub(); tap("openFrequentEntries")
         XCTAssertTrue(element("BackButton").waitForExistence(timeout: 5))
         XCTAssertFalse(element("entryKeypadAmount").exists)
         tap("BackButton"); tap("BackButton"); tap("BackButton")
@@ -441,7 +439,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         for large in [false, true] {
             for (dark, hidden) in [(false, false), (true, false), (false, true), (true, true)] {
                 launch("v47-after", large: large, hidden: hidden, dark: dark)
-                tap("tab_yubai"); tap("openPaydaySetup")
+                openAssistantHub(); tap("openPaydaySetup")
                 XCTAssertTrue(element("paydaySetupSheet").waitForExistence(timeout: 5))
                 for (title, cancelID) in [("哪天发工资", "paydaySetupCancel"), ("工资", "amountSheetCancel")] {
                     if cancelID == "amountSheetCancel" { tap("paydaySetupAmount") }
@@ -490,7 +488,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("recordSalary").exists)
     }
     func testSalaryQuestionOpensAndSavesTheExistingSalarySetup() {
-        launch("v47-after"); tap("tab_yubai"); tap("openPaydaySetup")
+        launch("v47-after"); openAssistantHub(); tap("openPaydaySetup")
         XCTAssertTrue(element("paydaySetupSheet").waitForExistence(timeout: 5))
         tap("paydaySetupAmount"); keys("8010"); tap("paydaySetupAmountDone"); tap("paydaySetupDone")
         XCTAssertTrue(waitForDisappearance(element("paydaySetupSheet")))
