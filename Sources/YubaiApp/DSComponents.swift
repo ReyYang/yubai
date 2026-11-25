@@ -816,3 +816,72 @@ struct DSSwitch: View {
             .sensoryFeedback(DSMotion.Haptic.toggle, trigger: isOn)
     }
 }
+
+struct DSInlineTextField: View {
+    let title: String
+    @Binding var text: String
+    var decimal = false
+    var autoFocus = true
+    var embedded = false
+    var previewCaretSize: CGSize?
+    var onSubmit: () -> Void = {}
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Group {
+            if embedded {
+                field.dsText(DS.Font.tPill)
+                    .overlay(alignment: .leading) {
+                        if let previewCaretSize, !focused, !text.isEmpty {
+                            HStack(spacing: DS.Space.s4) {
+                                Text(text).dsText(DS.Font.tPill).hidden()
+                                Capsule(style: .continuous).fill(DS.Color.accent)
+                                    .frame(width: previewCaretSize.width, height: previewCaretSize.height)
+                            }
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                        }
+                    }
+            } else {
+                field.dsText(DS.Font.tBody)
+                    .padding(.horizontal, DS.Space.s12)
+                    .frame(minHeight: DS.Size.tapMin)
+                    .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
+                    .overlay {
+                        if focused {
+                            RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous)
+                                .strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
+        }
+        .onAppear { if autoFocus { focused = true } }
+    }
+
+    private var field: some View {
+        TextField("", text: $text)
+            .accessibilityLabel(title)
+            #if os(iOS)
+            .keyboardType(decimal ? .decimalPad : .default)
+            #endif
+            .tint(DS.Color.accent)
+            .textFieldStyle(.plain)
+            .foregroundStyle(DS.Color.ink)
+            .focused($focused)
+            .onSubmit(onSubmit)
+    }
+}
+
+struct DSDatePickerPanel: View {
+    @Binding var date: Date
+
+    var body: some View {
+        DatePicker("日期和时间", selection: $date, displayedComponents: [.date, .hourAndMinute])
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .tint(DS.Color.accent)
+            .padding(DS.Space.s12)
+            .dsSurface(DS.Color.surface, radius: DS.Radius.m)
+    }
+}
