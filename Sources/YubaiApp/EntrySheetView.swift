@@ -115,11 +115,12 @@ struct EntrySheetView: View {
     }
 
     private var form: some View {
-        VStack(spacing: .zero) {
+        let calendarOpen = model.drawer == .calendar
+        return VStack(spacing: .zero) {
             EntryTopHeaderView(model: model, close: close, drag: drag)
             VStack(spacing: .zero) {
                 EntryAmountBlockView(model: model)
-                    .padding(.bottom, EntrySpec.amountBottom)
+                    .padding(.bottom, calendarOpen ? DS.Space.s12 : EntrySpec.amountBottom)
                 typeBody
                     .transition(.opacity)
                 EntryPillsRowView(model: model)
@@ -128,9 +129,9 @@ struct EntrySheetView: View {
                     EntryPill(title: "截图", icon: .screenshot, hint: "查看原始截图", action: receipt)
                 }
             }
-            .padding(.top, DS.Space.s20)
+            .padding(.top, calendarOpen ? DS.Space.s8 : DS.Space.s20)
             .padding(.horizontal, DS.Space.s20)
-            .padding(.bottom, model.drawer == .calendar ? .zero : EntrySpec.bodyBottom)
+            .padding(.bottom, calendarOpen ? .zero : EntrySpec.bodyBottom)
         }
     }
 
@@ -157,7 +158,7 @@ struct EntrySheetView: View {
                 .padding(.bottom, DS.Space.s12)
             if model.draft.category != nil {
                 EntrySubcategoryRowView(model: model)
-                    .padding(.bottom, EntrySpec.bodyBottom)
+                    .padding(.bottom, model.drawer == .calendar ? DS.Space.s8 : EntrySpec.bodyBottom)
             }
             if model.draft.exception == .split {
                 EntryAACardView(model: model)

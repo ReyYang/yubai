@@ -1075,12 +1075,14 @@ struct RootView: View {
         // Keep the one AppSheet presenter on a concrete, stable host outside
         // the tab stacks, including while their root pages are off screen.
         ZStack {
-            if store.loadingLedger { ProgressView() }
-            else if store.locked { lockedView }
-            else if let failure = store.loadFailure { recoveryView(failure) }
-            else { mainContent }
+            ZStack {
+                if store.loadingLedger { ProgressView() }
+                else if store.locked { lockedView }
+                else if let failure = store.loadFailure { recoveryView(failure) }
+                else { mainContent }
+            }
+            .accessibilityHidden(store.entrySheet != nil && !store.locked)
         }
-        .accessibilityHidden(store.entrySheet != nil)
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
         .surfacePresentations()
         #if DEBUG && targetEnvironment(simulator) && os(iOS)
