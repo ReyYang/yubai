@@ -25,7 +25,7 @@ struct EntrySheetOverlay: View {
                 EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
                                drag: drag, close: cancel, save: save, receipt: onReceipt)
                     .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
-                    .accessibilityHidden(model.categoryPanel)
+                    .accessibilityHidden(model.categoryPanel || model.drawer == .calendar)
                 if model.categoryPanel {
                     DS.Color.scrim
                         .contentShape(Rectangle())
@@ -37,11 +37,20 @@ struct EntrySheetOverlay: View {
                         .transition(reduced ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 }
             }
+            .overlayPreferenceValue(EntryTimeAnchor.self) { anchor in
+                if let anchor, model.drawer == .calendar {
+                    calendarOverlay(anchor)
+                        .transition(.opacity)
+                }
+            }
             .ignoresSafeArea(.container, edges: .bottom)
+            .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.drawer == .calendar)
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.categoryPanel)
         }
         .accessibilityAction(.escape) {
-            if model.categoryPanel { model.dismissCategoryPanel() } else { cancel() }
+            if model.drawer == .calendar { model.drawer = nil }
+            else if model.categoryPanel { model.dismissCategoryPanel() }
+            else { cancel() }
         }
         .onAppear { model.schedulePreview() }
         .onChange(of: model.draft) { _, _ in model.schedulePreview() }
@@ -52,6 +61,35 @@ struct EntrySheetOverlay: View {
         } message: {
             Text(model.failure ?? "")
         }
+    }
+
+    private func calendarOverlay(_ anchor: Anchor<CGRect>) -> some View {
+        GeometryReader { geometry in
+            let pill = geometry[anchor]
+            let available = max(0, pill.minY - EntrySpec.calendarGap)
+            let width = min(EntrySpec.calendarWidth, geometry.size.width)
+            let leading = min(max(0, pill.midX - width * EntrySpec.midpoint), geometry.size.width - width)
+            ZStack(alignment: .topLeading) {
+                Color.clear.contentShape(Rectangle())
+                    .onTapGesture { model.drawer = nil }
+                    .accessibilityHidden(true)
+                    .ignoresSafeArea()
+                ViewThatFits(in: .vertical) {
+                    calendarCard
+                    ScrollView { calendarCard }.scrollIndicators(.hidden)
+                }
+                .frame(width: width, height: available, alignment: .bottom)
+                .offset(x: leading)
+                .accessibilityAddTraits(.isModal)
+                .accessibilityAction(.escape) { model.drawer = nil }
+            }
+        }
+    }
+
+    private var calendarCard: some View {
+        DSCalendarPopover(date: model.draft.date, now: model.now, repeats: model.draft.repeatMonthly,
+                          canRepeat: model.canRepeat && model.draft.exception == nil,
+                          onSelect: model.setDate, onRepeat: model.toggleRepeat)
     }
 
     private var drag: EntryHeaderDrag {
@@ -70,6 +108,13 @@ struct EntrySheetOverlay: View {
     private func save() {
         guard !motion.closing, model.save() else { return }
         motion.close(reduced: reduced, sealed: true, onClose: onClose)
+    }
+}
+
+private struct EntryTimeAnchor: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        value = nextValue() ?? value
     }
 }
 
@@ -115,37 +160,31 @@ struct EntrySheetView: View {
     }
 
     private var form: some View {
-        let calendarOpen = model.drawer == .calendar
-        return VStack(spacing: .zero) {
+        VStack(spacing: .zero) {
             EntryTopHeaderView(model: model, close: close, drag: drag)
             VStack(spacing: .zero) {
                 EntryAmountBlockView(model: model)
-                    .padding(.bottom, calendarOpen ? DS.Space.s12 : EntrySpec.amountBottom)
+                    .padding(.bottom, EntrySpec.amountBottom)
                 typeBody
                     .transition(.opacity)
                 EntryPillsRowView(model: model)
-                if model.drawer != nil { EntryExpandedPanelView(model: model) }
+                EntryEffectLineView(model: model)
+                if model.drawer != nil, model.drawer != .calendar { EntryExpandedPanelView(model: model) }
                 if model.hasReceipt {
                     EntryPill(title: "截图", icon: .screenshot, hint: "查看原始截图", action: receipt)
                 }
             }
-            .padding(.top, calendarOpen ? DS.Space.s8 : DS.Space.s20)
+            .padding(.top, DS.Space.s20)
             .padding(.horizontal, DS.Space.s20)
-            .padding(.bottom, calendarOpen ? .zero : EntrySpec.bodyBottom)
+            .padding(.bottom, EntrySpec.aboveTray)
         }
     }
 
-    private var footer: some View {
-        VStack(spacing: .zero) {
-            EntryResultStripView(model: model)
-                .padding(.top, model.drawer == .calendar ? DS.Space.s12 : .zero)
-                .padding(.horizontal, DS.Space.s16)
-                .padding(.bottom, DS.Space.s12)
-            if model.hidesKeypad {
-                DS.Color.tray.frame(height: safeBottom)
-            } else {
-                EntryKeypadTrayView(model: model, safeBottom: safeBottom, save: save)
-            }
+    @ViewBuilder private var footer: some View {
+        if model.hidesKeypad {
+            DS.Color.tray.frame(height: safeBottom)
+        } else {
+            EntryKeypadTrayView(model: model, safeBottom: safeBottom, save: save)
         }
     }
 
@@ -158,7 +197,7 @@ struct EntrySheetView: View {
                 .padding(.bottom, DS.Space.s12)
             if model.draft.category != nil {
                 EntrySubcategoryRowView(model: model)
-                    .padding(.bottom, model.drawer == .calendar ? DS.Space.s8 : EntrySpec.bodyBottom)
+                    .padding(.bottom, EntrySpec.bodyBottom)
             }
             if model.draft.exception == .split {
                 EntryAACardView(model: model)
@@ -178,7 +217,7 @@ private struct EntryGrabber: View {
     }
 }
 
-private struct EntryTopHeaderView: View {
+struct EntryTopHeaderView: View {
     let model: EntrySheetViewModel
     let close: () -> Void
     let drag: EntryHeaderDrag
@@ -593,6 +632,7 @@ private struct EntryPill: View {
     var selected = false
     var strong = false
     var label: String? = nil
+    var anchorsCalendar = false
     let hint: String
     let action: () -> Void
 
@@ -612,6 +652,7 @@ private struct EntryPill: View {
             .padding(.trailing, title == nil ? EntrySpec.iconOnlyPadding : EntrySpec.trailingPadding)
             .frame(minWidth: DS.Size.pillH, minHeight: DS.Size.pillH)
             .dsPill(selected ? DS.Color.selected : DS.Color.surface)
+            .anchorPreference(key: EntryTimeAnchor.self, value: .bounds) { anchorsCalendar ? $0 : nil }
             .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
         }
         .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
@@ -623,57 +664,37 @@ private struct EntryPill: View {
 
 private struct EntryPillsRowView: View {
     let model: EntrySheetViewModel
-    @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.pillsRow)
         let calendarOpen = model.drawer == .calendar
         FlowLayout {
-            if model.drawer == .time || calendarOpen {
-                day("今天", offset: 0)
-                day("昨天", offset: -1)
-                day("前天", offset: -2)
-                EntryPill(title: nil, icon: .cycle, selected: calendarOpen, label: "日历",
-                          hint: calendarOpen ? "收起日历" : "选择日期和时间") {
-                    model.toggleDrawer(.calendar)
-                }
-                if model.canRepeat && model.draft.exception == nil {
-                    EntryPill(title: "每月", icon: .subscription, selected: model.draft.repeatMonthly, hint: "切换每月重复") {
-                        model.toggleRepeat()
-                    }
-                }
-            } else {
-                if !model.draft.isRoute {
-                    let account = model.account(model.draft.accountID)
-                    EntryPill(title: account?.name ?? "账户", icon: account?.kind.entryIcon ?? .acctWallet,
-                              hint: "选择这笔账的账户") { model.toggleDrawer(.source) }
-                }
-                EntryPill(title: time, icon: model.draft.repeatMonthly ? .subscription : .time,
-                          strong: model.draft.repeatMonthly, hint: "展开日期和重复选项") { model.toggleDrawer(.time) }
-                if model.draft.type == .expense {
-                    EntryPill(title: model.draft.exception?.title, icon: .more, strong: model.draft.exception != nil,
-                              label: model.draft.exception?.title ?? "更多选项", hint: "切换机动余钱、待报销和待 AA") {
-                        model.cycleException()
-                    }
-                }
-                if model.draft.type == .income && model.draft.originalNature == nil {
-                    EntryPill(title: model.draft.incomeNextCycle ? "算进 下周期" : "算进 本期", icon: .cycle,
-                              strong: true, hint: "切换收入计入的周期") { model.draft.incomeNextCycle.toggle() }
+            if !model.draft.isRoute {
+                let account = model.account(model.draft.accountID)
+                EntryPill(title: account?.name ?? "账户", icon: account?.kind.entryIcon ?? .acctWallet,
+                          hint: "选择这笔账的账户") { model.toggleDrawer(.source) }
+            }
+            EntryPill(title: time, icon: model.draft.repeatMonthly ? .subscription : .time,
+                      selected: calendarOpen, strong: model.draft.repeatMonthly, anchorsCalendar: true,
+                      hint: calendarOpen ? "收起日历" : "选择日期和重复选项") { model.toggleDrawer(.calendar) }
+                .accessibilityIdentifier("entryTimePill")
+            if model.draft.type == .expense {
+                EntryPill(title: model.draft.exception?.title, icon: .more, strong: model.draft.exception != nil,
+                          label: model.draft.exception?.title ?? "更多选项", hint: "切换机动余钱、待报销和待 AA") {
+                    model.cycleException()
                 }
             }
+            if model.draft.type == .income && model.draft.originalNature == nil {
+                EntryPill(title: model.draft.incomeNextCycle ? "算进 下周期" : "算进 本期", icon: .cycle,
+                          strong: true, hint: "切换收入计入的周期") { model.draft.incomeNextCycle.toggle() }
+            }
         }
-        .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.drawer)
     }
 
     private var time: String {
         guard model.draft.repeatMonthly else { return model.dayLabel }
         let day = model.fixtureRepeatDay ?? Dates.calendar.component(.day, from: model.draft.date)
         return "\(model.dayLabel) · 每月 \(day) 日"
-    }
-
-    private func day(_ title: String, offset: Int) -> some View {
-        EntryPill(title: title, selected: Dates.day(model.draft.date) == Dates.day(Dates.addDays(offset, to: model.now)),
-                  hint: "选择" + title) { model.setDay(offset) }
     }
 }
 
@@ -717,8 +738,6 @@ private struct EntryExpandedPanelView: View {
                                   hint: "选择账户") { model.selectAccount(account.id, destination: destination) }
                     }
                 }
-            case .calendar:
-                DSDatePickerPanel(date: Binding(get: { model.draft.date }, set: { model.setDate($0) }))
             case .subcategory where !model.categoryPanel:
                 HStack(spacing: DS.Space.s8) {
                     EntryInlineAddView(title: "小类", text: $model.inputText,
@@ -786,49 +805,20 @@ private struct EntryInlineAddView: View {
     }
 }
 
-private struct EntryResultStripView: View {
+private struct EntryEffectLineView: View {
     let model: EntrySheetViewModel
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
-        let _ = EntryRenderDiagnostics.hit(.resultStrip)
-        let result = model.result
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
-                title(result)
-                note(result)
-                value(result)
-            }
-            VStack(alignment: .leading, spacing: DS.Space.s4) {
-                title(result)
-                note(result)
-                value(result)
+        let _ = EntryRenderDiagnostics.hit(.effectLine)
+        Group {
+            if let effect = model.effect {
+                DSEffectLine(effect: effect, hidesAmount: model.hidesAmounts)
+                    .padding(.top, EntrySpec.effectGap)
+                    .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity, minHeight: EntrySpec.resultHeight, alignment: .leading)
-        .padding(.horizontal, DS.Space.s16)
-        .padding(.vertical, EntrySpec.compactPadding)
-        .dsSurface(DS.Color.surface, radius: DS.Radius.m)
-        .accessibilityElement(children: .combine)
-        .accessibilityHint(result.fraction.map { "已用额度 " + $0.formatted(.percent.precision(.fractionLength(0))) } ?? "")
-        .accessibilityIdentifier("entrySavingHint")
-    }
-
-    private func title(_ result: EntryResult) -> some View {
-        Text(result.title).dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink2).fixedSize(horizontal: true, vertical: false)
-    }
-    private func note(_ result: EntryResult) -> some View {
-        Text(model.hidesAmounts && !result.note.isEmpty ? "••••" : result.note)
-            .dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(result.warning ? DS.Color.warnInk : DS.Color.ink3)
-            .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-    }
-    private func value(_ result: EntryResult) -> some View {
-        Text(model.hidesAmounts && result.value != "不变" ? "••••" : result.value)
-            .dsText(EntrySpec.resultNumber)
-            .foregroundStyle(result.warning ? DS.Color.warnInk : result.value == "不变" ? DS.Color.ink : DS.Color.accentInk)
-            .fixedSize(horizontal: true, vertical: false)
-            .contentTransition(reduced ? .identity : .numericText())
-            .animation(reduced ? nil : DSMotion.standardAnimation, value: result.value)
+        .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.effect != nil)
     }
 }
 
@@ -957,7 +947,7 @@ private struct EntryKeyLabel: View {
     }
 }
 
-private struct EntryCategoryPanelView: View {
+struct EntryCategoryPanelView: View {
     @Bindable var model: EntrySheetViewModel
     let safeBottom: CGFloat
     let maxHeight: CGFloat
@@ -1060,7 +1050,7 @@ private struct EntryCategoryPanelView: View {
     }
 }
 
-private struct FlowLayout: Layout {
+struct FlowLayout: Layout {
     var centered = true
 
     private struct Row {

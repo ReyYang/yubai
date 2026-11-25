@@ -1,6 +1,15 @@
 #if DEBUG
 import Foundation
 
+enum UITestDesignSystemGallery {
+    private static let flag = "-YubaiDesignSystemGallery"
+    private static let arguments = ProcessInfo.processInfo.arguments
+    static let enabled = arguments.contains(flag) || ProcessInfo.processInfo.environment["YUBAI_DS_GALLERY"] == "1"
+    static let component = arguments.firstIndex(of: flag).flatMap { index in
+        arguments.dropFirst(index + 1).first.flatMap { $0.hasPrefix("-") ? nil : $0 }
+    }
+}
+
 /// Pure app-side wire contract, also compiled by scripts/test-ui-helpers.py.
 /// XCTest truncates AX snapshot values at 512 characters (run 12 retained two
 /// exact 512-character JSON prefixes). Keep every value below that boundary;
@@ -414,10 +423,6 @@ struct UITestWindowMetrics: UIViewRepresentable {
 /// No fixture path or scripted response is available in device / Release builds.
 /// A UUID-isolated test ledger AND an explicit script flag are both required.
 enum UITestSupport {
-    /// DEBUG-only gallery bypasses application navigation and onboarding entirely.
-    static let designSystemGallery = ProcessInfo.processInfo.arguments.contains("-YubaiDesignSystemGallery") ||
-        ProcessInfo.processInfo.environment["YUBAI_DS_GALLERY"] == "1"
-
     // Launch configuration is immutable. Copying Foundation's full environment
     // at every SwiftUI environment read was measured in main-thread stalls.
     static let launchEnvironment = ProcessInfo.processInfo.environment

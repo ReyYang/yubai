@@ -1,4 +1,5 @@
 import SwiftUI
+import YubaiCore
 
 enum EntrySpec {
     static let midpoint: CGFloat = 0.5 // SPEC §§2, 6, center tab and pill rows
@@ -35,8 +36,44 @@ enum EntrySpec {
     static let trailingPadding: CGFloat = 14 // SPEC §§5–6, 8
     static let pillLeading: CGFloat = 11 // SPEC §6
     static let iconOnlyPadding: CGFloat = 9 // SPEC §6
-    static let resultHeight: CGFloat = 26 // SPEC §7
-    static let resultNumber = DS.TextStyle(size: 22, lineHeight: 26, weight: .semibold, tracking: -0.4, family: .num, relativeTo: .title3, monospacedDigit: true) // SPEC §7
+    static let effectGap: CGFloat = 10 // canvas Entry.dc.html: gap after pills
+    static let aboveTray: CGFloat = 14 // canvas Entry.dc.html: spacer above keypad tray
+    static let calendarWidth: CGFloat = 300 // canvas Entry.dc.html: calendar card width
+    static let calendarHeader: CGFloat = 32 // canvas Entry.dc.html: calendar header
+    static let calendarDay: CGFloat = 36 // canvas Entry.dc.html: calendar grid row
+    static let calendarGap: CGFloat = 10 // canvas Entry.dc.html: spacing above time pill and below divider
+    static let galleryIconLarge: CGFloat = 24 // canvas Entry.dc.html: icon size comparison
+    static let galleryChevron: CGFloat = 16 // canvas Entry.dc.html: icon size comparison
+    static let galleryRepeatDay = 23 // canvas Entry.dc.html: repeat specimen
+    #if DEBUG
+    static let galleryIconColumns = 6 // SPEC §9, Icon-light.png grid
+    static let fixtureToday = Dates.parse("2026-11-25 14:20:00")! // canvas Entry.dc.html: today
+    static let fixtureCalendarSelection = Dates.parse("2026-11-22 14:20:00")! // canvas Entry.dc.html: selected day
+    static let fixtureYesterdayCoffee = Dates.parse("2026-11-24 16:14:00")! // canvas Entry.dc.html: background ledger
+    static let fixtureYesterdayMetro = Dates.parse("2026-11-24 13:10:00")! // canvas Entry.dc.html: background ledger
+    static let fixtureIncomeDate = Dates.parse("2026-12-09 14:20:00")! // canvas Entry.dc.html: income specimen
+    static let fixtureBank: Int64 = 3_018_000 // canvas Entry.dc.html: bank balance
+    static let fixtureCredit: Int64 = -321_680 // canvas Entry.dc.html: credit balance
+    static let fixtureWallet: Int64 = 462_000 // canvas Entry.dc.html: Alipay balance
+    static let fixtureFunds: Int64 = 400_000 // canvas Entry.dc.html: investment balance
+    static let fixtureSavings: Int64 = 842_000 // canvas Entry.dc.html: savings before reserve expense
+    static let fixtureBreakfast: Int64 = 2_200 // canvas Entry.dc.html: background ledger
+    static let fixtureCoffee: Int64 = 2_900 // canvas Entry.dc.html: background ledger
+    static let fixtureMetro: Int64 = 350 // canvas Entry.dc.html: background ledger
+    static let fixtureLunchAmount = "42.00" // canvas Entry.dc.html: lunch specimen
+    static let fixtureSplitTotal = "78.00" // canvas Entry.dc.html: AA specimen
+    static let fixtureSplitShare = "26.00" // canvas Entry.dc.html: AA specimen
+    static let fixtureIncomeAmount = "18500.00" // canvas Entry.dc.html: income specimen
+    static let fixtureDepositAmount = "1000.00" // canvas Entry.dc.html: recurring deposit specimen
+    static let fixtureDepositDay = 15 // canvas Entry.dc.html: recurring deposit specimen
+    static let fixtureRepaymentAmount = "3216.80" // canvas Entry.dc.html: repayment specimen
+    static let fixtureMoveAmount = "2000.00" // canvas Entry.dc.html: transfer specimen
+    static let fixtureReserveAmount = "6999.00" // canvas Entry.dc.html: reserve expense specimen
+    static let fixtureMonthlyAmount = "58.00" // canvas Entry.dc.html: recurring expense specimen
+    static let fixtureJPYAmount = "3280" // canvas Entry.dc.html: foreign expense specimen
+    static let fixtureLongJPYAmount = "1234567.89" // SPEC §12, long JPY flow fixture
+    static let fixtureJPYRate = "0.0475" // canvas Entry.dc.html: exchange rate
+    #endif
     static let trayHeight: CGFloat = 270 // canvas Entry.dc.html: keypad tray including bottom inset
     static let keypadGridHeight: CGFloat = 224 // canvas Entry.dc.html: keypad grid and top padding
     static let categoryPanelHeight: CGFloat = 560 // SPEC §8

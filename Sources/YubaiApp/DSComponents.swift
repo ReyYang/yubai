@@ -1,4 +1,5 @@
 import SwiftUI
+import YubaiCore
 
 struct DSInlineTag {
     enum Tone { case warning, positive }
@@ -316,70 +317,53 @@ struct DSAskBar: View {
 }
 
 struct DSEntryPills: View {
-    enum Time: String, CaseIterable { case today = "今天", yesterday = "昨天", dayBefore = "前天" }
     enum Exception: String, CaseIterable { case none = "", reserve = "走机动余钱", reimburse = "待报销", split = "待 AA" }
     let account: String
-    @Binding var time: Time
-    @Binding var timeExpanded: Bool
+    var day = "今天"
+    var calendarOpen = false
     @Binding var repeats: Bool
     @Binding var exception: Exception
     var repeatDay: Int
     var onAccount: () -> Void = {}
     var onCalendar: () -> Void = {}
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            pillRow
-            ScrollView(.horizontal) { pillRow }
-                .scrollIndicators(.hidden).fixedSize(horizontal: false, vertical: true)
-        }.frame(maxWidth: .infinity)
-            .animation(DSMotion.animation(.accordion, reduceMotion: reduceMotionOverride ?? systemReduceMotion), value: timeExpanded)
-    }
-    private var pillRow: some View {
-        HStack(spacing: DS.Space.s8) {
-            if timeExpanded {
-                ForEach(Time.allCases, id: \.self) { option in
-                    pill(option.rawValue, icon: nil, selected: time == option) { time = option; timeExpanded = false }
-                }
-                pill("日历", icon: DS.Icon.cycle, iconOnly: true, action: onCalendar)
-                pill("每月", icon: DS.Icon.subscription, selected: repeats) {
-                    repeats.toggle(); exception = .none; timeExpanded = false
-                }
-            } else {
-                pill(account, icon: DS.Icon.acctDebit, action: onAccount)
-                pill(repeats && exception == .none ? "\(time.rawValue) · 每月 \(repeatDay) 日" : time.rawValue,
-                     icon: repeats && exception == .none ? DS.Icon.subscription : DS.Icon.time,
-                     selected: repeats && exception == .none) { timeExpanded = true }
-                pill(exception == .none ? "更多" : exception.rawValue, icon: DS.Icon.more,
-                     selected: exception != .none, iconOnly: exception == .none) {
-                    let all = Exception.allCases
-                    let next = ((all.firstIndex(of: exception) ?? 0) + 1) % all.count
-                    exception = all[next]
-                    if exception != .none { repeats = false }
-                }
+        FlowLayout {
+            pill(account, icon: .acctDebit, action: onAccount)
+            pill(repeats ? "\(day) · 每月 \(repeatDay) 日" : day,
+                 icon: repeats ? .subscription : .time, selected: calendarOpen, strong: repeats, action: onCalendar)
+            pill(exception == .none ? "更多" : exception.rawValue, icon: .more,
+                 strong: exception != .none, iconOnly: exception == .none) {
+                let all = Exception.allCases
+                exception = all[((all.firstIndex(of: exception) ?? 0) + 1) % all.count]
+                if exception != .none { repeats = false }
             }
-        }.fixedSize(horizontal: true, vertical: false)
+        }
     }
-    private func pill(_ title: String, icon: DS.Icon?, selected: Bool = false, iconOnly: Bool = false,
-                      action: @escaping () -> Void) -> some View {
+
+    private func pill(_ title: String, icon: DS.Icon, selected: Bool = false, strong: Bool = false,
+                      iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: DS.Space.s4) {
-                if let icon {
-                    DSIconView(icon: icon, size: DS.Font.tLabel.size,
-                               color: selected ? DS.Color.ink : DS.Color.ink3)
+                icon.view(size: DS.Font.tLabel.size, color: DS.Color.ink3)
+                if !iconOnly {
+                    Text(title).dsText(DS.Font.tPill).monospacedDigit()
+                        .fontWeight(selected || strong ? .semibold : .regular)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                if !iconOnly { Text(title).dsText(DS.Font.tPill).fontWeight(selected ? .semibold : .regular) }
-            }.lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink2)
-                .padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.pillH)
-                .dsPill(selected ? DS.Color.selected : DS.Color.surface)
+            }
+            .lineLimit(1)
+            .foregroundStyle(selected || strong ? DS.Color.ink : DS.Color.ink2)
+            .padding(.leading, iconOnly ? EntrySpec.iconOnlyPadding : EntrySpec.pillLeading)
+            .padding(.trailing, iconOnly ? EntrySpec.iconOnlyPadding : EntrySpec.trailingPadding)
+            .frame(minWidth: DS.Size.pillH, minHeight: DS.Size.pillH)
+            .dsPill(selected ? DS.Color.selected : DS.Color.surface)
         }.dsPressStyle().accessibilityLabel(title).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
 struct DSKeypad: View {
+    var pressedKey: String?
     var onKey: (String) -> Void = { _ in }
     private let keys = ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
     @State private var saves = 0
@@ -401,7 +385,9 @@ struct DSKeypad: View {
                         .frame(maxWidth: .infinity, minHeight: DS.Size.keyH)
                         .dsSurface(key == "记下" ? DS.Color.accent : (["⌫", "+", "−"].contains(key) ? DS.Color.keyFn : DS.Color.key), radius: DS.Radius.s)
                         .dsShadow(DS.Shadow.key)
-                }.dsPressStyle().accessibilityLabel(key == "⌫" ? "退格" : key)
+                }.dsPressStyle()
+                    .scaleEffect(key == pressedKey ? DSMotion.Press.scale : 1)
+                    .accessibilityLabel(key == "⌫" ? "退格" : key)
             }
         }.padding(DS.Space.s8).background(DS.Color.tray).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
             .sensoryFeedback(DSMotion.Haptic.save, trigger: saves)
@@ -431,13 +417,16 @@ struct DSCategoryPicker: View {
                         else { selectedID = category.id; selectedSubcategory = nil }
                     } label: {
                         VStack(spacing: DS.Space.s4) {
-                            DSIconView(icon: category.icon, size: DS.Font.nKey.size,
+                            DSIconView(icon: category.icon, size: EntrySpec.categoryIcon,
                                        color: selected ? DS.Color.accentInk : DS.Color.ink2)
                                 .frame(width: DS.Size.catCircle, height: DS.Size.catCircle)
                                 .dsPill(selected ? DS.Color.accentSoft : DS.Color.surface)
                                 .overlay(alignment: .topTrailing) {
-                                    if category.suggested {
+                                    if category.suggested && !selected {
                                         Circle().fill(DS.Color.accent).frame(width: DS.Space.s8, height: DS.Space.s8)
+                                            .padding(EntrySpec.guessRing)
+                                            .background(DS.Color.bg, in: Circle())
+                                            .padding(max(0, EntrySpec.guessInset - EntrySpec.guessRing))
                                     }
                                 }
                             Text(category.name).dsText(DS.Font.tCaption).fontWeight(selected ? .semibold : .regular)
@@ -468,32 +457,18 @@ struct DSCategoryPicker: View {
     }
 }
 
-struct DSResultStrip: View {
-    let title: String
-    let detail: String
-    let value: String
-    var unchanged = false
+struct DSEffectLine: View {
+    let effect: EntryEffect
+    var hidesAmount = false
+
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
-                labels
-                Text(value).dsText(DS.Font.nKey).fontWeight(.semibold).fixedSize()
-                    .foregroundStyle(unchanged ? DS.Color.ink : DS.Color.accentInk)
-            }
-            VStack(alignment: .leading, spacing: DS.Space.s4) {
-                labels
-                Text(value).dsText(DS.Font.nKey).fontWeight(.semibold)
-                    .foregroundStyle(unchanged ? DS.Color.ink : DS.Color.accentInk)
-            }
-        }.dsFillWidth().dsSurface(DS.Color.surface, radius: DS.Radius.m,
-                                 padding: EdgeInsets(top: DS.Space.s8, leading: DS.Space.s16, bottom: DS.Space.s8, trailing: DS.Space.s16))
-            .accessibilityElement(children: .combine)
-    }
-    private var labels: some View {
-        HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
-            Text(title).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2)
-            Text(detail).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).dsFillWidth()
-        }
+        Text(effect.displayText(hidesAmount: hidesAmount))
+            .dsText(DS.Font.tSub).monospacedDigit()
+            .foregroundStyle(effect.warning ? DS.Color.warnInk : DS.Color.ink3)
+            .lineLimit(1).truncationMode(.tail)
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel(hidesAmount ? "连带影响" : effect.text)
+            .accessibilityValue(hidesAmount ? "金额已隐藏" : "")
     }
 }
 
@@ -881,15 +856,121 @@ struct DSInlineTextField: View {
     }
 }
 
-struct DSDatePickerPanel: View {
-    @Binding var date: Date
+struct DSCalendarPopover: View {
+    let date: Date
+    let now: Date
+    var repeats = false
+    var canRepeat = true
+    var onSelect: (Date) -> Void = { _ in }
+    var onRepeat: () -> Void = {}
+
+    @State private var displayedMonth: Date?
+    private var calendar: Calendar { Dates.calendar }
+    private var currentMonth: Date { calendar.dateInterval(of: .month, for: now)?.start ?? now }
+    private var month: Date {
+        displayedMonth ?? min(calendar.dateInterval(of: .month, for: date)?.start ?? date, currentMonth)
+    }
+    private var monthTitle: String {
+        "\(calendar.component(.year, from: month))年\(calendar.component(.month, from: month))月"
+    }
 
     var body: some View {
-        DatePicker("日期和时间", selection: $date, displayedComponents: [.date, .hourAndMinute])
-            .datePickerStyle(.graphical)
-            .labelsHidden()
-            .tint(DS.Color.accent)
-            .padding(DS.Space.s8)
-            .dsSurface(DS.Color.surface, radius: DS.Radius.m)
+        VStack(spacing: .zero) {
+            HStack(spacing: .zero) {
+                Text(monthTitle).dsText(DS.Font.tBody).fontWeight(.semibold).accessibilityAddTraits(.isHeader)
+                Spacer(minLength: .zero)
+                arrow(.back, offset: -1, label: "上个月")
+                arrow(.chevron, offset: 1, label: "下个月")
+            }
+            .padding(.horizontal, DS.Space.s4)
+            .frame(minHeight: EntrySpec.calendarHeader)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: .zero), count: DSLayout.weekdays), spacing: .zero) {
+                ForEach(["日", "一", "二", "三", "四", "五", "六"], id: \.self) {
+                    Text($0).dsText(DS.Font.tTag).fontWeight(.regular)
+                        .foregroundStyle(DS.Color.ink3).frame(minHeight: DS.Space.s20)
+                }
+                ForEach(0..<(calendar.component(.weekday, from: month) - 1), id: \.self) { _ in
+                    Color.clear.frame(height: EntrySpec.calendarDay).accessibilityHidden(true)
+                }
+                ForEach(calendar.range(of: .day, in: .month, for: month) ?? (1..<1), id: \.self) { day in
+                    dayCell(day, date: Dates.addDays(day - 1, to: month))
+                }
+            }
+            .padding(.top, DS.Space.s4)
+
+            DS.Color.separator.frame(height: DS.Stroke.hairline)
+                .padding(.top, DS.Space.s8)
+            HStack(spacing: DS.Space.s8) {
+                quick("今天", offset: 0)
+                quick("昨天", offset: -1)
+                Spacer(minLength: .zero)
+                if canRepeat {
+                    chip("每月", icon: .subscription, selected: repeats, action: onRepeat)
+                }
+            }
+            .padding(.top, EntrySpec.calendarGap)
+        }
+        .padding(.top, DS.Space.s12)
+        .padding(.horizontal, EntrySpec.trailingPadding)
+        .padding(.bottom, EntrySpec.trailingPadding)
+        .frame(maxWidth: EntrySpec.calendarWidth)
+        .dsSurface(DS.Color.raised, radius: DS.Radius.m)
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("日历")
+    }
+
+    private func arrow(_ icon: DS.Icon, offset: Int, label: String) -> some View {
+        let disabled = offset > 0 && month >= currentMonth
+        return Button {
+            displayedMonth = calendar.date(byAdding: .month, value: offset, to: month)
+        } label: {
+            icon.view(size: EntrySpec.routeIcon, color: disabled ? DS.Color.chevron : DS.Color.ink3)
+                .frame(width: DS.Size.tapMin, height: EntrySpec.calendarHeader)
+                .contentShape(Rectangle())
+        }.buttonStyle(EntryTactileButtonStyle()).disabled(disabled).accessibilityLabel(label)
+    }
+
+    private func dayCell(_ day: Int, date value: Date) -> some View {
+        let selected = calendar.isDate(value, inSameDayAs: date)
+        let today = calendar.isDate(value, inSameDayAs: now)
+        let future = Dates.day(value) > Dates.day(now)
+        return Button { onSelect(value) } label: {
+            Text(day.formatted()).dsText(DS.Font.tLabel).monospacedDigit()
+                .fontWeight(selected || today ? .semibold : .regular)
+                .frame(width: DS.Size.chipH, height: DS.Size.chipH)
+                .foregroundStyle(future ? DS.Color.chevron : selected ? DS.Color.raised : DS.Color.ink)
+                .background(selected && !future ? DS.Color.ink : .clear, in: Circle())
+                .frame(maxWidth: .infinity, minHeight: EntrySpec.calendarDay)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(EntryTactileButtonStyle())
+        .disabled(future)
+        .accessibilityLabel(monthTitle + "\(day)日")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func quick(_ title: String, offset: Int) -> some View {
+        let value = Dates.addDays(offset, to: Dates.day(now))
+        return chip(title, selected: calendar.isDate(date, inSameDayAs: value)) { onSelect(value) }
+            .accessibilityIdentifier("entryQuick_" + title)
+    }
+
+    private func chip(_ title: String, icon: DS.Icon? = nil, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: EntrySpec.gap) {
+                if let icon { icon.view(size: DS.Font.tLabel.size, color: selected ? DS.Color.ink : DS.Color.ink3) }
+                Text(title).dsText(DS.Font.tPill).fontWeight(selected ? .semibold : .regular)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink2)
+            .padding(.leading, icon == nil ? DS.Space.s12 : EntrySpec.compactPadding)
+            .padding(.trailing, DS.Space.s12)
+            .frame(minHeight: DS.Size.chipH)
+            .dsPill(selected ? DS.Color.selected : DS.Color.surface)
+        }
+        .buttonStyle(EntryTactileButtonStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

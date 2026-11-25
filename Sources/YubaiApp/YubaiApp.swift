@@ -1023,12 +1023,17 @@ enum AppSheet: Identifiable {
         #endif
     }
     @ViewBuilder private var normalLaunchRoot: some View {
-        #if DEBUG && targetEnvironment(simulator)
-        if UITestSupport.designSystemGallery {
-            DesignSystemGalleryView()
+        #if DEBUG
+        if UITestDesignSystemGallery.enabled {
+            DesignSystemGalleryView(isolatedComponent: UITestDesignSystemGallery.component
+                .flatMap(DesignSystemGalleryView.IsolatedComponent.init(rawValue:)))
+                .preferredColorScheme(EntryFixture.launchTheme)
+                #if targetEnvironment(simulator)
                 .environment(\.dsReduceMotionOverride, UITestSupport.script != nil ? UITestSupport.reduceMotion : nil)
+                #endif
+        } else {
+            applicationRoot
         }
-        else { applicationRoot }
         #else
         applicationRoot
         #endif

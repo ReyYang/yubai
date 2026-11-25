@@ -2,7 +2,7 @@ import SwiftUI
 import YubaiCore
 
 enum EntryDrawer: Equatable {
-    case purpose, currency, time, calendar, source, destination, subcategory, newCategory, renameCategory, split
+    case purpose, currency, calendar, source, destination, subcategory, newCategory, renameCategory, split
 }
 
 struct EntrySheetDraft: Equatable {
@@ -68,14 +68,6 @@ struct EntrySheetDraft: Equatable {
     }
 }
 
-struct EntryResult: Equatable, Sendable {
-    var title: String
-    var value: String = ""
-    var note = ""
-    var warning = false
-    var fraction: Double? = nil
-}
-
 @MainActor @Observable final class EntrySheetViewModel: Identifiable {
     let id = UUID()
     @ObservationIgnored private weak var store: AppStore?
@@ -89,11 +81,10 @@ struct EntryResult: Equatable, Sendable {
     var categoryEditing = false
     var inputText = ""
     var suggestion: CategoryAssignment?
-    var result = EntryResult(title: "记下后还能花")
+    var effect: EntryEffect?
     var categoryPulse = 0
     var failure: String?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
-    private var fixtureResult: EntryResult?
     private var fixtureBaseline: EntrySheetDraft?
     var fixtureTopCategories: [String] = []
     var routeShowsBalance = false
@@ -123,23 +114,22 @@ struct EntryResult: Equatable, Sendable {
         normalizeAccounts()
     }
 
-    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date, result: EntryResult) {
+    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date) {
         store = nil
         self.fixtureLedger = fixtureLedger
         self.draft = draft
         settled = true
         isPrefilled = false
         fixtureNow = now
-        self.result = result
-        fixtureResult = result
         fixtureBaseline = draft
         normalizeAccounts()
+        effect = input(category: selectedCategory).flatMap { EntrySaveMapper.effect(for: $0, in: fixtureLedger, now: now) }
     }
 
     var ledger: Ledger { store?.current ?? fixtureLedger }
     var now: Date { fixtureNow ?? Dates.now }
     var hasReceipt: Bool { draft.screenshot != nil }
-    var hidesKeypad: Bool { drawer == .purpose || drawer == .calendar || (drawer == .subcategory && !categoryPanel) }
+    var hidesKeypad: Bool { drawer == .purpose || (drawer == .subcategory && !categoryPanel) }
     var hidesAmounts: Bool { store?.preferences.hideAmounts == true }
     var signedRate: Decimal? {
         let clean = draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -271,13 +261,6 @@ struct EntryResult: Equatable, Sendable {
         if drawer == .split && draft.exception != .split { drawer = nil }
     }
 
-    func setDay(_ offset: Int) {
-        draft.date = Dates.addDays(offset, to: now)
-        draft.explicitTime = false
-        fixtureDayLabel = nil
-        drawer = nil
-    }
-
     var dayLabel: String {
         if let fixtureDayLabel { return fixtureDayLabel }
         let day = Dates.day(draft.date)
@@ -294,8 +277,9 @@ struct EntryResult: Equatable, Sendable {
 
     func setDate(_ value: Date) {
         draft.date = value
-        draft.explicitTime = true
+        draft.explicitTime = false
         fixtureDayLabel = nil
+        drawer = nil
     }
 
     func selectAccount(_ id: UUID, destination: Bool) {
@@ -370,10 +354,6 @@ struct EntryResult: Equatable, Sendable {
 
     func schedulePreview() {
         previewTask?.cancel()
-        if draft == fixtureBaseline, let fixtureResult {
-            result = fixtureResult
-            return
-        }
         let ledger = ledger
         let now = now
         let selection = selectedCategory
@@ -383,6 +363,7 @@ struct EntryResult: Equatable, Sendable {
         let nature = draft.nature
         let needsGuess = !draft.isRoute && selection == nil && !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if !needsGuess { suggestion = nil }
+        if currentInput?.exception == nil, currentInput?.repeatMonthly != true { effect = nil }
         previewTask = Task { [weak self] in
             do { try await Task.sleep(for: EntrySpec.inputDebounce) }
             catch { return }
@@ -393,71 +374,20 @@ struct EntryResult: Equatable, Sendable {
                     resolved?.category = guess.category
                     resolved?.subcategory = guess.subcategory
                 }
-                return (guess, Self.project(resolved, ledger: ledger, now: now))
+                return (guess, resolved.flatMap { EntrySaveMapper.effect(for: $0, in: ledger, now: now) })
             }
             let (guess, preview) = await withTaskCancellationHandler {
                 await computation.value
             } onCancel: { computation.cancel() }
             guard !Task.isCancelled else { return }
             self?.suggestion = guess
-            self?.result = preview
+            self?.effect = preview
         }
     }
 
     func cancelPreview() {
         previewTask?.cancel()
         previewTask = nil
-    }
-
-    nonisolated private static func project(_ input: EntrySaveInput?, ledger: Ledger, now: Date) -> EntryResult {
-        let before = Finance.spendableBreakdown(ledger, now: now)
-        guard let input,
-              let change = try? EntrySaveMapper.makeChange(input, in: ledger, now: now) else {
-            return EntryResult(title: before.offersFormula ? "本月还能花" : before.headlineTitle,
-                               value: Money.text(before.headlineAmount))
-        }
-        var updated = ledger
-        guard (try? change.apply(to: &updated)) != nil else { return EntryResult(title: "记下后还能花") }
-        let after = Finance.spendableBreakdown(updated, now: now)
-        let delta = EntrySaveMapper.cnyAmount(for: input, in: ledger, now: now) ?? 0
-        let unchanged = after.headlineAmount == before.headlineAmount && after.state == before.state
-        let title = after.offersFormula ? (input.type == .deposit ? "存入后本月可花" : "记下后还能花") : after.headlineTitle
-        var result = EntryResult(title: title, value: unchanged ? "不变" : Money.text(after.headlineAmount))
-        if after.deficit > 0 {
-            result.title = "缺口"
-            result.warning = true
-        }
-        if let entry = change.items.compactMap({ item -> UUID? in
-            guard case .addEntry(let draft) = item else { return nil }
-            return draft.id
-        }).first,
-           let line = SoftLines.usage(updated, now: now).first(where: { $0.entryIDs.contains(entry) }) {
-            let remaining = line.isExceeded ? line.exceeded : line.remaining
-            let formatted = line.mode == .count ? "\(remaining) 次" : Money.text(remaining, currency: false)
-            result.note = "\(line.title)\(line.isExceeded ? "超" : "剩") \(formatted)"
-            result.warning = result.warning || line.isExceeded
-            result.fraction = line.fraction
-        }
-        if input.type == .deposit {
-            let saved = updated.activeEntries.lazy.filter {
-                $0.date >= after.cycleStart && $0.date <= now &&
-                    ($0.nature == .investBuy || ($0.intoFixedSavings && ($0.nature == .income || $0.nature == .transfer)))
-            }.reduce(Int64(0)) { $0 + $1.amount }
-            result.note = "本期已攒下 " + Money.text(saved, currency: false)
-        } else if input.exception == .split {
-            result.note = "待收回 " + Money.text(max(0, delta - (input.personalExpenseCents ?? 0)), currency: false)
-        } else if input.exception == .reimbursement {
-            result.note = "暂扣 " + Money.text(delta, currency: false)
-        } else if input.exception == .reserve {
-            result.note = "机动余钱 → " + Money.text(updated.fixedSavingsTotal(now: now), currency: false)
-        } else if input.repeatMonthly && input.type == .expense {
-            result.note = "下期起期初预扣 " + Money.text(delta, currency: false)
-        } else if input.repeatMonthly && input.type == .income {
-            result.note = "下期起每月计入 " + Money.text(delta, currency: false)
-        } else if input.incomeNextCycle {
-            result.note = "本期不变"
-        }
-        return result
     }
 
     func save() -> Bool {

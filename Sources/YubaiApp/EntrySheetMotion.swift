@@ -199,7 +199,7 @@ struct EntryPressEffect: ViewModifier {
 
 @MainActor enum EntryRenderDiagnostics {
     enum Part: String, CaseIterable {
-        case sheetBody, amountBlock, caret, categoryRow, subRow, pillsRow, resultStrip, keypad, scrim, sheetTransform, categoryPanel
+        case sheetBody, amountBlock, caret, categoryRow, subRow, pillsRow, effectLine, keypad, scrim, sheetTransform, categoryPanel
     }
 
     #if DEBUG
