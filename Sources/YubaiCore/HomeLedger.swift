@@ -21,7 +21,9 @@ public struct HomeBudgets: Equatable, Sendable {
 
     public init(in ledger: Ledger, now: Date) {
         if ledger.spendingParts.isEmpty {
-            let matches = Dictionary(uniqueKeysWithValues: ledger.profile.restrain.map { ($0.id, $0.match.categories) })
+            let matches = Dictionary(uniqueKeysWithValues: ledger.profile.restrain.map {
+                ($0.id, Self.isCategoryWatch($0) ? $0.match.categories : [])
+            })
             ordered = SoftLines.usage(ledger, now: now).filter { $0.mode == .amount }.map {
                 HomeBudget(id: $0.areaID, name: $0.title, categories: matches[$0.areaID] ?? [], amount: $0.limit, baseAmount: $0.limit, spent: $0.used)
             }
@@ -51,10 +53,21 @@ public struct HomeBudgets: Equatable, Sendable {
         }
     }
 
+    private static func isCategoryWatch(_ watch: ProfileArea) -> Bool {
+        watch.match.categories.count == 1 && watch.match.subcategories.isEmpty && watch.match.keywords.isEmpty
+    }
+
+    private static func clearAmount(at index: Int, in ledger: inout Ledger) {
+        guard var limit = ledger.profile.restrain[index].softLimit else { return }
+        limit.perPeriodAmount = nil
+        limit.perMonthAmount = nil
+        ledger.profile.restrain[index].softLimit = limit.periodCount == nil ? nil : limit
+    }
+
     public static func set(_ amount: Int64?, id: UUID? = nil, category: String? = nil, in ledger: inout Ledger, now: Date) throws {
         guard amount.map({ (1...Money.limit).contains($0) }) ?? true else { throw YubaiError.invalid("预算金额无效。") }
         var next = ledger
-        if let id, next.spendingParts.isEmpty,
+        if let id, !next.spendingParts.contains(where: { $0.id == id }),
            let index = next.profile.restrain.firstIndex(where: { $0.id == id }),
            var watch = next.profile.restrain[index].softLimit {
             watch.perPeriodAmount = amount
@@ -67,8 +80,14 @@ public struct HomeBudgets: Equatable, Sendable {
                     next.spendingParts[index].amount = amount
                     if next.partsMode == .share { next.spendingParts[index].fixedAmountOverride = amount }
                 } else {
-                    next.spendingParts.remove(at: index)
+                    let categories = Set(next.spendingParts.remove(at: index).categories)
                     next.partCarry[id] = nil
+                    for watchIndex in next.profile.restrain.indices {
+                        let watch = next.profile.restrain[watchIndex]
+                        if isCategoryWatch(watch), watch.id == id || watch.match.categories.contains(where: categories.contains) {
+                            clearAmount(at: watchIndex, in: &next)
+                        }
+                    }
                     for index in next.entries.indices where next.entries[index].partID == id { next.entries[index].partID = nil }
                 }
             } else if let amount, let category {
@@ -76,15 +95,15 @@ public struct HomeBudgets: Equatable, Sendable {
                     throw YubaiError.invalid("分类已删除。")
                 }
                 if next.spendingParts.isEmpty {
-                    let legacy = HomeBudgets(in: next, now: now).ordered.filter { !$0.categories.isEmpty }
                     var claimed = Set<String>()
-                    for budget in legacy {
-                        let categories = budget.categories.filter { claimed.insert($0).inserted }
-                        if !categories.isEmpty {
-                            var part = SpendingPart(id: budget.id, name: budget.name, amount: budget.amount, categories: categories)
-                            if next.partsMode == .share { part.fixedAmountOverride = budget.amount }
-                            next.spendingParts.append(part)
-                        }
+                    for index in next.profile.restrain.indices {
+                        let watch = next.profile.restrain[index]
+                        guard isCategoryWatch(watch), let limit = watch.softLimit?.periodAmount,
+                              let category = watch.match.categories.first, claimed.insert(category).inserted else { continue }
+                        var part = SpendingPart(id: watch.id, name: watch.title, amount: limit, categories: [category])
+                        if next.partsMode == .share, limit > 0 { part.fixedAmountOverride = limit }
+                        next.spendingParts.append(part)
+                        clearAmount(at: index, in: &next)
                     }
                 }
                 if let index = next.spendingParts.firstIndex(where: { $0.categories.contains(category) }) {

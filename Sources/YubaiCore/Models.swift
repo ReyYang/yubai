@@ -135,7 +135,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         didSet {
             if nature != .income && nature != .transfer { intoFixedSavings = false }
             if nature != .expense { fromReserve = false; pendingRecovery = nil; recoveryParticipants = nil }
-            if nature != .refund { recoveryParticipantID = nil }
+            if nature != .refund { recoveryParticipantID = nil; recoveryIntoReserve = nil }
             if nature != .income { countsFromCycleStart = nil }
         }
     }
@@ -144,6 +144,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var pendingRecovery: PendingRecovery? { didSet { if nature != .expense { pendingRecovery = nil } } }
     public var recoveryParticipants: [RecoveryParticipant]?
     public var recoveryParticipantID: UUID?
+    public var recoveryIntoReserve: Bool?
     public var countsFromCycleStart: Date? { didSet { if nature != .income { countsFromCycleStart = nil } } }
     public var originalCurrency: BillCurrency?
     public var originalAmount: Int64?
@@ -170,7 +171,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         self.intoFixedSavings = (nature == .income || nature == .transfer) && intoFixedSavings
         self.fromReserve = nature == .expense && fromReserve
     }
-    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, pendingRecovery, recoveryParticipants, recoveryParticipantID, countsFromCycleStart, originalCurrency, originalAmount, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
+    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, pendingRecovery, recoveryParticipants, recoveryParticipantID, recoveryIntoReserve, countsFromCycleStart, originalCurrency, originalAmount, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -185,6 +186,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         pendingRecovery = nature == .expense ? try c.decodeIfPresent(PendingRecovery.self, forKey: .pendingRecovery) : nil
         recoveryParticipants = try c.decodeIfPresent([RecoveryParticipant].self, forKey: .recoveryParticipants)
         recoveryParticipantID = try c.decodeIfPresent(UUID.self, forKey: .recoveryParticipantID)
+        recoveryIntoReserve = try c.decodeIfPresent(Bool.self, forKey: .recoveryIntoReserve)
         countsFromCycleStart = nature == .income ? try c.decodeIfPresent(Date.self, forKey: .countsFromCycleStart) : nil
         originalCurrency = try c.decodeIfPresent(BillCurrency.self, forKey: .originalCurrency)
         originalAmount = try c.decodeIfPresent(Int64.self, forKey: .originalAmount)
@@ -250,6 +252,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(pendingRecovery, forKey: .pendingRecovery)
         try c.encodeIfPresent(recoveryParticipants, forKey: .recoveryParticipants)
         try c.encodeIfPresent(recoveryParticipantID, forKey: .recoveryParticipantID)
+        try c.encodeIfPresent(recoveryIntoReserve, forKey: .recoveryIntoReserve)
         try c.encodeIfPresent(countsFromCycleStart, forKey: .countsFromCycleStart)
         try c.encodeIfPresent(originalCurrency, forKey: .originalCurrency)
         try c.encodeIfPresent(originalAmount, forKey: .originalAmount)
@@ -1291,7 +1294,7 @@ public struct Ledger: Codable, Equatable, Sendable {
                       people.reduce(0, { $0 + $1.amount }) <= e.amount - (e.personalExpense ?? 0)
                 else { throw YubaiError.invalid("分摊的人或金额无效。") }
             }
-            if e.recoveryParticipantID != nil, e.nature != .refund || e.relatedEntryID == nil {
+            if e.recoveryParticipantID != nil || e.recoveryIntoReserve != nil, e.nature != .refund || e.relatedEntryID == nil {
                 throw YubaiError.invalid("收款缺少原账单。")
             }
             if let personal = e.personalExpense { guard personal >= 0, personal <= e.amount else { throw YubaiError.invalid("个人承担金额不能超过本笔付款。") } }
@@ -1313,7 +1316,9 @@ public struct Ledger: Codable, Equatable, Sendable {
                 let people = Dictionary(uniqueKeysWithValues: (original.recoveryParticipants ?? []).map { ($0.id, $0.amount) })
                 let receipts = rows.filter { $0.recoveryParticipantID != nil }
                 guard Set(receipts.compactMap(\.recoveryParticipantID)).count == receipts.count,
-                      receipts.allSatisfy({ $0.recoveryParticipantID.flatMap { people[$0] } == $0.amount })
+                      receipts.allSatisfy({ receipt in
+                          receipt.recoveryParticipantID.flatMap { people[$0] }.map { receipt.amount <= $0 } == true
+                      })
                 else { throw YubaiError.invalid("分摊收款与原账单不符。") }
 
             }

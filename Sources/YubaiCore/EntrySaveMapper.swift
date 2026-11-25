@@ -386,6 +386,10 @@ public enum EntrySaveMapper {
         return .monthly(amount)
     }
 
+    public static func selectableAccounts(in ledger: Ledger, keeping selectedID: UUID? = nil) -> [Account] {
+        ledger.accounts.filter { !$0.archived || $0.id == selectedID }
+    }
+
     public static func edit(_ id: UUID, input: EntrySaveInput, in ledger: inout Ledger, now: Date) throws {
         guard let original = ledger.entries.first(where: { $0.id == id && $0.deletedAt == nil }) else {
             throw YubaiError.invalid("找不到账单。")
@@ -407,8 +411,10 @@ public enum EntrySaveMapper {
         edited.personalExpense = draft.personalExpense ?? (draft.nature == original.nature ? original.personalExpense : nil)
         if edited.pendingRecovery != .split {
             edited.recoveryParticipants = nil
-        } else if original.recoveryParticipants == nil {
-            edited.recoveryParticipants = draft.recoveryParticipants
+        } else if edited.amount != original.amount || edited.personalExpense != original.personalExpense || original.pendingRecovery != .split {
+            let people = original.recoveryParticipants ?? draft.recoveryParticipants ?? []
+            edited.recoveryParticipants = try EntryRecovery.redistribute(
+                people, originalID: id, pending: EntryRecovery.pendingAmount(for: edited), in: ledger)
         }
         edited.countsFromCycleStart = draft.countsFromCycleStart
         edited.originalCurrency = draft.originalCurrency

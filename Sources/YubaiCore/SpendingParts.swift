@@ -73,7 +73,7 @@ public enum SpendingParts {
         var spent: [UUID: Int64] = [:]; var total: Int64 = 0
         for entry in rows {
             let source = entry.relatedEntryID.flatMap { entriesByID?[$0] } ?? entry
-            guard !(entry.nature == .refund && EntryRecovery.goesToReserve(original: source, cycleStart: funds.cycleStart)) else { continue }
+            guard !(entry.nature == .refund && EntryRecovery.goesToReserve(entry, original: source, cycleStart: Finance.cycle(in: ledger, now: entry.date).start)) else { continue }
             let value = flexibleAmount(entry, in: ledger, entriesByID: entriesByID)
             total += value
             if value != 0, let part = part(for: entry, in: ledger, entriesByID: entriesByID) { spent[part.id, default: 0] += value }

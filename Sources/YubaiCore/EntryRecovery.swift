@@ -23,12 +23,13 @@ public struct EntryRecovery: Equatable, Sendable {
     public let remaining: Int64
     public let people: [Person]
     public let receipts: [Entry]
+    public var isSettled: Bool { remaining == 0 }
 
     public static func pendingAmount(for entry: Entry) -> Int64 {
         switch entry.pendingRecovery {
         case .reimbursement: entry.amount
-        case .split: entry.recoveryParticipants?.reduce(0) { $0 + $1.amount }
-            ?? (entry.amount - (entry.personalExpense ?? entry.amount))
+        case .split: entry.personalExpense.map { entry.amount - $0 }
+            ?? entry.recoveryParticipants?.reduce(0) { $0 + $1.amount } ?? 0
         case nil: 0
         }
     }
@@ -45,6 +46,46 @@ public struct EntryRecovery: Equatable, Sendable {
                     people: people, receipts: receipts)
     }
 
+    public static func defaultAccount(for original: Entry, in ledger: Ledger, now: Date = Dates.now) -> Account? {
+        let active = ledger.accounts.filter { !$0.archived }
+        let liquid = active.filter { $0.kind == .bank || $0.kind == .cash }
+        if let paidFrom = liquid.first(where: { $0.id == original.accountID }) { return paidFrom }
+        let plans = ledger.plans.filter {
+            $0.active && $0.stoppedAt.map { $0 > now } != false &&
+                $0.endDate.map { Dates.day($0) >= Dates.day(now) } != false &&
+                $0.inflow && $0.nature == .income && $0.frequency != .once
+        }
+        for plan in plans.filter(Payday.isSalaryPlan) + plans.filter({ !Payday.isSalaryPlan($0) }) {
+            if let account = liquid.first(where: { $0.id == plan.accountID }) { return account }
+        }
+        return liquid.first { $0.kind == .bank } ?? liquid.first { $0.kind == .cash }
+    }
+
+    static func redistribute(_ people: [RecoveryParticipant], originalID: UUID, pending: Int64, in ledger: Ledger) throws -> [RecoveryParticipant]? {
+        let receipts = ledger.activeEntries.filter { $0.nature == .refund && $0.relatedEntryID == originalID }
+        let received = receipts.reduce(Int64(0)) { $0 + $1.amount }
+        guard pending >= received else { throw YubaiError.invalid("待收金额不能少于已收回的金额。") }
+        let paid = Dictionary(uniqueKeysWithValues: receipts.compactMap { receipt in
+            receipt.recoveryParticipantID.map { ($0, receipt.amount) }
+        })
+        let remaining = pending - received
+        let unpaid = people.filter { paid[$0.id] == nil }
+        let recipients = unpaid.isEmpty && remaining > 0 ? [RecoveryParticipant(name: "TA", amount: remaining)] : unpaid
+        let count = Int64(recipients.count)
+        let share = count > 0 ? remaining / count : 0
+        let extra = count > 0 ? remaining % count : 0
+        let allocations = Dictionary(uniqueKeysWithValues: recipients.enumerated().map {
+            ($0.element.id, share + ($0.offset == 0 ? extra : 0))
+        })
+        let known = Set(people.map(\.id))
+        let updated = (people + recipients.filter { !known.contains($0.id) }).compactMap { person -> RecoveryParticipant? in
+            let amount = paid[person.id] ?? allocations[person.id] ?? 0
+            guard amount > 0 else { return nil }
+            return RecoveryParticipant(id: person.id, name: person.name, amount: amount)
+        }
+        return updated.isEmpty ? nil : updated
+    }
+
     @discardableResult public static func receive(originalID: UUID, participantID: UUID? = nil, into accountID: UUID,
                                                   in ledger: inout Ledger, now: Date) throws -> Entry {
         guard let original = ledger.entries.first(where: { $0.id == originalID && $0.date <= now }),
@@ -59,7 +100,7 @@ public struct EntryRecovery: Equatable, Sendable {
             guard let person = status.people.first(where: { $0.id == participantID }), person.receipt == nil else {
                 throw YubaiError.invalid("这笔分摊已收回。")
             }
-            amount = person.participant.amount
+            amount = min(person.participant.amount, status.remaining)
         } else {
             guard status.people.isEmpty else { throw YubaiError.invalid("请选择收到的分摊。") }
             amount = status.remaining
@@ -70,6 +111,7 @@ public struct EntryRecovery: Equatable, Sendable {
         receipt.recordedAt = now
         receipt.relatedEntryID = original.id
         receipt.recoveryParticipantID = participantID
+        receipt.recoveryIntoReserve = original.date < Finance.cycle(in: ledger, now: now).start
         // Reports already show the original's personal share. The cash entry
         // still credits the receiving account and reverses the full hold.
         if status.kind == .split, original.personalExpense != nil { receipt.personalExpense = 0 }
@@ -98,24 +140,27 @@ public struct EntryRecovery: Equatable, Sendable {
         ledger = next
     }
 
-    static func goesToReserve(original: Entry, cycleStart: Date) -> Bool {
-        original.pendingRecovery != nil && original.date < cycleStart
+    static func goesToReserve(_ receipt: Entry, original: Entry, cycleStart: @autoclosure () -> Date) -> Bool {
+        receipt.recoveryIntoReserve ?? (original.pendingRecovery != nil && original.date < cycleStart())
     }
 
     /// Classify at the receipt's cycle so an already-settled receipt does not
     /// move into savings simply because another cycle has now begun.
     static func reserveReceipts(in ledger: Ledger, now: Date) -> [Entry] {
+        let candidates = ledger.entries.filter { $0.deletedAt == nil && $0.nature == .refund && $0.date <= now && $0.relatedEntryID != nil }
+        guard !candidates.isEmpty else { return [] }
+        let originalIDs = Set(candidates.compactMap(\.relatedEntryID))
         let originals = Dictionary(uniqueKeysWithValues: ledger.entries.lazy
-            .filter { $0.deletedAt == nil && $0.pendingRecovery != nil && !$0.fromReserve }.map { ($0.id, $0) })
-        guard !originals.isEmpty else { return [] }
+            .filter { $0.deletedAt == nil && !$0.fromReserve && originalIDs.contains($0.id) }.map { ($0.id, $0) })
         var starts: [Date: Date] = [:]
-        return ledger.entries.filter { receipt in
-            guard receipt.deletedAt == nil, receipt.nature == .refund, receipt.date <= now,
-                  let id = receipt.relatedEntryID, let original = originals[id] else { return false }
+        return candidates.filter { receipt in
+            guard let id = receipt.relatedEntryID, let original = originals[id] else { return false }
+            if let booked = receipt.recoveryIntoReserve { return booked }
+            guard original.pendingRecovery != nil else { return false }
             let day = Dates.day(receipt.date)
             let start = starts[day] ?? Finance.cycle(in: ledger, now: receipt.date).start
             starts[day] = start
-            return goesToReserve(original: original, cycleStart: start)
+            return goesToReserve(receipt, original: original, cycleStart: start)
         }
     }
 

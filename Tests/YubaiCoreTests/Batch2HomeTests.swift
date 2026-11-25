@@ -168,6 +168,133 @@ final class Batch2HomeTests: XCTestCase {
         XCTAssertEqual(EntryRecovery.status(for: edited, in: ledger, now: now)?.people.first?.receipt?.id, receipt.id)
     }
 
+    func testBookedRecoveryBucketsSurviveAnchorChangeAndCodableRoundTrip() throws {
+        let now = date("2026-11-03")
+        for anchor in [CycleAnchor.calendarMonth, .payday] {
+            var (ledger, bank) = sample()
+            ledger.plans[0].dueDate = date("2026-10-10")
+            ledger.cycleAnchor = anchor
+            var original = Entry(date: date("2026-10-28"), amount: 5_000, accountID: bank.id, title: "报销")
+            original.pendingRecovery = .reimbursement
+            ledger.entries.append(original)
+            let receipt = try EntryRecovery.receive(originalID: original.id, into: bank.id, in: &ledger, now: now)
+            let bookedToReserve = anchor == .calendarMonth
+            XCTAssertEqual(receipt.recoveryIntoReserve, bookedToReserve)
+            ledger = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(ledger))
+            ledger.cycleAnchor = bookedToReserve ? .payday : .calendarMonth
+            XCTAssertEqual(ledger.fixedSavingsTotal(now: now), bookedToReserve ? 25_000 : 20_000)
+            XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).spent, bookedToReserve ? 5_000 : -5_000)
+            try ledger.validate()
+        }
+    }
+
+    func testRecoveryAccountPrefersOriginalThenIncomePlanOverRecentWallet() {
+        var (ledger, bank) = sample()
+        let now = date("2026-11-23")
+        let salary = Account(name: "工资卡", at: now)
+        let wallet = Account(name: "微信", kind: .cash, at: now)
+        let credit = Account(name: "信用卡", kind: .credit, at: now)
+        ledger.accounts += [salary, wallet, credit]
+        ledger.plans[0].accountID = salary.id
+        var recent = Entry(date: now, amount: 100, accountID: wallet.id, title: "咖啡")
+        recent.recordedAt = now
+        ledger.entries.append(recent)
+        var original = Entry(date: now, amount: 2_600, accountID: credit.id, title: "电影")
+        XCTAssertEqual(EntryRecovery.defaultAccount(for: original, in: ledger)?.id, salary.id)
+        original.accountID = bank.id
+        XCTAssertEqual(EntryRecovery.defaultAccount(for: original, in: ledger)?.id, bank.id)
+        ledger.accounts[0].archived = true
+        XCTAssertEqual(EntryRecovery.defaultAccount(for: original, in: ledger)?.id, salary.id)
+    }
+
+    func testAAEditsEvenlyRedistributeUnpaidAmountsAndKeepReceivedAmounts() throws {
+        let now = date("2026-11-23")
+        var (ledger, bank) = sample()
+        var original = Entry(date: now, amount: 7_800, accountID: bank.id, title: "电影", category: "娱乐")
+        original.pendingRecovery = .split
+        original.personalExpense = 2_600
+        let first = RecoveryParticipant(name: "周", amount: 2_600)
+        let second = RecoveryParticipant(name: "林", amount: 2_600)
+        original.recoveryParticipants = [first, second]
+        ledger.entries.append(original)
+        func edit(_ personal: Int64, in ledger: inout Ledger) throws {
+            let input = EntrySaveInput(type: .expense, amountCents: 7_800, purpose: "电影", category: "娱乐",
+                                       accountID: bank.id, date: now, exception: .split, personalExpenseCents: personal)
+            try EntrySaveMapper.edit(original.id, input: input, in: &ledger, now: now)
+        }
+        try edit(1_001, in: &ledger)
+        XCTAssertEqual(ledger.entries.last?.recoveryParticipants?.map(\.amount), [3_400, 3_399])
+        try edit(4_000, in: &ledger)
+        XCTAssertEqual(ledger.entries.last?.recoveryParticipants?.map(\.amount), [1_900, 1_900])
+        var fullyPersonal = ledger
+        try edit(7_800, in: &fullyPersonal)
+        XCTAssertNil(fullyPersonal.entries.last?.recoveryParticipants)
+        try EntryRecovery.receive(originalID: original.id, participantID: first.id, into: bank.id, in: &ledger, now: now)
+        try edit(1_000, in: &ledger)
+        let edited = try XCTUnwrap(ledger.entries.first { $0.id == original.id })
+        XCTAssertEqual(edited.recoveryParticipants?.map(\.amount), [1_900, 4_900])
+        let snapshot = ledger
+        XCTAssertThrowsError(try edit(6_000, in: &ledger))
+        XCTAssertEqual(ledger, snapshot)
+    }
+
+    func testOrdinaryLinkedRefundSettlesAAWithoutIndividualReceipts() throws {
+        let now = date("2026-11-23")
+        var (ledger, bank) = sample()
+        var original = Entry(date: now, amount: 7_800, accountID: bank.id, title: "电影")
+        original.pendingRecovery = .split
+        original.personalExpense = 2_600
+        let person = RecoveryParticipant(name: "周", amount: 5_200)
+        original.recoveryParticipants = [person]
+        var refund = Entry(date: now, amount: 5_200, nature: .refund, accountID: bank.id, title: "退款")
+        refund.relatedEntryID = original.id
+        ledger.entries += [original, refund]
+        try ledger.validate()
+        let status = try XCTUnwrap(EntryRecovery.status(for: original, in: ledger, now: now))
+        XCTAssertTrue(status.isSettled)
+        XCTAssertNil(status.people.first?.receipt)
+        XCTAssertThrowsError(try EntryRecovery.receive(originalID: original.id, participantID: person.id, into: bank.id, in: &ledger, now: now))
+    }
+
+    func testEditingArchivedTransferKeepsBothOriginalAccountsSelectable() throws {
+        let now = date("2026-11-23")
+        var (ledger, bank) = sample()
+        let destination = Account(name: "旧银行卡", at: now)
+        ledger.accounts += [destination, Account(name: "新银行卡", at: now)]
+        ledger.accounts[0].archived = true
+        ledger.accounts[1].archived = true
+        var original = Entry(date: now, amount: 2_000, nature: .transfer, accountID: bank.id, title: "转账")
+        original.otherAccountID = destination.id
+        ledger.entries.append(original)
+        XCTAssertEqual(EntrySaveMapper.selectableAccounts(in: ledger, keeping: original.accountID).map(\.id), [bank.id, ledger.accounts[2].id])
+        XCTAssertEqual(EntrySaveMapper.selectableAccounts(in: ledger, keeping: original.otherAccountID).map(\.id), [destination.id, ledger.accounts[2].id])
+        let input = EntrySaveInput(type: .transfer, amountCents: 3_000, purpose: "移到账户", accountID: bank.id,
+                                   destinationAccountID: destination.id, date: now)
+        try EntrySaveMapper.edit(original.id, input: input, in: &ledger, now: now)
+        XCTAssertEqual(ledger.entries.last?.accountID, bank.id)
+        XCTAssertEqual(ledger.entries.last?.otherAccountID, destination.id)
+        XCTAssertEqual(ledger.entries.last?.amount, 3_000)
+    }
+
+    func testPartMigrationConsumesOnlyWholeCategoryAmountWatches() throws {
+        let now = date("2026-11-23")
+        var (ledger, _) = sample()
+        let names = ledger.orderedCategories(income: false).prefix(2).map(\.name)
+        let plain = ProfileArea(title: names[0], match: .init(categories: [names[0]]), softLimit: .init(perPeriodCount: 3, perPeriodAmount: 10_000))
+        let specific = ProfileArea(title: "通勤", match: .init(categories: [names[0]], keywords: ["地铁"], subcategories: [names[0] + "/地铁"]),
+                                   softLimit: .init(perPeriodAmount: 5_000))
+        ledger.profile.restrain = [plain, specific]
+        try HomeBudgets.set(12_000, category: names[1], in: &ledger, now: now)
+        XCTAssertEqual(ledger.spendingParts.count, 2)
+        XCTAssertNil(ledger.profile.restrain[0].softLimit?.periodAmount)
+        XCTAssertEqual(ledger.profile.restrain[0].softLimit?.periodCount, 3)
+        XCTAssertEqual(ledger.profile.restrain[1], specific)
+        for part in ledger.spendingParts {
+            try HomeBudgets.set(nil, id: part.id, in: &ledger, now: now)
+        }
+        XCTAssertEqual(HomeBudgets(in: ledger, now: now).ordered.map(\.id), [specific.id])
+    }
+
     func testDailySpendingAndSearchUseActualLedgerEntries() throws {
         var (ledger, bank) = sample()
         let now = date("2026-11-23 16:00")

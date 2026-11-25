@@ -97,7 +97,7 @@ extension Finance {
         let expenseEntries = entries.filter { entry in
             guard entry.kind != .adjustment, entry.nature == .expense || entry.nature == .refund else { return false }
             let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
-            return !source.fromReserve && !(entry.nature == .refund && EntryRecovery.goesToReserve(original: source, cycleStart: cycle.start))
+            return !source.fromReserve && !(entry.nature == .refund && EntryRecovery.goesToReserve(entry, original: source, cycleStart: Finance.cycle(in: ledger, now: entry.date).start))
         }
         let income = incomeEntries.reduce(Int64(0)) { $0 + $1.amount }
         // Pending recoveries (待报销 / 待 AA) count full amount against 还能花 now (暂扣).
