@@ -20,7 +20,7 @@ struct EntrySheetOverlay: View {
             let bottom = geo.safeAreaInsets.bottom
             let maxHeight = geo.size.height + bottom
             ZStack(alignment: .bottom) {
-                EntryScrimView(motion: motion, color: model.settled ? EntrySpec.scrimBase : DS.Color.scrim, close: cancel)
+                EntryScrimView(motion: motion, color: DS.Color.scrim, close: cancel)
                     .ignoresSafeArea()
                 EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
                                drag: drag, close: cancel, save: save, receipt: onReceipt)
@@ -87,47 +87,64 @@ struct EntrySheetView: View {
     let save: () -> Void
     let receipt: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduced
-    @State private var measuredHeight: CGFloat?
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.sheetBody)
-        ScrollView {
+        ViewThatFits(in: .vertical) {
             VStack(spacing: .zero) {
-                EntryTopHeaderView(model: model, close: close, drag: drag)
-                VStack(spacing: .zero) {
-                    EntryAmountBlockView(model: model)
-                        .padding(.bottom, EntrySpec.amountBottom)
-                    typeBody
-                        .transition(.opacity)
-                    EntryPillsRowView(model: model)
-                    if model.drawer != nil { EntryExpandedPanelView(model: model) }
-                    if model.hasReceipt {
-                        EntryPill(title: "截图", icon: .screenshot, hint: "查看原始截图", action: receipt)
-                    }
-                }
-                .padding(.top, DS.Space.s20)
-                .padding(.horizontal, DS.Space.s20)
-                .padding(.bottom, EntrySpec.bodyBottom)
-                EntryResultStripView(model: model)
-                    .padding(.horizontal, DS.Space.s16)
-                    .padding(.bottom, DS.Space.s12)
-                if model.usesNativeKeyboard {
-                    DS.Color.tray.frame(height: safeBottom)
-                } else {
-                    EntryKeypadTrayView(model: model, safeBottom: safeBottom, save: save)
-                }
+                form
+                footer
             }
-            .onGeometryChange(for: CGFloat.self, of: { $0.size.height }) { measuredHeight = $0 }
+            VStack(spacing: .zero) {
+                ScrollView { form }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .scrollIndicators(.hidden)
+                    .scrollDismissesKeyboard(.interactively)
+                footer
+            }
+            .frame(maxHeight: maxHeight)
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .scrollIndicators(.hidden)
-        .scrollDismissesKeyboard(.interactively)
-        .frame(height: min(maxHeight, measuredHeight ?? maxHeight))
-        .background(alignment: .bottom) { DS.Color.bg }
+        .background(DS.Color.bg)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
-        .animation(reduced ? nil : DSMotion.standardAnimation, value: measuredHeight)
+        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.type)
+        .animation(reduced ? nil : DSMotion.smoothAnimation, value: model.drawer)
+        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.category != nil)
+        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.exception == .split)
+    }
+
+    private var form: some View {
+        VStack(spacing: .zero) {
+            EntryTopHeaderView(model: model, close: close, drag: drag)
+            VStack(spacing: .zero) {
+                EntryAmountBlockView(model: model)
+                    .padding(.bottom, EntrySpec.amountBottom)
+                typeBody
+                    .transition(.opacity)
+                EntryPillsRowView(model: model)
+                if model.drawer != nil { EntryExpandedPanelView(model: model) }
+                if model.hasReceipt {
+                    EntryPill(title: "截图", icon: .screenshot, hint: "查看原始截图", action: receipt)
+                }
+            }
+            .padding(.top, DS.Space.s20)
+            .padding(.horizontal, DS.Space.s20)
+            .padding(.bottom, EntrySpec.bodyBottom)
+        }
+    }
+
+    private var footer: some View {
+        VStack(spacing: .zero) {
+            EntryResultStripView(model: model)
+                .padding(.horizontal, DS.Space.s16)
+                .padding(.bottom, DS.Space.s12)
+            if model.hidesKeypad {
+                DS.Color.tray.frame(height: safeBottom)
+            } else {
+                EntryKeypadTrayView(model: model, safeBottom: safeBottom, save: save)
+            }
+        }
     }
 
     @ViewBuilder private var typeBody: some View {
@@ -285,7 +302,7 @@ private struct EntryAmountBlockView: View {
                     .accessibilityValue(model.draft.expression.formattedDisplay)
                     .accessibilityHint("用下方键盘输入")
                     .accessibilityIdentifier("entryKeypadAmount")
-                EntryAmountCaretView()
+                EntryAmountCaretView(steady: model.settled)
             }
             .frame(minHeight: EntrySpec.amountHeight)
             if model.draft.expression.isExpression {
@@ -327,12 +344,13 @@ private struct EntryAmountBlockView: View {
 }
 
 private struct EntryAmountCaretView: View {
+    let steady: Bool
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.caret)
         Group {
-            if reduced {
+            if steady || reduced {
                 bar
             } else {
                 TimelineView(.periodic(from: .now, by: EntrySpec.caretHalfPeriod)) { context in
@@ -400,9 +418,10 @@ private struct EntryCategoryCircle: View {
                     .overlay(alignment: .topTrailing) {
                         if suggested && !selected {
                             Circle().fill(DS.Color.accent)
-                                .strokeBorder(DS.Color.bg, lineWidth: EntrySpec.guessRing)
                                 .frame(width: DS.Space.s8, height: DS.Space.s8)
-                                .padding(EntrySpec.guessInset)
+                                .padding(EntrySpec.guessRing)
+                                .background(DS.Color.bg, in: Circle())
+                                .padding(max(0, EntrySpec.guessInset - EntrySpec.guessRing))
                         }
                     }
                 Text(name).dsText(DS.Font.tCaption)
@@ -678,7 +697,7 @@ private struct EntryExpandedPanelView: View {
                     if model.draft.currency != .cny {
                         HStack(spacing: DS.Space.s8) {
                             Text("汇率").dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink2)
-                            DSInlineTextField(title: "人民币汇率", text: $model.draft.exchangeRate, decimal: true,
+                            DSInlineTextField(title: "汇率", text: $model.draft.exchangeRate, decimal: true,
                                               autoFocus: false) { model.drawer = nil }
                             EntryPill(title: nil, icon: .done, label: "完成汇率", hint: "保留币种和汇率") {
                                 model.drawer = nil
@@ -696,12 +715,17 @@ private struct EntryExpandedPanelView: View {
                     }
                 }
             case .calendar:
-                VStack(alignment: .trailing, spacing: DS.Space.s4) {
-                    DSDatePickerPanel(date: Binding(get: { model.draft.date }, set: { model.setDate($0) }))
+                DSDatePickerPanel(date: Binding(get: { model.draft.date }, set: { model.setDate($0) })) {
                     EntryPill(title: nil, icon: .done, label: "完成日期", hint: "收起日历") { model.drawer = nil }
                 }
             case .subcategory where !model.categoryPanel:
-                EntryInlineAddView(title: "新子类", text: $model.inputText, autoFocus: model.autoFocusSubcategory, action: model.addSubcategory)
+                HStack(spacing: DS.Space.s8) {
+                    EntryInlineAddView(title: "新子类", text: $model.inputText,
+                                       autoFocus: model.autoFocusSubcategory, action: model.addSubcategory)
+                    EntryPill(title: nil, icon: .close, label: "关闭新子类", hint: "收起小类输入") {
+                        model.toggleDrawer(.subcategory)
+                    }
+                }
             case .split:
                 VStack(alignment: .leading, spacing: DS.Space.s8) {
                     HStack {

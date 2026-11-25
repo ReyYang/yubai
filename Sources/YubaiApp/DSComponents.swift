@@ -860,7 +860,7 @@ struct DSInlineTextField: View {
     }
 
     private var field: some View {
-        TextField("", text: $text)
+        TextField("", text: $text, prompt: Text(title).foregroundStyle(DS.Color.ink3))
             .accessibilityLabel(title)
             #if os(iOS)
             .keyboardType(decimal ? .decimalPad : .default)
@@ -873,15 +873,19 @@ struct DSInlineTextField: View {
     }
 }
 
-struct DSDatePickerPanel: View {
+struct DSDatePickerPanel<Action: View>: View {
     @Binding var date: Date
+    @ViewBuilder let action: () -> Action
 
     var body: some View {
-        DatePicker("日期和时间", selection: $date, displayedComponents: [.date, .hourAndMinute])
-            .datePickerStyle(.graphical)
-            .labelsHidden()
-            .tint(DS.Color.accent)
-            .padding(DS.Space.s12)
-            .dsSurface(DS.Color.surface, radius: DS.Radius.m)
+        VStack(alignment: .trailing, spacing: DS.Space.s4) {
+            action()
+            DatePicker("日期和时间", selection: $date, displayedComponents: [.date, .hourAndMinute])
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .tint(DS.Color.accent)
+        }
+        .padding(DS.Space.s12)
+        .dsSurface(DS.Color.surface, radius: DS.Radius.m)
     }
 }

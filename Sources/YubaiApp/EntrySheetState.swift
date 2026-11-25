@@ -149,7 +149,7 @@ struct EntryResult: Equatable, Sendable {
     var ledger: Ledger { store?.current ?? fixtureLedger }
     var now: Date { fixtureNow ?? Dates.now }
     var hasReceipt: Bool { draft.screenshot != nil }
-    var usesNativeKeyboard: Bool { drawer == .purpose || (drawer == .subcategory && !categoryPanel) }
+    var hidesKeypad: Bool { drawer == .purpose || drawer == .calendar || (drawer == .subcategory && !categoryPanel) }
     var hidesAmounts: Bool { store?.preferences.hideAmounts == true }
     var signedRate: Decimal? {
         let clean = draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines)

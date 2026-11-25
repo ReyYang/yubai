@@ -46,7 +46,6 @@ enum EntrySpec {
     static let categoryColumns = 5 // SPEC §8
     static let categorySecondaryGap: CGFloat = 14 // SPEC §8
     static let backspaceIcon: CGFloat = 24 // SPEC §7
-    static let scrimBase = Color.black.opacity(0.44) // SPEC §§2, 10, translucent over the fixture ledger
     static let dragMinimum: CGFloat = 4 // SPEC §11, grabber drag activation
     static let dismissVelocity: CGFloat = 800 // SPEC §11
     static let dismissFraction: CGFloat = 1.0 / 3.0 // SPEC §11
