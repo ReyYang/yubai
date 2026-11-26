@@ -9,7 +9,7 @@ struct SettingsView: View {
     var body: some View {
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "settingsScroll") {
             group("账本") {
-                TabNavigationLink(.budget) { BudgetView() } label: { SettingsRow(title: "预算", detail: "\(store.current.profile.restrain.count) 项") }.accessibilityIdentifier("openSpendingParts")
+                TabNavigationLink(.budget) { BudgetDetailView(startsEditing: true) } label: { SettingsRow(title: "预算", detail: "\(HomeBudgets(in: store.current, now: store.financialNow).ordered.count) 项") }.accessibilityIdentifier("openSpendingParts")
                 EntryFormDivider()
                 TabNavigationLink(.categories) { CategoriesView() } label: { SettingsRow(title: "分类") }.accessibilityIdentifier("openCategories")
             }
@@ -19,6 +19,10 @@ struct SettingsView: View {
                 TabNavigationLink(.importHistory) { ImportHistoryView() } label: { SettingsRow(title: "导入记录", detail: lastImport) }.accessibilityIdentifier("openImportHistory")
             }
             group("余白") {
+                TabNavigationLink(.assistantHub) { YubaiTabView(asDestination: true) } label: {
+                    SettingsRow(title: "余白")
+                }.accessibilityIdentifier("openAssistantHub")
+                EntryFormDivider()
                 TabNavigationLink(.intelligencePrivacy) { IntelligencePrivacyView() } label: {
                     SettingsRow(title: "智能与隐私", detail: IntelligenceRuntime.isConfigured ? "DeepSeek · 已配好" : "未配好")
                 }.accessibilityIdentifier("openIntelligencePrivacy")

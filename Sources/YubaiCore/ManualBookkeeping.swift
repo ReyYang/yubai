@@ -210,7 +210,7 @@ public enum ManualBookkeeping {
         if entry.category != original.category || (!Classification.isPending(entry) && entry.category == (entry.nature.categoryIncome ? "其他收入" : "其他支出")) {
             entry.classificationReason = "手动选择"
         }
-        if entry.amount != original.amount { entry.personalExpense = nil; LedgerOperations.recordPersonalShare(&entry, ledger: next) }
+        if entry.amount != original.amount, entry.pendingRecovery == nil, entry.recoveryParticipantID == nil { entry.personalExpense = nil; LedgerOperations.recordPersonalShare(&entry, ledger: next) }
         if entry.subcategory != original.subcategory || entry.category != original.category || entry.nature.categoryIncome != original.nature.categoryIncome {
             if (entry.category != original.category || entry.nature.categoryIncome != original.nature.categoryIncome) && entry.subcategory == original.subcategory && (!entry.subcategoryUserEdited || entry.subcategory != nil) {
                 entry.subcategory = nil; entry.subcategoryUserEdited = false

@@ -22,6 +22,7 @@ struct EntrySheetDraft: Equatable {
     var exchangeRate = ""
     var personalShare = ""
     var originalNature: Nature?
+    var recoveryParticipants: [RecoveryParticipant]?
     var relatedEntryID: UUID?
     var intoFixedSavings = false
 
@@ -56,7 +57,7 @@ struct EntrySheetDraft: Equatable {
         default: type = nature.paired ? .transfer : nature.inflow ? .income : .expense
         }
         switch nature {
-        case .expense, .income, .investBuy, .transfer, .repayment: break
+        case .expense, .income, .investBuy, .transfer: break
         default: originalNature = nature
         }
         if let category = prefill.category, !Classification.isPending(category), !isRoute {
@@ -73,6 +74,18 @@ struct EntrySheetDraft: Equatable {
         purpose = prefill.purpose ?? ""
         screenshot = prefill.screenshot
         expression = EntryAmountExpression(cents: prefill.amount ?? 0)
+        if let entry = prefill.copiedEntry {
+            if let pending = entry.pendingRecovery {
+                exception = pending == .split ? .split : .reimbursement
+            }
+            recoveryParticipants = entry.recoveryParticipants
+            if let share = entry.personalExpense { personalShare = Money.input(share) }
+            incomeNextCycle = entry.countsFromCycleStart != nil
+            if let currency = entry.originalCurrency, let original = entry.originalAmount, original > 0 {
+                self.currency = currency
+                exchangeRate = NSDecimalNumber(decimal: Decimal(entry.amount) / Decimal(original)).stringValue
+            }
+        }
     }
 }
 
@@ -83,6 +96,8 @@ struct EntrySheetDraft: Equatable {
     let settled: Bool
     let isPrefilled: Bool
     let fixtureNow: Date?
+    let editingID: UUID?
+    let categoryOnly: Bool
     var draft: EntrySheetDraft
     var drawer: EntryDrawer?
     var categoryPanel = false
@@ -101,19 +116,28 @@ struct EntrySheetDraft: Equatable {
     var fixtureRepeatDay: Int?
     var fixtureSplitNames: [String] = []
     private(set) var didSave = false
+    @ObservationIgnored private var shouldReplacePrefill = false
 
-    init(store: AppStore, prefill: QuickEntryPrefill?) {
+    init(store: AppStore, prefill: QuickEntryPrefill?, editingID: UUID? = nil, categoryOnly: Bool = false) {
         self.store = store
         fixtureLedger = Ledger()
         settled = false
         isPrefilled = prefill != nil
-        fixtureNow = nil
+        fixtureNow = HomeFixture.current?.now
+        self.editingID = editingID
+        self.categoryOnly = categoryOnly
+        categoryPanel = categoryOnly
+        shouldReplacePrefill = editingID != nil
         if let prefill {
             draft = EntrySheetDraft(prefill: prefill, ledger: store.current)
+            if let participants = prefill.copiedEntry?.recoveryParticipants {
+                fixtureSplitNames = ["我"] + participants.map(\.name)
+            }
         } else if let retained = store.retainedEntryDraft {
             draft = retained
         } else {
             draft = EntrySheetDraft()
+            draft.date = HomeFixture.current?.now ?? Dates.now
             draft.type = store.lastEntryType
             if store.accounts.contains(where: { $0.id == store.lastEntryAccountID && !$0.archived }) {
                 draft.accountID = store.lastEntryAccountID
@@ -129,6 +153,8 @@ struct EntrySheetDraft: Equatable {
         settled = true
         isPrefilled = false
         fixtureNow = now
+        editingID = nil
+        categoryOnly = false
         fixtureBaseline = draft
         normalizeAccounts()
         effect = input(category: selectedCategory).flatMap { EntrySaveMapper.effect(for: $0, in: fixtureLedger, now: now) }
@@ -149,7 +175,8 @@ struct EntrySheetDraft: Equatable {
         return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
     }
     var canRepeat: Bool {
-        draft.originalNature == nil && (draft.type == .income || draft.type == .expense ||
+        guard editingID == nil else { return false }
+        return draft.originalNature == nil && (draft.type == .income || draft.type == .expense ||
             (draft.type == .deposit && account(draft.destinationID)?.kind == .investment))
     }
     var money: Int64 { draft.expression.evaluatedCents ?? 0 }
@@ -196,8 +223,11 @@ struct EntrySheetDraft: Equatable {
 
     func account(_ id: UUID?) -> Account? { ledger.accounts.first { $0.id == id } }
     func accounts(destination: Bool) -> [Account] {
-        ledger.accounts.filter { account in
-            guard !account.archived else { return false }
+        let original = editingID.flatMap { id in ledger.entries.first { $0.id == id } }
+        let originalID = destination ? original?.otherAccountID : original?.accountID
+        let selectedID = destination ? draft.destinationID : draft.accountID
+        return EntrySaveMapper.selectableAccounts(in: ledger, keeping: originalID).filter { account in
+            if account.id == originalID && account.id == selectedID { return true }
             if destination {
                 guard draft.isRoute, account.id != draft.accountID else { return false }
                 return draft.type != .deposit || [.investment, .bank, .cash].contains(account.kind)
@@ -234,6 +264,8 @@ struct EntrySheetDraft: Equatable {
         draft.repeatMonthly = false
         draft.incomeNextCycle = false
         draft.personalShare = ""
+        draft.recoveryParticipants = nil
+        fixtureSplitNames = []
         suggestion = nil
         drawer = nil
         normalizeAccounts()
@@ -337,12 +369,19 @@ struct EntrySheetDraft: Equatable {
     private func input(category: CategoryAssignment?) -> EntrySaveInput? {
         guard let accountID = draft.accountID, draft.expression.canSave else { return nil }
         guard draft.currency == .cny || (signedRate != nil && (localMoney ?? 0) > 0) else { return nil }
-        return EntrySaveInput(type: draft.type, amountCents: money, currency: draft.currency, exchangeRate: signedRate,
+        var input = EntrySaveInput(type: draft.type, amountCents: money, currency: draft.currency, exchangeRate: signedRate,
             purpose: draft.purpose, category: category?.category ?? Classification.pendingCategory,
             subcategory: category?.subcategory, accountID: accountID, destinationAccountID: draft.destinationID,
             date: draft.date, repeatMonthly: draft.repeatMonthly && canRepeat, exception: draft.exception,
             incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: draft.originalNature,
-            relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings)
+            relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings, preserveTime: editingID != nil)
+        if let people = draft.recoveryParticipants, let localMoney,
+           people.reduce(Int64(0), { $0 + $1.amount }) == localMoney - myShare {
+            input.recoveryParticipants = editingID == nil
+                ? people.map { RecoveryParticipant(name: $0.name, amount: $0.amount) }
+                : people
+        }
+        return input
     }
 
     private var selectedCategory: CategoryAssignment? {
@@ -387,11 +426,23 @@ struct EntrySheetDraft: Equatable {
         previewTask = nil
     }
 
+    func pressAmountKey(_ key: String) {
+        if shouldReplacePrefill && (key.first?.isNumber == true || key == ".") { draft.expression.reset() }
+        shouldReplacePrefill = false
+        draft.expression.press(key)
+    }
+
     func save() -> Bool {
         guard !didSave, draft.expression.canSave else { return false }
+        if let store, let editingID, categoryOnly {
+            guard let selection = selectedCategory else { return false }
+            let result = store.update("改分类") { try CategoryModel.confirm(selection, entryIDs: [editingID], in: &$0) }
+            didSave = result
+            return result
+        }
         let selection = selectedCategory ?? (draft.isRoute ? nil :
             CategoryGuesser.guess(draft.purpose, nature: draft.nature, date: draft.date, in: ledger))
-        if !draft.isRoute, selection == nil, draft.relatedEntryID == nil {
+        if editingID == nil, !draft.isRoute, selection == nil, draft.relatedEntryID == nil {
             categoryPulse &+= 1
             return false
         }
@@ -401,6 +452,11 @@ struct EntrySheetDraft: Equatable {
         }
         let now = now
         let userSelected = selectedCategory != nil
+        if let store, let editingID {
+            let result = store.update("编辑") { try EntrySaveMapper.edit(editingID, input: input, in: &$0, now: now) }
+            didSave = result
+            return result
+        }
         do {
             let change = try EntrySaveMapper.makeChange(input, in: ledger, now: now)
             func apply(_ ledger: inout Ledger) throws {
@@ -451,7 +507,7 @@ struct EntrySheetDraft: Equatable {
     #endif
 
     func retainDraft() {
-        guard let store, !didSave, !isPrefilled || draft.hasContent else { return }
+        guard let store, editingID == nil, !didSave, !isPrefilled || draft.hasContent else { return }
         store.retainedEntryDraft = draft.hasContent ? draft : nil
     }
 }

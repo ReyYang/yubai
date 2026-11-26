@@ -101,7 +101,7 @@ struct WishlistView: View {
                         .accessibilityIdentifier("wishFollowUpDate_" + wish.id.uuidString)
                 }
                 if let id = wish.boughtEntryID, store.entriesByID[id].map({ $0.deletedAt == nil }) == true {
-                    NavigationLink("购买记录") { EntryDetailView(entryID: id) }.accessibilityIdentifier("wishBoughtEntry_" + wish.id.uuidString)
+                    NavigationLink("购买记录") { BillDetailRoute(entryID: id) }.accessibilityIdentifier("wishBoughtEntry_" + wish.id.uuidString)
                 }
                 if let answer = wish.followUpAnswer { Text("一个月后的感受：" + answer).yubaiFont(YubaiFont.callout) }
                 else if let due = wish.followUpAt, due <= Dates.now { WishFollowUpView(wishID: wish.id) }

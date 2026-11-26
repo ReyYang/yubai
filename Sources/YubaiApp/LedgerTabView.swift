@@ -12,11 +12,16 @@ struct LedgerTabView: View {
         _mountedRevision = State(initialValue: navigationRevision)
     }
     var body: some View {
-        let model = LedgerHomeModel.make(store)
+        let isFirstOpen = store.homeHero.isFirstOpen
         Group {
-            if model.isFirstOpen { FirstOpenView().transition(.opacity) }
-            else { EntriesView(request: $request).transition(.opacity) }
-        }.animation(DSMotion.reduceMotionAnimation, value: model.isFirstOpen)
+            if isFirstOpen {
+                VStack(spacing: .zero) {
+                    HomeTopBar { store.tabRouteRequest = .settings }
+                    FirstOpenView()
+                }.transition(.opacity)
+            }
+            else { HomeView(request: request).transition(.opacity) }
+        }.animation(DSMotion.reduceMotionAnimation, value: isFirstOpen)
             .navigationTitle("账本").yubaiNavigation().amountPrivacy(store.preferences.hideAmounts)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)

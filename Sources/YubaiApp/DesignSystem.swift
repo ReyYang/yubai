@@ -1629,12 +1629,12 @@ struct EntryLink: View {
     var metadata: String? = nil
     var body: some View {
         if editable {
-            Button { store.sheetSource = nil; store.sheet = .editEntry(entry.id) } label: {
+            Button { store.requestCaptureSheet(.editEntry(entry.id)) } label: {
                 EntryRow(entry: entry, hideAmount: hideAmount, metadata: metadata)
             }.buttonStyle(PressButtonStyle())
         } else {
             NavigationLink {
-                EntryDetailView(entryID: entry.id)
+                BillDetailRoute(entryID: entry.id)
             } label: {
                 EntryRow(entry: entry, hideAmount: hideAmount)
             }.buttonStyle(PressButtonStyle())

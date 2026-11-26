@@ -143,7 +143,7 @@ private struct ButlerEvidenceEntries: View {
             VStack(spacing: YubaiSpace.none) {
                 ForEach(Array((all ? rows : Array(rows.prefix(4))).enumerated()), id: \.element.id) { index, entry in
                     if index > 0 { EntryFormDivider() }
-                    TabNavigationLink(.entryDetail(entry.id)) { EntryDetailView(entryID: entry.id) } label: { row(entry) }
+                    TabNavigationLink(.entryDetail(entry.id)) { BillDetailRoute(entryID: entry.id) } label: { row(entry) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("butlerEvidenceEntry_" + entry.id.uuidString)
                 }
                 if !all && rows.count > 4 {

@@ -22,7 +22,42 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         app.launchEnvironment["DEEPSEEK_API_KEY"] = ""
         launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
     }
-    private func tap(_ id: String) { tapControl(element(id), in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_")) }
+    private func tap(_ id: String) {
+        if id == "tab_yubai" {
+            openAssistantHub()
+            return
+        }
+        tapControl(element(id), in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
+    }
+
+    private func backToHome() {
+        for _ in 0..<8 {
+            if element("tab_ledger").isHittable {
+                if !element("tab_ledger").isSelected { tap("tab_ledger") }
+                return
+            }
+            tap("BackButton")
+        }
+        XCTFail("未回到首页")
+    }
+
+    private func openAssistantHub() {
+        backToHome()
+        tap("openSettings"); tap("openAssistantHub")
+    }
+
+    private func openInbox() {
+        openAssistantHub(); tap("openButlerInbox")
+    }
+
+    private func savingsTotal() -> String {
+        backToHome()
+        app.open(URL(string: "yubai://saving")!)
+        XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5))
+        let total = element("reserveTotal").label
+        tap("BackButton")
+        return total
+    }
     private func keys(_ number: String) { for key in number { tap("keypad_" + String(key)) } }
     private func expect(_ id: String, contains text: String) {
         XCTAssertTrue(UIConditionWait.run(timeout: 8, read: { self.element(id).exists && self.element(id).label.contains(text) }), "\(id): expected \(text), got \(element(id).label)")
@@ -60,7 +95,12 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         tap("reconcileField_招行储蓄卡Done")
     }
     func testNormalHeroAndFormulaShareExactAmount() {
-        launch(); expect("availableFunds", contains: "¥1,864.00"); formula(); expect("formulaResult", contains: "¥1,864.00")
+        launch()
+        let hero = element("fundsFormula")
+        XCTAssertTrue(hero.waitForExistence(timeout: 5))
+        XCTAssertEqual(hero.value as? String, "¥1,864.00")
+        formula()
+        XCTAssertEqual(element("formulaResult").label, "1,864.00")
         XCTAssertFalse(element("formulaRow_carry").exists); XCTAssertFalse(element("formulaRow_withdrawal").exists); XCTAssertFalse(element("formulaRow_balanceGap").exists)
     }
     func testFastHeroUsesAmberWaterState() {
@@ -68,16 +108,27 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertEqual(element("ledgerWaterBar").value as? String, "花得比日子快")
     }
     func testSavingLessStopsAtZeroWithoutRescueCard() {
-        launch("v47r-less"); expect("availableFunds", contains: "¥0.00"); expect("ledgerStatus", contains: "这个月少攒 ¥200.00")
-        XCTAssertFalse(element("deficitRescueCard").exists)
-        formula(); expect("formulaRow_saving", contains: "原来 2,000.00 · 少攒 200.00"); expect("formulaResult", contains: "¥0.00")
+        launch("v47r-less")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥0.00")
+        XCTAssertTrue(element("fundsFormula").label.contains("还能花"))
+        XCTAssertFalse(element("coverFromReserve").exists)
+        formula()
+        expect("formulaRow_saving", contains: "1,800.00")
+        XCTAssertEqual(element("formulaResult").label, "0.00")
     }
     func testDeficitNamesBillAndRescueIsUndoable() {
-        launch("v47r-deficit"); expect("availableFunds", contains: "¥350.00")
-        XCTAssertTrue(app.staticTexts["缺口"].exists); XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '房租'")).firstMatch.exists)
-        expect("coverFromReserve", contains: "拿出来用 ¥350.00"); XCTAssertFalse(element("dismissHomeCard").exists)
-        tap("coverFromReserve"); expect("availableFunds", contains: "¥0.00"); gone("deficitRescueCard")
-        tap("undoLastChange"); expect("availableFunds", contains: "¥350.00"); XCTAssertTrue(element("deficitRescueCard").exists)
+        launch("v47r-deficit")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
+        expect("coverFromReserve", contains: "补上 350.00")
+        formula(); tap("formulaRow_bills")
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '房租'")).firstMatch.waitForExistence(timeout: 5))
+        backToHome()
+        tap("coverFromReserve")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥0.00")
+        gone("coverFromReserve")
+        tap("undoLastChange")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
+        expect("coverFromReserve", contains: "补上 350.00")
     }
     func testDeficitRescueScrollsAboveCompactChromeBeforeTapInAllAppearances() {
         for mode in [(false, false, false), (true, false, false), (true, true, false), (true, false, true), (true, true, true)] {
@@ -120,26 +171,33 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         app.terminate(); launchApp(app); gone("deficitRescueCard"); expect("availableFunds", contains: "¥350.00")
     }
     func testDeficitFormulaShowsZeroSavingAndPositiveDeficit() {
-        launch("v47r-deficit"); formula(); expect("formulaRow_saving", contains: "这个月攒不了"); expect("formulaResult", contains: "¥350.00")
-        XCTAssertFalse(element("formulaResult").label.contains("−"))
-        tap("formulaRow_saving"); expect("formulaEditResult", contains: "改完缺口"); expect("formulaEditResult", contains: "350.00")
-        tap("amountSheetCancel")
+        launch("v47r-deficit")
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
+        formula()
+        expect("formulaRow_saving", contains: "先攒，0.00")
+        XCTAssertEqual(element("formulaResult").label, "350.00")
+        tap("formulaRow_saving")
+        XCTAssertTrue(element("savingsPage").waitForExistence(timeout: 5))
+        backToHome()
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
     }
     func testKnownSalaryWithoutPostedIncomeUsesSpentFallback() {
         launch("v47r-no-income"); XCTAssertTrue(app.staticTexts["这个月花了"].exists)
         expect("availableFunds", contains: "¥836.00"); XCTAssertFalse(element("ledgerWaterBar").exists); XCTAssertFalse(element("fundsFormula").exists)
     }
     func testCarryReleaseAddsSeparateRowAndUndoDoesNotRepeatNotice() {
-        launch("v47r-carry"); expect("carryNoticeText", contains: "上期省下 620.00 已存好")
-        tap("leftoverKeep"); gone("newCycleCard"); expect("availableFunds", contains: "¥2,484.00")
+        launch("v47r-carry"); openInbox(); expect("carryNoticeText", contains: "上期省下 620.00 已存好")
+        tap("leftoverKeep"); gone("newCycleCard"); backToHome(); expect("availableFunds", contains: "¥2,484.00")
         formula(); expect("formulaRow_carry", contains: "620.00"); tap("BackButton")
         tap("undoLastChange"); expect("availableFunds", contains: "¥1,864.00"); gone("newCycleCard")
         app.terminate(); launchApp(app); gone("newCycleCard")
     }
     func testCarryDismissKeepsSavingsAcrossRelaunch() {
-        launch("v47r-carry-fast", dark: true); let saved = element("openSaving").label
-        tap("leftoverDismiss"); gone("newCycleCard"); XCTAssertEqual(element("openSaving").label, saved)
-        app.terminate(); launchApp(app); gone("newCycleCard"); XCTAssertEqual(element("openSaving").label, saved)
+        launch("v47r-carry-fast", dark: true); let saved = savingsTotal()
+        openInbox(); tap("leftoverDismiss"); gone("newCycleCard"); XCTAssertEqual(savingsTotal(), saved)
+        app.terminate(); launchApp(app); openAssistantHub()
+        XCTAssertFalse(element("openButlerInbox").exists)
+        XCTAssertEqual(savingsTotal(), saved)
     }
     func testTakenAndFloorRowsOpenTheirActualSources() {
         launch("v47r-taken"); formula(); expect("formulaRow_withdrawal", contains: "350.00"); tap("formulaRow_withdrawal")
@@ -396,7 +454,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("softLineWatches").waitForExistence(timeout: 5))
     }
     func testMismatchReconciliationRemovesCardAndUpdatesRealDate() {
-        launch("v47r-mismatch"); expect("mismatchText", contains: "账面比卡里多 412.00")
+        launch("v47r-mismatch"); openInbox(); expect("mismatchText", contains: "账面比卡里多 412.00")
         tap("openReconcile"); reconcile("10174"); XCTAssertFalse(element("reconcileSpendableAfter").exists)
         tap("reconcileApply"); gone("balanceMismatchCard"); tap("tab_yubai"); expect("openAccounts", contains: "上次 11月20日")
         app.terminate(); launchApp(app); gone("balanceMismatchCard")
@@ -404,24 +462,26 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     func testCoveredReconciliationCreatesAdjustmentWithoutChangingHeadline() {
         launch("v47r-reconcile-covered"); tap("tab_yubai"); tap("openAccounts"); tap("reconcileAll")
         reconcile("11762"); expect("reconcileApply", contains: "记成调整 −412.00")
-        XCTAssertFalse(element("reconcileSpendableAfter").exists); tap("reconcileApply"); tap("BackButton"); tap("tab_ledger")
+        XCTAssertFalse(element("reconcileSpendableAfter").exists); tap("reconcileApply"); backToHome()
         expect("availableFunds", contains: "¥1,864.00")
     }
     func testFloorPreviewIsConditionalAndReplacesCurrentGap() {
         launch("v47r-reconcile-floor"); tap("tab_yubai"); tap("openAccounts"); tap("reconcileAll")
         reconcile("9774"); expect("reconcileSpendableAfter", contains: "1,464.00"); expect("reconcileApply", contains: "−2,400.00")
-        tap("reconcileApply"); tap("BackButton"); tap("tab_ledger"); expect("availableFunds", contains: "¥1,464.00")
+        tap("reconcileApply"); backToHome()
+        XCTAssertEqual(element("fundsFormula").value as? String, "¥1,464.00")
         formula(); expect("formulaRow_balanceGap", contains: "400.00")
+        XCTAssertEqual(element("formulaResult").label, "1,464.00")
     }
     func testNextPeriodYearlyAndQuarterlyBillCardsDismissOrOpenBill() {
         for script in ["v47r-next-bill", "v47r-next-quarterly"] {
-            launch(script); expect("billHeadsUpText", contains: script == "v47r-next-bill" ? "一年一次" : "一季一次")
+            launch(script); openInbox(); expect("billHeadsUpText", contains: script == "v47r-next-bill" ? "一年一次" : "一季一次")
             tap("openBillHeadsUp"); XCTAssertTrue(element("billDetailAmount").waitForExistence(timeout: 5))
             tap("BackButton"); gone("billHeadsUpCard")
         }
     }
     func testPaydayTopupUsesBoardButtonsAndRevealsOnlyTheNextCard() {
-        launch("v47-topup-queue"); expect("savingsTopupAll", contains: "补回 ¥500.00"); expect("savingsTopupDecline", contains: "不补")
+        launch("v47-topup-queue"); openInbox(); expect("savingsTopupAll", contains: "补回 ¥500.00"); expect("savingsTopupDecline", contains: "不补")
         XCTAssertFalse(element("renewalCard").exists); XCTAssertFalse(element("dismissHomeCard").exists)
         tap("savingsTopupDecline"); gone("savingsTopupCard"); XCTAssertTrue(element("renewalCard").waitForExistence(timeout: 5))
     }
@@ -429,12 +489,12 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         for (script, close, card) in [("v47r-next-bill", "dismissBillHeadsUp", "billHeadsUpCard"),
                                       ("v47r-suggestion", "dismissHomeCard", "butlerSuggestionCard"),
                                       ("v47r-weekly-ai", "dismissHomeCard", "butlerSuggestionCard")] {
-            launch(script); tap(close); gone(card)
+            launch(script); openInbox(); tap(close); gone(card)
             app.terminate(); launchApp(app); gone(card)
         }
     }
     func testLongCardExpandsInPlaceAtDefaultText() {
-        launch("v47r-weekly-ai-long")
+        launch("v47r-weekly-ai-long"); openInbox()
         XCTAssertTrue(element("expandButlerHeadline").waitForExistence(timeout: 5))
         let headline = element("butlerAIText")
         XCTAssertTrue(headline.waitForExistence(timeout: 5))
@@ -472,22 +532,21 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             ("v47-ai-review", "butlerAIReviewCard", "", ["butlerAIReviewDone", "butlerAIReviewNever"])
         ]
         for (fixture, card, title, answers) in fixtures {
-            launch(fixture, large: true, dark: dark, hidden: hidden)
+            launch(fixture, large: true, dark: dark, hidden: hidden); openInbox()
             let headline = title.isEmpty ? element(card).staticTexts.matching(NSPredicate(format: "value == %@", "已展开")).firstMatch : element(title)
             XCTAssertTrue(headline.waitForExistence(timeout: 8), fixture)
             XCTAssertEqual(headline.value as? String, "已展开", fixture)
             XCTAssertFalse(element("expandButlerHeadline").exists, "Accessibility text must never collapse: " + fixture)
             let targets = answers.map(element)
             XCTAssertTrue(revealControlsTogether(targets, in: app, deadline: Date().addingTimeInterval(60),
-                searching: element("entriesScroll"), bottomClearance: 40), fixture)
-            let scroll = element("entriesScroll"), pill = element("addEntry"), capsule = capsuleFrame(in: app)
+                searching: element("butlerInboxScroll"), bottomClearance: 40), fixture)
+            let scroll = element("butlerInboxScroll")
+            XCTAssertFalse(element("mainNavigation").exists, fixture)
             for target in targets {
                 XCTAssertTrue(target.isHittable, fixture)
                 XCTAssertGreaterThanOrEqual(target.frame.height, 44, fixture)
                 XCTAssertGreaterThanOrEqual(target.frame.minY, scroll.frame.minY - 0.5, fixture)
                 XCTAssertLessThanOrEqual(target.frame.maxY, scroll.frame.maxY - 40 + 0.5, fixture)
-                XCTAssertLessThan(target.frame.maxY, pill.frame.minY, fixture)
-                XCTAssertLessThan(target.frame.maxY, capsule.minY, fixture)
             }
             let labels = Set(targets.map(\.label) + [headline.label])
             XCTAssertNoThrow(try auditAppText(in: app) { issue in
@@ -512,9 +571,9 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         checkLargestButlerCards(dark: true, hidden: true)
     }
     func testSoftLineSuggestionWritesExistingProfileAndCorrectionWritesMemory() {
-        launch("v47r-suggestion"); expect("butlerAIAccept", contains: "盯住外卖 ¥800.00")
+        launch("v47r-suggestion"); openInbox(); expect("butlerAIAccept", contains: "盯住外卖 ¥800.00")
         tap("butlerAIAccept"); gone("butlerSuggestionCard"); formula(); XCTAssertTrue(element("softLineWatches").waitForExistence(timeout: 5))
-        launch("v47r-weekly-ai"); tap("butlerAIIncorrect"); typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app); tap("butlerAICorrectionSave")
+        launch("v47r-weekly-ai"); openInbox(); tap("butlerAIIncorrect"); typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app); tap("butlerAICorrectionSave")
         gone("butlerSuggestionCard"); tap("tab_yubai"); tap("openMemories")
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '周四是和同事拼单'")).firstMatch.waitForExistence(timeout: 5))
     }

@@ -53,6 +53,8 @@ public struct SpendableBreakdown: Equatable, Sendable {
     public var bills: [FixedFlowOccurrence] = []
     public var incoming: [Occurrence] = []
     public var available: Int64 { max(0, rawR) }
+    public var showsSpendableDeficit: Bool { income > 0 && deficit > 0 }
+    public var spendableDisplayAmount: Int64 { showsSpendableDeficit ? deficit : available }
     public var savingLess: Int64 { min(plannedSaving, max(0, -rawR)) }
     public var deficit: Int64 { max(0, -rawR - plannedSaving) }
     public var offersFormula: Bool { state != .spentFallback }
@@ -97,13 +99,13 @@ extension Finance {
         let expenseEntries = entries.filter { entry in
             guard entry.kind != .adjustment, entry.nature == .expense || entry.nature == .refund else { return false }
             let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
-            return !source.fromReserve
+            return !source.fromReserve && !(entry.nature == .refund && EntryRecovery.goesToReserve(entry, original: source, cycleStart: Finance.cycle(in: ledger, now: entry.date).start))
         }
         let income = incomeEntries.reduce(Int64(0)) { $0 + $1.amount }
         // Pending recoveries (待报销 / 待 AA) count full amount against 还能花 now (暂扣).
         let spent = expenseEntries.reduce(Int64(0)) { total, entry in
-            let amount = (entry.nature == .expense && entry.pendingRecovery != nil) ? entry.amount : spendingAmount(entry, ledger: ledger)
-            return total + amount
+            let original = entry.relatedEntryID.flatMap { lookup[$0] } ?? entry
+            return total + EntryRecovery.spendableAmount(entry, original: original, in: ledger)
         }
         let transfers = ledger.savingsTransfers.filter { $0.date >= cycle.start && $0.date <= now }
         let covers = ledger.cycleCovers.filter { $0.date >= cycle.start && $0.date <= now && $0.source == .fromReserve }

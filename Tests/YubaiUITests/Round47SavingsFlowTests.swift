@@ -26,21 +26,43 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         tapControl(target, in: app, settles: !id.hasPrefix("keypad_"), reveals: !id.hasPrefix("keypad_"))
     }
 
+    private func backToHome() {
+        for _ in 0..<8 {
+            if element("tab_ledger").isHittable { return }
+            back()
+        }
+        XCTFail("未回到首页")
+    }
+
+    private func openInbox() {
+        backToHome()
+        tap("openSettings"); tap("openAssistantHub"); tap("openButlerInbox")
+    }
+
     private func keys(_ value: String) { for key in value { tap("keypad_" + String(key)) } }
     private func amount(_ id: String) -> Int64 {
         let target = element(id); XCTAssertTrue((target.exists || target.waitForExistence(timeout: 5)), id)
-        let text = target.label.replacingOccurrences(of: "−", with: "-")
+        let valueText = (target.value as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = (valueText.isEmpty ? target.label : valueText).replacingOccurrences(of: "−", with: "-")
         guard let range = text.range(of: #"-?[0-9]+(?:,[0-9]{3})*\.[0-9]{2}"#, options: .regularExpression),
-              let value = Double(text[range].replacingOccurrences(of: ",", with: "")) else { XCTFail(text); return 0 }
+              let value = Double(text[range].replacingOccurrences(of: ",", with: "")) else {
+            XCTFail("\(id): 无法读取金额 ‘\(text)’")
+            return 0
+        }
         return Int64((value * 100).rounded())
     }
     private func back() { tap("BackButton") }
-    private func saved() { tap("openSaving"); XCTAssertTrue(element("reserveTotal").waitForExistence(timeout: 5)) }
+    private func saved() {
+        app.open(URL(string: "yubai://saving")!)
+        XCTAssertTrue(element("savingTabScroll").waitForExistence(timeout: 10))
+        let total = element("reserveTotal")
+        XCTAssertTrue(total.waitForExistence(timeout: 5), "reserveTotal 缺失，储蓄空状态存在：\(element("emptyState_saving").exists)")
+    }
     private func gone(_ id: String) {
         XCTAssertTrue(waitForDisappearance(element(id)), id)
     }
     func testWorkedExerciseIsOneCardAndEqualsHomeWithoutYearlyReserves() {
-        launch("v47-spend"); let home = amount("availableFunds"); tap("fundsFormula")
+        launch("v47-spend"); let home = amount("fundsFormula"); tap("fundsFormula")
         XCTAssertEqual(amount("formulaRow_income"), 801_000)
         XCTAssertEqual(amount("formulaRow_saving"), -200_000)
         XCTAssertEqual(amount("formulaRow_bills"), -331_000)
@@ -64,7 +86,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("formulaRow_saving").label.contains("1,864.00"))
     }
     func testEveryExerciseSourceReachesItsRealDestination() {
-        for (source, destination) in [("income", "editEntryAmount"), ("saving", "saveSavingsAmount"), ("bills", "cycleBillsPage"),
+        for (source, destination) in [("income", "entryKeypadAmount"), ("saving", "savingsPage"), ("bills", "cycleBillsPage"),
                                       ("spent", "entriesScroll")] {
             launch("v47-spend"); tap("fundsFormula"); tap("formulaRow_" + source)
             XCTAssertTrue(element(destination).waitForExistence(timeout: 5), destination)
@@ -74,11 +96,11 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         launch("v47-spend"); tap("fundsFormula"); tap("formulaRow_bills")
         XCTAssertTrue(element("cycleBillsPage").waitForExistence(timeout: 5)); back()
         for _ in 0..<2 {
-            tap("formulaRow_income"); XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
-            XCTAssertEqual(element("editEntryAmount").value as? String, "8,010.00")
-            tap("cancelManualSheet"); gone("editEntryAmount")
-            tap("formulaRow_saving"); XCTAssertTrue(element("saveSavingsAmount").waitForExistence(timeout: 5))
-            tap("amountSheetCancel"); gone("saveSavingsAmount")
+            tap("formulaRow_income"); XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
+            XCTAssertEqual(element("entryKeypadAmount").value as? String, "8,010.00")
+            tap("cancelManualSheet"); gone("entryKeypadAmount")
+            tap("formulaRow_saving"); XCTAssertTrue(element("savingsPage").waitForExistence(timeout: 5))
+            back(); gone("savingsPage")
             XCTAssertTrue(waitForStableFrame(element("formulaRow_income")))
             XCTAssertTrue(element("formulaRow_income").isHittable)
         }
@@ -88,10 +110,10 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         tap("editFixedFlow_47000000-0000-0000-0000-000000471040"); tap("billDetailAmount")
         XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5))
         tap("cancelManualSheet"); gone("fixedFlowTitle"); back(); back()
-        tap("formulaRow_spent"); tap("ledgerEntry_47000000-0000-0000-0000-000000471100")
-        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
-        XCTAssertEqual(element("editEntryAmount").value as? String, "24.00")
-        tap("cancelManualSheet"); gone("editEntryAmount")
+        tap("formulaRow_spent"); tap("ledgerEntry_47000000-0000-0000-0000-000000471100"); tap("billMore"); tap("entryDetailEdit")
+        XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
+        XCTAssertEqual(element("entryKeypadAmount").value as? String, "24.00")
+        tap("cancelManualSheet"); gone("entryKeypadAmount")
         XCTAssertTrue(waitForStableFrame(element("ledgerEntry_47000000-0000-0000-0000-000000471100")))
         XCTAssertTrue(element("ledgerEntry_47000000-0000-0000-0000-000000471100").isHittable)
     }
@@ -111,7 +133,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
                 for suffix in ["471030", "471031"] {
                     XCTAssertTrue(element("ledgerEntry_47000000-0000-0000-0000-000000" + suffix).waitForExistence(timeout: 5))
                 }
-                XCTAssertEqual(element("activeEntryCount").label, "2 笔")
+                XCTAssertTrue(element("entriesSearchTotal").label.contains("2 笔"))
                 XCTAssertEqual(amount("entriesSearchTotal"), 801_000)
                 XCTAssertFalse(element("ledgerEntry_47000000-0000-0000-0000-000000471100").exists)
                 XCTAssertFalse(element("fundsFormula").exists)
@@ -133,18 +155,18 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(30)))
         XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "formulaPage").count, 1)
         tapControl(income, in: app, reveals: false)
-        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
-        tap("cancelManualSheet"); gone("editEntryAmount")
+        XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
+        tap("cancelManualSheet"); gone("entryKeypadAmount")
         XCTAssertTrue(placeControl(income, across: element("BackButton"), in: scroll, atTop: true))
         tap("BackButton")
         XCTAssertTrue(element("fundsFormula").waitForExistence(timeout: 5))
-        XCTAssertFalse(element("editEntryAmount").exists)
+        XCTAssertFalse(element("entryKeypadAmount").exists)
         tap("fundsFormula")
         XCTAssertTrue(revealControl(income, in: app, deadline: Date().addingTimeInterval(60)))
         XCTAssertTrue(scroll.frame.insetBy(dx: -0.5, dy: -0.5).contains(income.frame))
         tapControl(income, in: app, reveals: false)
-        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
-        XCTAssertEqual(element("editEntryAmount").value as? String, "8,010.00")
+        XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
+        XCTAssertEqual(element("entryKeypadAmount").value as? String, "8,010.00")
     }
     func testSavingsHasEqualActionsAndEditableFloorBelowHero() {
         launch(); saved()
@@ -154,7 +176,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertEqual(amount("reserveTotal"), 500_000)
     }
     func testTakePreviewUpdatesBothTotalsAndSharedUndoRestoresThem() {
-        launch(); let home = amount("availableFunds"); saved(); tap("takeSavings"); keys("500")
+        launch(); let home = amount("fundsFormula"); saved(); tap("takeSavings"); keys("500")
         let confirm = element("confirmSavingsTransfer")
         XCTAssertTrue(waitForStableFrame(element("amountSheetCancel")))
         XCTAssertGreaterThanOrEqual(element("amountSheetCancel").frame.height, 44)
@@ -166,15 +188,15 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertTrue(element("transferAvailablePreview").label.contains("2,364.00"))
         tap("confirmSavingsTransfer"); gone("savingsTransferSheet"); XCTAssertEqual(amount("reserveTotal"), 450_000)
         tap("undoLastChange"); XCTAssertEqual(amount("reserveTotal"), 500_000)
-        back(); XCTAssertEqual(amount("availableFunds"), home)
+        back(); XCTAssertEqual(amount("fundsFormula"), home)
     }
     func testPutBackAndUndoUpdateTheHomeSavingCard() {
-        launch(); let home = amount("availableFunds"); saved(); tap("putBackSavings"); keys("500"); tap("confirmSavingsTransfer")
+        launch(); let home = amount("fundsFormula"); saved(); tap("putBackSavings"); keys("500"); tap("confirmSavingsTransfer")
         gone("savingsTransferSheet"); XCTAssertEqual(amount("reserveTotal"), 550_000)
-        back(); XCTAssertEqual(amount("availableFunds"), home - 50_000)
-        XCTAssertTrue(element("openSaving").label.contains("5,500.00"))
-        tap("undoLastChange"); XCTAssertEqual(amount("availableFunds"), home)
-        XCTAssertTrue(element("openSaving").label.contains("5,000.00"))
+        back(); XCTAssertEqual(amount("fundsFormula"), home - 50_000)
+        saved(); XCTAssertEqual(amount("reserveTotal"), 550_000); back()
+        tap("undoLastChange"); XCTAssertEqual(amount("fundsFormula"), home)
+        saved(); XCTAssertEqual(amount("reserveTotal"), 500_000); back()
     }
     func testTakeCannotExceedSavedAndPutBackCannotExceedSpendable() {
         for (button, value) in [("takeSavings", "5000.01"), ("putBackSavings", "1864.01")] {
@@ -224,22 +246,23 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertFalse(element("reserveTotal").exists)
     }
     func testPaydayAllClosesTheQuestionAndPersistsTheNewTotals() {
-        launch("v47-topup"); let before = amount("availableFunds"); tap("savingsTopupAll"); gone("savingsTopupCard")
-        XCTAssertEqual(amount("availableFunds"), before - 50_000)
+        launch("v47-topup"); let before = amount("fundsFormula"); openInbox(); tap("savingsTopupAll"); gone("savingsTopupCard"); backToHome()
+        XCTAssertEqual(amount("fundsFormula"), before - 50_000)
         app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
-        XCTAssertFalse(element("savingsTopupCard").exists); XCTAssertEqual(amount("availableFunds"), before - 50_000)
+        XCTAssertFalse(element("savingsTopupCard").exists); XCTAssertEqual(amount("fundsFormula"), before - 50_000)
     }
     func testPaydayPartialClosesWholeQuestionAndUsesTheSameSheet() {
-        launch("v47-topup"); let before = amount("availableFunds"); tap("savingsTopupPartial")
-        keys("200"); tap("confirmSavingsTransfer"); gone("savingsTransferSheet"); gone("savingsTopupCard")
-        XCTAssertEqual(amount("availableFunds"), before - 20_000)
-        tap("undoLastChange"); XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5))
+        launch("v47-topup"); let before = amount("fundsFormula"); openInbox(); tap("savingsTopupPartial")
+        keys("200"); tap("confirmSavingsTransfer"); gone("savingsTransferSheet"); gone("savingsTopupCard"); backToHome()
+        XCTAssertEqual(amount("fundsFormula"), before - 20_000)
+        tap("undoLastChange"); openInbox(); XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5))
     }
     func testPaydayDeclineIsPermanentAndTheNextQueueItemAppears() {
-        launch("v47-topup-queue"); let before = amount("availableFunds")
+        launch("v47-topup-queue"); let before = amount("fundsFormula"); openInbox()
         XCTAssertTrue(element("savingsTopupCard").waitForExistence(timeout: 5)); XCTAssertFalse(element("renewalCard").exists)
         tap("savingsTopupDecline"); gone("savingsTopupCard")
-        XCTAssertEqual(amount("availableFunds"), before); XCTAssertTrue(element("renewalCard").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("renewalCard").waitForExistence(timeout: 5)); backToHome()
+        XCTAssertEqual(amount("fundsFormula"), before)
         app.terminate(); launchApp(app); XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 15))
         XCTAssertFalse(element("savingsTopupCard").exists)
     }
@@ -323,7 +346,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     }
     func testTopupPartialPresentationSurvivesDynamicTypeAndClippingAudit() throws {
         for large in [false, true] {
-            launch("v47-topup", large: large)
+            launch("v47-topup", large: large); openInbox()
             tap("savingsTopupPartial")
             XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
             try auditAppText(in: app, dynamicType: true) { issue in
@@ -366,7 +389,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
             launch("v47-toast-long", large: true, dark: dark)
             XCTAssertTrue(waitForStableFrame(element("toastMessage")))
             element("toastMessage").swipeDown(); gone("toastMessage")
-            XCTAssertTrue(element("openSaving").exists)
+            XCTAssertTrue(element("openSettings").exists)
         }
     }
 
@@ -420,7 +443,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         tap("undoLastChange")
         XCTAssertEqual(element("toastMessage").label, "已撤销")
         XCTAssertTrue(element("tab_ledger").isSelected)
-        XCTAssertFalse(element("editEntryAmount").exists)
+        XCTAssertFalse(element("entryKeypadAmount").exists)
 
         launch("v47-toast-short")
         let toast = element("toastMessage")
@@ -431,7 +454,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         XCTAssertLessThanOrEqual(last.frame.maxY, toast.frame.minY - 12 + 0.5)
         XCTAssertLessThan(last.frame.maxY, element("addEntry").frame.minY)
         tapControl(last, in: app, reveals: false)
-        XCTAssertTrue(element("editEntryAmount").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
         tap("cancelManualSheet")
         tap("tab_ledger"); saved()
         let records = element("openReserve")
@@ -443,19 +466,19 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     }
     func testRevisionDeficitRescueAndUndoUseTheSameFormula() {
         launch("v47r-deficit")
-        XCTAssertEqual(amount("availableFunds"), 35_000)
+        XCTAssertEqual(amount("fundsFormula"), 35_000)
         tap("coverFromReserve")
-        XCTAssertEqual(amount("availableFunds"), 0)
+        XCTAssertEqual(amount("fundsFormula"), 0)
         tap("undoLastChange")
-        XCTAssertEqual(amount("availableFunds"), 35_000)
+        XCTAssertEqual(amount("fundsFormula"), 35_000)
     }
     func testRevisionCarryRevertAddsItsOwnRowAndUndoRestoresSavings() {
-        launch("v47r-carry"); tap("leftoverKeep")
-        XCTAssertEqual(amount("availableFunds"), 248_400)
+        launch("v47r-carry"); openInbox(); tap("leftoverKeep"); backToHome()
+        XCTAssertEqual(amount("fundsFormula"), 248_400)
         tap("fundsFormula")
         XCTAssertEqual(amount("formulaRow_carry"), 62_000)
         back(); tap("undoLastChange")
-        XCTAssertEqual(amount("availableFunds"), 186_400)
+        XCTAssertEqual(amount("fundsFormula"), 186_400)
         XCTAssertFalse(element("newCycleCard").exists)
     }
     func testRevisionFloorAppearsInFormula() {

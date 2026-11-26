@@ -12,6 +12,10 @@ public struct ReserveAdjustment: Codable, Equatable, Sendable, Identifiable {
     public init(id: UUID = UUID(), date: Date, delta: Int64) { self.id = id; self.date = date; self.delta = delta }
 }
 extension Ledger {
+    func recoveryReserveCredit(now: Date) -> Int64 {
+        EntryRecovery.reserveReceipts(in: self, now: now).reduce(0) { $0 + $1.amount }
+    }
+
     func reserveSpent(now: Date) -> Int64 {
         var spent: [UUID: Int64] = [:], refunded: [UUID: Int64] = [:]
         for entry in entries where entry.deletedAt == nil && entry.date <= now {
@@ -148,6 +152,10 @@ public enum Reserve {
             } else if entry.nature == .refund, let original = entry.relatedEntryID, reserveIDs.contains(original) {
                 lines.append(ReserveLine(id: "refund:" + entry.id.uuidString, date: entry.date, title: entry.displayTitle, amount: entry.amount, kind: .purchase(original)))
             }
+        }
+        for receipt in EntryRecovery.reserveReceipts(in: ledger, now: now) {
+            lines.append(ReserveLine(id: "recovery:" + receipt.id.uuidString, date: receipt.date,
+                                     title: receipt.displayTitle, amount: receipt.amount, kind: .income(receipt.id)))
         }
         for cover in ledger.cycleCovers where cover.source == .fromReserve && cover.date <= now {
             lines.append(ReserveLine(id: "cover:" + cover.id.uuidString, date: cover.date, title: "", amount: -cover.amount, kind: .cover(cover.id)))

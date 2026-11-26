@@ -19,6 +19,23 @@ struct QuickEntryPrefill {
     var date: Date? = nil
     /// 退款冲的那笔支出；只在 `nature == .refund` 时生效。
     var relatedEntryID: UUID? = nil
+    var copiedEntry: Entry? = nil
+
+    init(category: String?, amount: Int64?, purpose: String?, screenshot: Data? = nil, nature: Nature? = nil,
+         subcategory: String? = nil, accountID: UUID? = nil, otherAccountID: UUID? = nil, intoFixedSavings: Bool = false,
+         fromReserve: Bool = false, date: Date? = nil, relatedEntryID: UUID? = nil) {
+        self.category = category; self.amount = amount; self.purpose = purpose; self.screenshot = screenshot
+        self.nature = nature; self.subcategory = subcategory; self.accountID = accountID; self.otherAccountID = otherAccountID
+        self.intoFixedSavings = intoFixedSavings; self.fromReserve = fromReserve; self.date = date; self.relatedEntryID = relatedEntryID
+    }
+
+    init(copying entry: Entry, date: Date, keepLink: Bool = false) {
+        self.init(category: entry.category, amount: entry.originalAmount ?? entry.amount, purpose: entry.displayTitle,
+                  nature: entry.nature, subcategory: entry.subcategory, accountID: entry.accountID, otherAccountID: entry.otherAccountID,
+                  intoFixedSavings: entry.intoFixedSavings, fromReserve: entry.fromReserve, date: date,
+                  relatedEntryID: keepLink ? entry.relatedEntryID : nil)
+        copiedEntry = entry
+    }
 }
 extension AppStore {
     func requestCaptureSheet(_ next: AppSheet) {
@@ -28,6 +45,9 @@ extension AppStore {
             switch next {
             case .addEntry: openEntrySheet()
             case .prefilledEntry(let prefill): openEntrySheet(prefill)
+            case .editEntry(let id):
+                if let entry = current.entries.first(where: { $0.id == id && $0.deletedAt == nil }) { openBillEditor(entry) }
+                else { error = "找不到账单。" }
             default: sheetSource = nil; sheet = next
             }
         }
@@ -115,7 +135,17 @@ extension QuickEntryPrefill {
 }
 @MainActor final class HomeActionSceneDelegate: NSObject, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+        routeSavingURL(options.urlContexts)
         if let shortcut = options.shortcutItem { _ = HomeActionDelegate.route(shortcut) }
+    }
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        routeSavingURL(URLContexts)
+    }
+    private func routeSavingURL(_ contexts: Set<UIOpenURLContext>) {
+        guard let url = contexts.map(\.url).first(where: {
+            $0.scheme?.lowercased() == "yubai" && ["saving", "save"].contains($0.host?.lowercased() ?? "")
+        }) else { return }
+        AppStore.shared.handleCaptureURL(url)
     }
     func windowScene(_ windowScene: UIWindowScene, performActionFor shortcut: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
         completionHandler(HomeActionDelegate.route(shortcut))

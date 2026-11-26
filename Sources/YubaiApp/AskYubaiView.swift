@@ -310,7 +310,7 @@ struct AskYubaiView: View {
     }
     @ViewBuilder private func protectedRecords(_ message: AskMessage) -> some View {
         if message.protectedRecords.count == 1, let id = message.protectedRecords.first {
-            NavigationLink("核对这笔 · 记录详情 ›") { EntryDetailView(entryID: id) }.frame(minHeight: YubaiSize.tapMin).yubaiFont(YubaiFont.caption)
+            NavigationLink("核对这笔 · 记录详情 ›") { BillDetailRoute(entryID: id) }.frame(minHeight: YubaiSize.tapMin).yubaiFont(YubaiFont.caption)
         } else {
             NavigationLink("核对相关记录 ›") { AskRecordLookupView(ids: message.protectedRecords) }.frame(minHeight: YubaiSize.tapMin).yubaiFont(YubaiFont.caption)
         }
