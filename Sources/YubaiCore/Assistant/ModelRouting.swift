@@ -80,6 +80,8 @@ public struct DeepSeekProvider: LanguageModelProvider {
     public static let defaultCapabilities = ModelCapabilities(contextTokens: 128_000, toolCalling: true,
                                                               structuredOutput: true, imageInput: false, leavesDevice: true)
     public let id = "deepseek"
+    /// The provider name the running pill and settings show.
+    public static let displayName = "DeepSeek"
     public let capabilities: ModelCapabilities
     private let transport: (any ChatTransport)?
     private let unavailableReason: ModelUnavailableReason

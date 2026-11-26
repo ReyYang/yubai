@@ -19,6 +19,13 @@ enum HomeSpec {
     static let statusBottom: CGFloat = 112 // canvas Home.dc.html: running capsule
     static let statusDots: CGFloat = 5 // canvas Home.dc.html: running dots diameter
     static let statusDotOpacities = [1.0, 0.6, 0.3] // canvas Home.dc.html: running dots
+    static let statusDotGap: CGFloat = 3 // canvas Home.dc.html: running dots gap
+    static let pillBadgeHeight: CGFloat = 22 // canvas Home.dc.html: DeepSeek badge
+    static let oftenWidth: CGFloat = 240 // canvas Home.dc.html: 常用 menu width
+    static let oftenBottom: CGFloat = 106 // canvas Home.dc.html: 常用 menu bottom edge above the screen bottom
+    static let oftenRow: CGFloat = 48 // canvas Home.dc.html: 常用 menu rows
+    static let oftenBand: CGFloat = 6 // canvas Home.dc.html: band above 编辑常用
+    static let oftenRows = 4 // canvas Home.dc.html: up to four 常用 rows
     static let searchBorder: CGFloat = 1.5 // canvas Home.dc.html: focused search field
     static let tabWidth: CGFloat = 64 // canvas Review.dc.html: centered side tabs
     static let tabIconGap: CGFloat = 2 // canvas Review.dc.html: tab icon and label gap
@@ -54,6 +61,10 @@ enum HomeSpec {
     static let tinyStrong = DS.TextStyle(size: 11, lineHeight: 15, weight: .semibold, tracking: 0, family: .text, relativeTo: .caption2, monospacedDigit: false)
     // canvas Home.dc.html: budget amount
     static let headerNumber = DS.TextStyle(size: 15, lineHeight: 20, weight: .medium, tracking: 0, family: .num, relativeTo: .body, monospacedDigit: true)
+    // canvas Home.dc.html: DeepSeek badge
+    static let pillBadge = DS.TextStyle(size: 11, lineHeight: 18, weight: .regular, tracking: 0, family: .text, relativeTo: .caption2, monospacedDigit: false)
+    // canvas Home.dc.html: 常用 menu amounts
+    static let oftenAmount = DS.TextStyle(size: 16, lineHeight: 22, weight: .regular, tracking: 0, family: .num, relativeTo: .body, monospacedDigit: true)
     // canvas Home.dc.html: search handoff text
     static let medium = DS.TextStyle(size: 15, lineHeight: 20, weight: .medium, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: false)
     // canvas Bill.dc.html: name

@@ -6,7 +6,7 @@ enum HomeFixture: Equatable {
     case budget(Budget)
     case bill(Bill, menu: Bool)
 
-    enum Home: String { case normal, tight, over, nopay, empty, search, running, worst }
+    enum Home: String { case normal, tight, over, nopay, empty, search, running, often, worst }
     enum Budget: String { case view, edit }
     enum Bill: String { case none, partial, expense, reimburse, income, transfer, deposit, large }
 
@@ -31,6 +31,7 @@ enum HomeFixture: Equatable {
     var isTight: Bool { self == .home(.tight) }
     var isSearch: Bool { self == .home(.search) }
     var isRunning: Bool { self == .home(.running) }
+    var isOften: Bool { self == .home(.often) }
     var showBillMenu: Bool { if case .bill(_, let menu) = self { menu } else { false } }
     var initialRoute: TabRoute? { if case .budget = self { .formula } else { nil } }
     var editsBudget: Bool { self == .budget(.edit) }

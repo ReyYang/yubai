@@ -396,11 +396,16 @@ struct DSTabBar: View {
     enum Tab: String { case home, overview }
     @Binding var selection: Tab
     var onEntry: () -> Void
+    var onEntryHold: () -> Void = {}
+    @State private var held = false
 
     var body: some View {
         HStack(spacing: DS.Space.s20) {
             tab(.home, title: "首页", icon: .tabHome)
-            Button(action: onEntry) {
+            Button {
+                // A long press already opened 常用; its release is not a tap.
+                if held { held = false } else { onEntry() }
+            } label: {
                 HStack(spacing: HomeSpec.gap6) {
                     DSIconView(icon: .add, size: DS.Size.brandTile, color: DS.Color.onAccent)
                     Text("记一笔").dsText(DS.Font.tBody).fontWeight(.semibold)
@@ -409,6 +414,8 @@ struct DSTabBar: View {
                     .padding(.horizontal, DS.Space.s20)
                     .frame(minWidth: HomeSpec.entryWidth, minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
             }.dsPressStyle().accessibilityIdentifier("addEntry")
+                .simultaneousGesture(LongPressGesture(minimumDuration: DSInteraction.holdDuration).onEnded { _ in held = true; onEntryHold() })
+                .accessibilityAction(named: "常用") { onEntryHold() }
             tab(.overview, title: "全景", icon: .tabOverview)
         }.dynamicTypeSize(...DynamicTypeSize.xLarge)
             .padding(.horizontal, DS.Space.s12)

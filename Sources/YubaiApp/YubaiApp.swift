@@ -548,6 +548,8 @@ enum AppSheet: Identifiable {
     var pagingLocked = false
     #endif
     let ask = AskController()
+    /// 常用: the long-press menu on 记一笔.
+    var oftenMenu = HomeFixture.current?.isOften == true
     /// 问余白 is open. Set through `openAsk`.
     var askRequest: AskRequest?
     func openAsk(_ text: String = "", send: Bool = false, voice: Bool = false) {
@@ -1387,6 +1389,7 @@ struct RootView: View {
         ZStack {
             tabNavigation(activeTab, generation: generation)
                 .id("\(generation)-\(activeTab.rawValue)")
+            QuickRepeatOverlay()
         }
             .overlay(alignment: .bottom) { tabBarOverlay }
             .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
@@ -1421,7 +1424,7 @@ struct RootView: View {
                 let target: Destination = selected == .home ? .ledger : .insights
                 if target == store.destination { store.rootScrollRequest[target, default: 0] += 1 }
                 else { store.destination = target }
-            }), onEntry: addEntry)
+            }), onEntry: addEntry, onEntryHold: { if !store.accounts.isEmpty { store.oftenMenu = true } })
             // The bar's background alone extends into the bottom safe area.
             .onGeometryChange(for: CGFloat.self) { max(HomeSpec.tabHeight, $0.size.height) } action: {
                 tabBarHeight = $0
