@@ -30,6 +30,8 @@ enum AskFixture: String {
         // 值不值 · 3 条: the 90-day habit line, one stored 消费观 note and one principle.
         ledger.profile.restrain = [ProfileArea(title: "数码", match: AreaMatch(categories: ["购物"]), note: "耳机能用就不换", confirmedAt: Dates.parse("2025-10-12"))]
         ledger.profile.principles = ["大件先放心愿单冷静三天"]
+        // 耳机 is filed under 购物, as a user who corrected it once would have it.
+        if let index = ledger.categories.firstIndex(where: { $0.name == "购物" }) { ledger.categories[index].keywords.append("耳机") }
         let bank = ledger.accounts[0]
         func judgment(_ title: String, _ amount: Int64, _ category: String) -> PurchaseJudgment {
             PurchaseJudgment(title: title, amount: amount, category: category, hasProfile: true, facts: .object([:]))

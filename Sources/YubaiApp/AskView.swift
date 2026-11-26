@@ -495,7 +495,7 @@ private struct AskBatchCard: View {
                 VStack(spacing: .zero) {
                     ForEach(Array(drafts.enumerated()), id: \.element.id) { index, draft in
                         AskBatchRow(name: draft.purpose ?? draft.title,
-                                    detail: Classification.displayCategory(draft.category) + " · " + AskDisplay.monthDay(draft.date, chinese: true),
+                                    detail: Classification.displayCategory(draft.category) + " · " + (draft.nature.inflow && draft.purpose != nil ? draft.title : AskDisplay.monthDay(draft.date, chinese: true)),
                                     amount: AskDisplay.signed(draft, hidden: hide), checked: selected.contains(draft.id),
                                     duplicate: AskBatch.isLikelyDuplicate(draft, in: ledger), income: draft.nature.inflow,
                                     separator: index > 0, onToggle: { toggle(draft.id, from: selected) })
