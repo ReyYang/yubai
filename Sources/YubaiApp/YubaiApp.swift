@@ -37,7 +37,7 @@ enum TabRoute: Hashable {
     case formula, budget, billDetail(UUID), billDate(Date), todo, settings, categories, savingRule, reserve, saved
     case weekly(UUID?), whereCategory(category: String, interval: DateInterval), memories
     case entryDetail(UUID)
-    case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String)
+    case allCategories(DateInterval), categoryBudget(String), savingWish(UUID), askQuestion(String), askDraft(String), assistantHub
     case yearlyBills, saving, cycleBills
     case butlerEvidence(UUID), butlerEvidenceEntries(UUID)
 }
@@ -70,7 +70,7 @@ enum AppSheet: Identifiable {
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letter(UUID), reconcile(UUID)
     case reconcileAll, overspend(CycleCover.Source), paydayAmount, paydaySetup
     case billPay(planID: UUID, occurrence: Date), billMatch(planID: UUID, occurrence: Date, entryID: UUID), billLink(planID: UUID, occurrence: Date)
-    case formulaEdit, frequentEntries
+    case frequentEntries
     case billMove(planID: UUID, occurrence: Date)
     var id: String { String(describing: self) }
     var motionSource: String? {
@@ -90,7 +90,6 @@ enum AppSheet: Identifiable {
         didSet {
             if oldValue.id != ledger.id {
                 askConversation = AskConversationState()
-                receiptUndoEntryIDs = []
                 resetRootNavigation()
             }
             if oldValue != ledger { invalidateDerived() }
@@ -257,7 +256,7 @@ enum AppSheet: Identifiable {
         return fundsValue()
     }
     private func fundsValue() -> Funds {
-        let now = Dates.now; let zone = TimeZone.current
+        let now = HomeFixture.current?.now ?? Dates.now; let zone = TimeZone.current
         if let cached = cachedFunds, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
         let ledger = derivedSource; var expires = Dates.addDays(1, to: Dates.day(now))
         for entry in ledger.entries where entry.deletedAt == nil {
@@ -526,6 +525,8 @@ enum AppSheet: Identifiable {
     func resetRootNavigation() {
         destination = .ledger; pickingInsightDates = false; ledgerPreset = nil
         homeReceipt = nil
+        billCardID = nil
+        entrySheet = nil; retainedEntryDraft = nil; lastEntryType = .expense; lastEntryAccountID = nil
         unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
         if pagingLocked { pagingLocked = false }
@@ -538,6 +539,11 @@ enum AppSheet: Identifiable {
     var askConversation = AskConversationState()
     var rootScrollRequest: [Destination: Int] = [:]
     var sheet: AppSheet?; var error: String?
+    var entrySheet: EntrySheetViewModel?
+    var billCardID: UUID?
+    @ObservationIgnored var retainedEntryDraft: EntrySheetDraft?
+    @ObservationIgnored var lastEntryType = EntryType.expense
+    @ObservationIgnored var lastEntryAccountID: UUID?
     var toastRevision = 0
     var toast: String? { didSet { if toast != nil { toastRevision &+= 1 } } }
     var homeReceipt: ButlerReceipt?
@@ -552,11 +558,9 @@ enum AppSheet: Identifiable {
     var pendingEntrySave = false
     var homeEntrySession = false
     var receiptEntryIDs: Set<UUID> = []
-    var receiptUndoEntryIDs: Set<UUID> = []
     var receiptFeedbackTrigger = 0
     var pendingSavingPage = false
     @ObservationIgnored private var pendingSavedEntryIDs: Set<UUID> = []
-    @ObservationIgnored private var entrySaveAcknowledged = false
     @ObservationIgnored private var pendingSaveToast: String?
     @ObservationIgnored private var saveToastTask: Task<Void, Never>?
     private(set) var loadingLedger = true
@@ -598,6 +602,19 @@ enum AppSheet: Identifiable {
         localRepository = LedgerRepository(directory: directory)
         locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
         syncAllowed = !args.contains("--test-ledger") && !args.contains("--data-directory") && ProcessInfo.processInfo.environment["YUBAI_DATA_DIR"] == nil
+        #if DEBUG
+        // Fixture previews are isolated from the user's ledger and sync.
+        if EntryFixture.launchMode != nil { return }
+        if let fixture = HomeFixture.current {
+            let seed = fixture.makeLedger()
+            ledger = seed.ledger
+            loadingLedger = false
+            billCardID = seed.billID
+            tabRouteRequest = fixture.initialRoute
+            invalidateDerived()
+            return
+        }
+        #endif
         // Keep startup file discovery, fixture encoding, migrations and recovery
         // pruning on the same worker as subsequent disk writes.
         let repository = localRepository
@@ -611,7 +628,16 @@ enum AppSheet: Identifiable {
             return ledger
         }
         loadTask = Task { @MainActor in
-            defer { loadingLedger = false; loadTask = nil }
+            defer {
+                loadingLedger = false
+                loadTask = nil
+                #if os(iOS)
+                if let url = pendingOpenURL, url.scheme?.lowercased() == "yubai" {
+                    pendingOpenURL = nil
+                    handleCaptureURL(url)
+                }
+                #endif
+            }
             do {
                 ledger = try await read.value
                 locked = ledger.preferences.lockEnabled
@@ -794,7 +820,38 @@ enum AppSheet: Identifiable {
             undoTrigger &+= 1; undoLedger = nil; undoLabel = nil; toast = "已撤销"
         } catch { self.error = error.localizedDescription }
     }
-    func present(_ sheet: AppSheet, from source: String? = nil) { sheetSource = source; self.sheet = sheet }
+    func present(_ sheet: AppSheet, from source: String? = nil) {
+        switch sheet {
+        case .addEntry: requestCaptureSheet(.addEntry)
+        case .editEntry: requestCaptureSheet(sheet)
+        case .prefilledEntry: requestCaptureSheet(sheet)
+        default: sheetSource = source; self.sheet = sheet
+        }
+    }
+
+    func openEntrySheet(_ prefill: QuickEntryPrefill? = nil) {
+        if let current = entrySheet {
+            guard prefill != nil else { return }
+            current.retainDraft()
+        }
+        sheet = nil
+        sheetSource = nil
+        entrySheet = EntrySheetViewModel(store: self, prefill: prefill)
+    }
+
+    func openBillEditor(_ entry: Entry, categoryOnly: Bool = false) {
+        sheet = nil
+        sheetSource = nil
+        entrySheet = EntrySheetViewModel(store: self, prefill: QuickEntryPrefill(copying: entry, date: entry.date, keepLink: true),
+                                         editingID: entry.id, categoryOnly: categoryOnly)
+    }
+
+    func closeEntrySheet(_ id: UUID) {
+        guard let model = entrySheet, model.id == id else { return }
+        entrySheet = nil
+        finishEntrySaveMotion(showToastImmediately: model.didSave)
+        homeEntrySession = false
+    }
     func setEntrySaveToast(_ message: String) {
         if pendingEntrySave { pendingSaveToast = message }
         else if homeEntrySession && !receiptEntryIDs.isEmpty && freshEntryIDs.isSubset(of: receiptEntryIDs) { return }
@@ -802,21 +859,12 @@ enum AppSheet: Identifiable {
     }
     func cancelEntrySaveMotion() {
         saveToastTask?.cancel(); pendingEntrySave = false; pendingSaveToast = nil; freshEntryIDs = []
-        pendingSavedEntryIDs = []; receiptEntryIDs = []; homeEntrySession = false; entrySaveAcknowledged = false
+        pendingSavedEntryIDs = []; receiptEntryIDs = []; homeEntrySession = false
     }
-    func acknowledgeEntryInEditor(_ ids: [UUID]) {
-        if homeEntrySession {
-            pendingSavedEntryIDs.formUnion(ids); freshEntryIDs = Set(ids); pendingEntrySave = true
-            saveToastTask?.cancel(); entrySaveAcknowledged = true
-            pendingSaveToast = "已记下 \(pendingSavedEntryIDs.count) 笔"
-        } else { cancelEntrySaveMotion() }
-        toast = nil; entrySaveTrigger &+= 1
-    }
-    func finishEntrySaveMotion() {
-        guard pendingEntrySave, sheet == nil, !locked else { return }
+    func finishEntrySaveMotion(showToastImmediately: Bool = false) {
+        guard pendingEntrySave, sheet == nil, entrySheet == nil, !locked else { return }
         pendingEntrySave = false
-        if !entrySaveAcknowledged { entrySaveTrigger &+= 1 }
-        entrySaveAcknowledged = false
+        entrySaveTrigger &+= 1
         let message = pendingSaveToast; pendingSaveToast = nil
         let trigger = entrySaveTrigger
         saveToastTask?.cancel()
@@ -824,12 +872,15 @@ enum AppSheet: Identifiable {
         pendingSavedEntryIDs = []
         if !feedback.highlightedIDs.isEmpty {
             receiptEntryIDs = feedback.highlightedIDs; receiptFeedbackTrigger &+= 1
-            receiptUndoEntryIDs.formUnion(receiptEntryIDs)
+        }
+        if showToastImmediately, let message {
+            toast = message
+            return
         }
         if !feedback.needsToast { return }
         saveToastTask = Task { @MainActor in
             do { try await Task.sleep(for: .seconds(YubaiMotion.saveToastDelay)) } catch { return }
-            guard !Task.isCancelled, entrySaveTrigger == trigger, !locked, sheet == nil, toast == nil else { return }
+            guard !Task.isCancelled, entrySaveTrigger == trigger, !locked, sheet == nil, entrySheet == nil, toast == nil else { return }
             toast = message
         }
     }
@@ -990,11 +1041,27 @@ enum AppSheet: Identifiable {
     }
     @ViewBuilder private var launchRoot: some View {
         #if DEBUG
-        if UITestSupport.designSystemGallery {
-            DesignSystemGalleryView()
-                .environment(\.dsReduceMotionOverride, UITestSupport.script != nil ? UITestSupport.reduceMotion : nil)
+        if let fixture = EntryFixture.launchMode {
+            EntryFixtureScreen(mode: fixture, theme: EntryFixture.launchTheme)
+        } else {
+            normalLaunchRoot
         }
-        else { applicationRoot }
+        #else
+        normalLaunchRoot
+        #endif
+    }
+    @ViewBuilder private var normalLaunchRoot: some View {
+        #if DEBUG
+        if UITestDesignSystemGallery.enabled {
+            DesignSystemGalleryView(isolatedComponent: UITestDesignSystemGallery.component
+                .flatMap(DesignSystemGalleryView.IsolatedComponent.init(rawValue:)))
+                .preferredColorScheme(EntryFixture.launchTheme)
+                #if targetEnvironment(simulator)
+                .environment(\.dsReduceMotionOverride, UITestSupport.script != nil ? UITestSupport.reduceMotion : nil)
+                #endif
+        } else {
+            applicationRoot
+        }
         #else
         applicationRoot
         #endif
@@ -1002,7 +1069,7 @@ enum AppSheet: Identifiable {
     private var applicationRoot: some View {
         // A ledger boundary discards all tab NavigationPaths and pager state together.
         RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
-            .preferredColorScheme(colorScheme)
+            .preferredColorScheme(HomeFixture.current == nil ? colorScheme : EntryFixture.launchTheme ?? colorScheme)
             #if os(macOS)
             .frame(minWidth: YubaiSize.desktopMinimumWidth, minHeight: YubaiSize.contentNarrow)
             #endif
@@ -1014,17 +1081,16 @@ struct RootView: View {
     @Environment(\.scenePhase) private var phase
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @Namespace private var motionNamespace
-    @State private var tabPaths: [Destination: NavigationPath] = [:]
+    @State private var tabPaths: [Destination: [TabRoute]] = [:]
     @State private var toastHeight = CGFloat.zero
-    @State private var navigationHeights: [Destination: CGFloat] = [:]
     private var hasToast: Bool { !store.locked && (store.unsortedUndo != nil || store.toast != nil) }
     #if os(iOS)
     @State private var keyboardVisible = false
-    @State private var quickMenuShown = false
+    @State private var tabBarHeight = HomeSpec.tabHeight
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     private var toastBottomPadding: CGFloat {
         if keyboardVisible || tabBarHidden { return YubaiSpace.none }
-        return navigationHeights[store.destination] ?? YubaiSize.rootBottomPadding(for: store.destination)
+        return tabBarHeight
     }
     #endif
     var body: some View {
@@ -1032,17 +1098,21 @@ struct RootView: View {
         // Keep the one AppSheet presenter on a concrete, stable host outside
         // the tab stacks, including while their root pages are off screen.
         ZStack {
-            if store.loadingLedger { ProgressView() }
-            else if store.locked { lockedView }
-            else if let failure = store.loadFailure { recoveryView(failure) }
-            else { mainContent }
+            ZStack {
+                if store.loadingLedger { ProgressView() }
+                else if store.locked { lockedView }
+                else if let failure = store.loadFailure { recoveryView(failure) }
+                else { mainContent }
+            }
+            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil) && !store.locked)
+            .allowsHitTesting((store.entrySheet == nil && store.billCardID == nil) || store.locked)
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
         .surfacePresentations()
         #if DEBUG && targetEnvironment(simulator) && os(iOS)
         .background { if UITestSupport.script != nil { UITestDiagnostics() } }
         #endif
-        .sheet(item: $store.sheet, onDismiss: { store.finishEntrySaveMotion(); store.homeEntrySession = false }) { sheet in
+        .sheet(item: $store.sheet, onDismiss: { if store.entrySheet == nil { store.finishEntrySaveMotion(); store.homeEntrySession = false } }) { sheet in
             NavigationStack { sheetView(sheet).surfaceNavigation() }.environment(store).tint(YubaiColor.brandInk)
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
                 .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
@@ -1056,7 +1126,7 @@ struct RootView: View {
         .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
         .overlay(alignment: .bottom) {
-            if !store.locked, let notice = store.unsortedUndo {
+            if !store.locked, store.entrySheet == nil, let notice = store.unsortedUndo {
                 Toast(text: HomeButler.privacyText(notice.label, hidden: store.preferences.hideAmounts), onUndo: { store.undoUnsorted(notice.id) }, onDismiss: {
                     if store.unsortedUndo?.id == notice.id { store.unsortedUndo = nil }
                 }, messageIdentifier: "unsortedUndoMessage", undoIdentifier: "quickSortUndo")
@@ -1067,7 +1137,7 @@ struct RootView: View {
                     #else
                     .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
                     #endif
-            } else if !store.locked, let toast = store.toast {
+            } else if !store.locked, store.entrySheet == nil, let toast = store.toast {
                 Toast(text: HomeButler.privacyText(toast, hidden: store.preferences.hideAmounts), onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(store.toastRevision)
                     .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { toastHeight = $0 }
@@ -1088,7 +1158,7 @@ struct RootView: View {
             }
         }
         #endif
-        .onChange(of: store.pendingEntrySave) { _, pending in if pending && store.sheet == nil { store.finishEntrySaveMotion() } }
+        .onChange(of: store.pendingEntrySave) { _, pending in if pending && store.sheet == nil && store.entrySheet == nil { store.finishEntrySaveMotion() } }
         .onChange(of: hasToast) { _, showing in if !showing { toastHeight = 0 } }
         .onChange(of: store.sheet?.id) { _, id in if id == nil { store.sheetSource = nil } }
         #if os(iOS)
@@ -1099,24 +1169,24 @@ struct RootView: View {
         .sensoryFeedback(.warning, trigger: store.floorWarningTrigger)
         #endif
         .onChange(of: phase) { _, newValue in
-            guard !store.loadingLedger else { return }
+            guard !store.loadingLedger, HomeFixture.current == nil else { return }
             if newValue == .background { store.flushBeforeSuspension() }
             if newValue == .active {
                 store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
-                store.cancelEntrySaveMotion(); store.sheet = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.pickingInsightDates = false; store.toast = nil; store.locked = true
             }
         }
         .task(id: phase == .active && !store.locked) {
             await store.waitForLedger()
-            guard !Task.isCancelled, phase == .active, !store.locked else { return }
+            guard !Task.isCancelled, phase == .active, !store.locked, HomeFixture.current == nil else { return }
             await store.refreshAtPostingDates()
         }
         .task {
             await store.waitForLedger()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, HomeFixture.current == nil else { return }
             if let url = store.pendingOpenURL { store.pendingOpenURL = nil; openURL(url) }
             store.purgeExpiredEntries()
             if !store.locked, store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }
@@ -1126,15 +1196,30 @@ struct RootView: View {
             await UITestSupport.stageGalleryVersions(store)
             #endif
         }
-        .modifier(ButlerRefreshTask())
-        .modifier(WeeklyPushTask())
-        .modifier(ButlerNoticeSyncTask())
+        .modifier(RootBackgroundTasks())
         .overlay(alignment: .top) {
-            if !store.locked, store.syncBusy || store.syncChoice != nil {
+            if !store.locked, store.entrySheet == nil, store.syncBusy || store.syncChoice != nil {
                 VStack(spacing: YubaiSpace.gapGroup) {
                     if store.syncBusy { ProgressView(store.syncStatus ?? "正在从 iCloud 读取…") }
                     if store.syncChoice != nil { Button("选择同步账本版本") { store.sheet = .syncVersions }.accessibilityIdentifier("openSyncVersionChoice") }
                 }.padding(YubaiSpace.insetCard).background(YubaiColor.raised)
+            }
+        }
+        .overlay {
+            if !store.locked, let id = store.billCardID,
+               let entry = store.current.entries.first(where: { $0.id == id }) {
+                BillFloatingCardOverlay(entry: entry, onClose: { store.billCardID = nil }).id(id)
+            }
+        }
+        .overlay {
+            if !store.locked, let model = store.entrySheet {
+                EntrySheetOverlay(model: model, onClose: { store.closeEntrySheet(model.id) }, onReceipt: {
+                    guard let screenshot = model.draft.screenshot else { return }
+                    model.retainDraft()
+                    store.closeEntrySheet(model.id)
+                    store.requestCaptureSheet(.screenshotReview(screenshot))
+                })
+                .id(model.id)
             }
         }
         .overlay { LedgerPrivacyCover() }
@@ -1142,7 +1227,7 @@ struct RootView: View {
             if store.loadingLedger { store.pendingOpenURL = url }
             else { openURL(url) }
         }
-        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.sheet = pending }
+        .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     private func openURL(_ url: URL) {
@@ -1162,37 +1247,29 @@ struct RootView: View {
             }.listStyle(.sidebar).navigationTitle("余白")
                 .navigationSplitViewColumnWidth(min: YubaiSize.sidebarMinimumWidth, ideal: YubaiSize.sidebarIdealWidth, max: YubaiSize.sidebarMaximumWidth)
         } detail: {
-            NavigationStack(path: Binding(get: { tabPaths[store.destination] ?? NavigationPath() }, set: { tabPaths[store.destination] = $0 })) {
+            NavigationStack(path: Binding(get: { tabPaths[store.destination] ?? [] }, set: { tabPaths[store.destination] = $0 })) {
                 tabRoot(store.destination).navigationDestination(for: TabRoute.self) { tabDestination($0) }
             }.id(store.destination)
         }
         .onChange(of: store.tabRouteRequest, initial: true) { _, route in
-            if let route { tabPaths[store.destination, default: NavigationPath()].append(route); store.tabRouteRequest = nil }
+            if let route { openTabRoute(route) }
         }
         #else
         let generation = store.navigationRevision
-        // Native tab hosting retains each stack's state and removes inactive
-        // safe-area headers/input fields from hit testing and accessibility.
-        TabView(selection: $store.destination) {
-            ForEach(Destination.allCases) { destination in
-                tabNavigation(destination, generation: generation, hidden: store.destination != destination)
-                    .tabItem { Label(destination.title, systemImage: destination.symbol) }
-                    .tag(destination)
-            }
-        }.toolbar(.hidden, for: .tabBar).id(generation)
-            .overlay { quickMenuScrim }
+        let activeTab: Destination = store.destination == .insights ? .insights : .ledger
+        ZStack {
+            tabNavigation(activeTab, generation: generation)
+                .id("\(generation)-\(activeTab.rawValue)")
+        }
             .overlay(alignment: .bottom) { tabBarOverlay }
-            .onChange(of: store.sheet?.id) { _, _ in quickMenuShown = false }
-            .onChange(of: store.destination) { _, _ in quickMenuShown = false }
             .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
             .onChange(of: store.tabRouteRequest, initial: true) { _, route in
-                guard let route else { return }
-                tabPaths[store.destination, default: NavigationPath()].append(route)
-                store.tabRouteRequest = nil
+                if let route { openTabRoute(route) }
             }
-            .onChange(of: store.butlerFocusID) { _, id in
+            .onChange(of: store.butlerFocusID, initial: true) { _, id in
                 guard id != nil, !store.locked else { return }
-                var path = NavigationPath(); path.append(TabRoute.todo); tabPaths[.ledger] = path
+                store.destination = .ledger
+                tabPaths[.ledger] = [.todo]
             }
             .onChange(of: store.locked) { _, locked in
                 if !locked, let id = store.pendingButlerTaskID { store.pendingButlerTaskID = nil; store.openButlerNotice(id) }
@@ -1209,62 +1286,43 @@ struct RootView: View {
         }
     }
     #endif
-    @ViewBuilder private var quickMenuScrim: some View {
-        if quickMenuShown && store.sheet == nil {
-            Color.black.opacity(0.001).ignoresSafeArea().contentShape(Rectangle())
-                .onTapGesture { quickMenuShown = false }
-                .accessibilityHidden(true)
-        }
-    }
     @ViewBuilder private var tabBarOverlay: some View {
-        if !tabBarHidden && store.sheet == nil && !store.pickingInsightDates {
-            ZStack(alignment: .bottom) {
-                if quickMenuShown {
-                    QuickRepeatMenu { quickMenuShown = false }
-                        .padding(.bottom, navigationHeights[store.destination] ?? YubaiSize.rootBottomPadding(for: store.destination))
-                        .zIndex(1)
-                        .transition(YubaiMotion.toastTransition(reduceMotion: reduceMotion))
-                }
-                tabBar
+        if !tabBarHidden && store.sheet == nil && store.entrySheet == nil && !store.pickingInsightDates && !keyboardVisible {
+            DSTabBar(selection: Binding(get: {
+                store.destination == .insights ? .overview : .home
+            }, set: { selected in
+                let target: Destination = selected == .home ? .ledger : .insights
+                if target == store.destination { store.rootScrollRequest[target, default: 0] += 1 }
+                else { store.destination = target }
+            }), onEntry: addEntry)
+            // The bar's background alone extends into the bottom safe area.
+            .onGeometryChange(for: CGFloat.self) { max(HomeSpec.tabHeight, $0.size.height) } action: {
+                tabBarHeight = $0
             }
-            .padding(.horizontal, YubaiSpace.space16).padding(.bottom, YubaiSize.floatingTabbarBottom)
-            .opacity(keyboardVisible ? 0 : 1).allowsHitTesting(!keyboardVisible).accessibilityHidden(keyboardVisible)
-        }
-    }
-    private var tabBar: some View {
-        FloatingTabBar(select: selectTab, add: addEntry, quick: showQuickMenu, measured: { navigationHeights[$0] = $1 })
+            .accessibilityElement(children: .contain).accessibilityIdentifier("mainNavigation")
+            .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
             #if DEBUG && targetEnvironment(simulator)
             .onAppear {
                 if ProcessInfo.processInfo.environment["YUBAI_UI_TEST_TOAST_ON_RETURN"] == "1",
                    tabPaths[store.destination]?.isEmpty == true { showScriptedToast() }
             }
             #endif
-    }
-    private func selectTab(_ selected: Destination) {
-        quickMenuShown = false
-        if selected == store.destination {
-            store.rootScrollRequest[selected, default: 0] += 1
-        } else {
-            withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { store.destination = selected }
         }
     }
+
     private func addEntry() {
-        quickMenuShown = false
         store.homeEntrySession = true
         if store.accounts.isEmpty { store.beginFirstEntry() }
-        else { store.sheetSource = nil; store.sheet = .addEntry }
+        else { store.requestCaptureSheet(.addEntry) }
     }
-    private func showQuickMenu() {
-        withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { quickMenuShown.toggle() }
-    }
-    private func tabNavigation(_ d: Destination, generation: UInt64, hidden: Bool) -> some View {
-        NavigationStack(path: Binding(get: { tabPaths[d] ?? NavigationPath() }, set: {
-            guard generation == store.navigationRevision else { return }
+
+    private func tabNavigation(_ d: Destination, generation: UInt64) -> some View {
+        NavigationStack(path: Binding(get: { tabPaths[d] ?? [] }, set: {
+            guard generation == store.navigationRevision, store.destination == d else { return }
             tabPaths[d] = $0
         })) {
             tabRoot(d).background(YubaiColor.canvas.ignoresSafeArea())
-                .accessibilityHidden(hidden)
-                .navigationDestination(for: TabRoute.self) { tabDestination($0).accessibilityHidden(hidden) }
+                .navigationDestination(for: TabRoute.self) { tabDestination($0) }
         }.toolbarBackground(.hidden, for: .navigationBar)
             .toolbar(.hidden, for: .tabBar)
             .accessibilityElement(children: .contain).accessibilityIdentifier("rootPage_" + d.rawValue)
@@ -1273,6 +1331,18 @@ struct RootView: View {
             .background(YubaiColor.canvas.ignoresSafeArea())
     }
     #endif
+    private func openTabRoute(_ route: TabRoute) {
+        if case .entryDetail(let id) = route {
+            if store.current.activeEntries.contains(where: { $0.id == id }) { store.billCardID = id }
+            else { store.error = "找不到账单。" }
+        }
+        else if route != .saving || tabPaths[store.destination]?.last != .saving {
+            // UIKit's scene delegate and SwiftUI can deliver the same saving link.
+            tabPaths[store.destination, default: []].append(route)
+        }
+        store.tabRouteRequest = nil
+    }
+
     @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
         switch route {
         case .saving: SavingTabView()
@@ -1282,15 +1352,17 @@ struct RootView: View {
         case .profile: ProfileView()
         case .wishlist: WishlistView()
         case .accounts: AccountsView()
-        case .formula: FormulaView()
-        case .entryDetail(let id): EntryDetailView(entryID: id)
+        case .formula: BudgetDetailView(startsEditing: HomeFixture.current?.editsBudget == true)
+        case .entryDetail(let id): BillDetailRoute(entryID: id)
         case .butlerEvidence(let id): ButlerSuggestionEvidence(suggestionID: id)
         case .butlerEvidenceEntries(let id): ButlerSuggestionEntriesPage(suggestionID: id)
         case .allCategories(let interval): AllCategoriesView(interval: interval)
-        case .categoryBudget(let category): BudgetView(initialCategory: category)
+        case .categoryBudget(let category): BudgetDetailView(initialCategory: category)
         case .savingWish(let id): WishlistView(focusedWishID: id)
         case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
-        case .budget: BudgetView()
+        case .askDraft(let text): AskYubaiView(initialText: text)
+        case .budget: BudgetDetailView(startsEditing: true)
+        case .assistantHub: YubaiTabView(asDestination: true)
         case .billDetail(let id): BillDetailView(planID: id)
         case .billDate(let date): FixedFlowsView(selectedDate: date)
         case .yearlyBills: YearlyBillsView()
@@ -1320,17 +1392,17 @@ struct RootView: View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if d == .ledger && store.sheet == nil && !store.pickingInsightDates {
+            if d == .ledger && store.sheet == nil && store.entrySheet == nil && !store.pickingInsightDates {
                 HomeEntryPill(title: store.homeHero.isFirstOpen ? "记第一笔" : "记一笔", action: {
                     store.homeEntrySession = true
-                    if store.accounts.isEmpty { store.beginFirstEntry() } else { store.sheet = .addEntry }
+                    if store.accounts.isEmpty { store.beginFirstEntry() } else { store.requestCaptureSheet(.addEntry) }
                 }, quick: { store.sheet = .frequentEntries })
                     .padding(.bottom, YubaiSpace.gapSection)
             }
         }.background(YubaiColor.canvas)
         #else
         destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            .environment(\.yubaiRootNavigationHeight, navigationHeights[d] ?? YubaiSize.rootBottomPadding(for: d))
+            .environment(\.yubaiRootNavigationHeight, tabBarHeight)
         #endif
     }
     @ViewBuilder func destination(_ d: Destination) -> some View {
@@ -1342,11 +1414,9 @@ struct RootView: View {
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
         switch sheet {
-        case .addEntry: QuickEntryView()
-        case .prefilledEntry(let prefill): QuickEntryView(prefill: prefill)
+        case .addEntry, .prefilledEntry, .editEntry: EmptyView()
         case .screenshotCapture(let data): ScreenshotCaptureView(imageData: data)
         case .screenshotReview(let data): ScreenshotCaptureView(imageData: data)
-        case .editEntry(let id): EntryEditView(entryID: id)
         case .addPlan: FixedFlowEditor()
         case .editPlan(let id): FixedFlowEditor(planID: id)
         case .account(let account): AccountEditor(account: account)
@@ -1365,7 +1435,6 @@ struct RootView: View {
         case .billMatch(let planID, let occurrence, let entryID): BillMatchSheet(planID: planID, occurrence: occurrence, entryID: entryID)
         case .billLink(let planID, let occurrence): BillLinkSheet(planID: planID, occurrence: occurrence)
         case .billMove(let planID, let occurrence): BillMoveSheet(planID: planID, occurrence: occurrence)
-        case .formulaEdit: FormulaEditSheet()
         case .frequentEntries: FrequentEntriesView().manualSheetHeader("整理常用", cancelTitle: "关闭", showsAction: false)
         case .intelligencePrivacy: IntelligencePrivacyView().manualSheetHeader("智能与隐私", cancelTitle: "关闭", showsAction: false)
         case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
@@ -1392,6 +1461,16 @@ struct RootView: View {
     }
     func recoveryView(_ message: String) -> some View {
         VStack(spacing: YubaiSpace.gapSection) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: YubaiSize.sheetMinimumWidth)
+    }
+}
+
+private struct RootBackgroundTasks: ViewModifier {
+    func body(content: Content) -> some View {
+        if HomeFixture.current == nil {
+            content.modifier(ButlerRefreshTask()).modifier(WeeklyPushTask()).modifier(ButlerNoticeSyncTask())
+        } else {
+            content
+        }
     }
 }
 
@@ -1425,63 +1504,6 @@ private struct LedgerPrivacyCover: View {
         }
     }
 }
-
-#if os(iOS)
-/// 三个标签和记账宽钮共用紧凑字号上限；标签提供系统大字号预览，宽钮长按打开常用。
-private struct FloatingTabBar: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.yubaiReduceMotion) private var reduceMotion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Namespace private var selectionNamespace
-    let select: (Destination) -> Void
-    let add: () -> Void
-    let quick: () -> Void
-    let measured: (Destination, CGFloat) -> Void
-    var body: some View {
-        let destination = store.destination
-        VStack(spacing: YubaiSpace.space12) {
-            if store.destination == .ledger { addButton }
-            HStack(spacing: YubaiSpace.space2) {
-                tab(.ledger); tab(.insights); tab(.yubai)
-            }.padding(.horizontal, YubaiSpace.space6).frame(width: YubaiSize.navigationCapsuleWidth, height: YubaiSize.floatingTabbarHeight)
-                .background { barSurface }
-                .overlay { Capsule().strokeBorder(YubaiColor.white.opacity(0.6), lineWidth: YubaiSize.separator).allowsHitTesting(false) }
-                .dynamicTypeSize(YubaiFont.floatingChromeCeiling)
-                .accessibilityElement(children: .contain).accessibilityLabel("标签导航").accessibilityIdentifier("navigationCapsule")
-        }.fixedSize(horizontal: false, vertical: true)
-            .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { measured(destination, $0) }
-            .accessibilityElement(children: .contain).accessibilityLabel("主导航").accessibilityIdentifier("mainNavigation")
-            .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
-    }
-    private var barSurface: some View {
-        Capsule().fill(reduceTransparency ? AnyShapeStyle(YubaiColor.raised) : AnyShapeStyle(.ultraThinMaterial))
-            .overlay { if !reduceTransparency { Capsule().fill(YubaiColor.glassBar) } }
-            .yubaiShadow(YubaiShadow.float)
-    }
-    private var addButton: some View {
-        HomeEntryPill(title: store.homeHero.isFirstOpen ? "记第一笔" : "记一笔", action: add, quick: quick)
-    }
-    private func tab(_ destination: Destination) -> some View {
-        let selected = store.destination == destination
-        return Button { select(destination) } label: {
-            VStack(spacing: YubaiSpace.space2) {
-                DestinationGlyph(destination: destination, selected: selected, size: YubaiFont.tabIcon.size).frame(width: YubaiSize.headerIcon, height: YubaiSize.headerIcon)
-                Text(destination.title).yubaiFont(YubaiFont.tabLabel, weight: selected ? .medium : .regular).lineLimit(1)
-            }.foregroundStyle(selected ? YubaiColor.brandInk : YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity).frame(height: YubaiSize.navigationTabHeight)
-                .background {
-                    if selected {
-                        Capsule().fill(YubaiColor.card)
-                            .matchedGeometryEffect(id: "selection", in: selectionNamespace)
-                    }
-                }.contentShape(Capsule())
-        }.buttonStyle(.plain).accessibilityLabel(destination.title).accessibilityIdentifier("tab_" + destination.rawValue)
-            .accessibilityAddTraits(selected ? .isSelected : [])
-            .accessibilityShowsLargeContentViewer { Label(destination.title, systemImage: destination.symbol) }
-    }
-}
-
-#endif
 
 /// Checkpoint preparation computes every costly home input on the disk worker.
 struct LedgerDerivedSnapshot: Sendable {

@@ -1,17 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-struct EntryEditView: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    let entryID: UUID
-    var body: some View {
-        if let entry = store.entriesByID[entryID], entry.deletedAt == nil {
-            EntryEditForm(entry: entry).id(entryID)
-        } else { EmptyState("doc.questionmark", "记录已不存在", action: "返回", onAction: { dismiss() }) }
-    }
-}
-
 struct EntryEditForm: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
@@ -176,7 +165,7 @@ struct EntryEditForm: View {
     /// 记录信息一行，「删掉」在右边，看得见，离确认远。
     private var provenanceRow: some View {
         HStack(spacing: YubaiSpace.gapGroup) {
-            TabNavigationLink(.entryDetail(original.id)) { EntryDetailView(entryID: original.id) } label: {
+            TabNavigationLink(.entryDetail(original.id)) { BillDetailRoute(entryID: original.id) } label: {
                 Text(provenance).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                     .yubaiHitTarget(alignment: .leading)
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryProvenance").accessibilityHint("查看原始记录")

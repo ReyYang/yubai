@@ -76,7 +76,6 @@ struct SavingsHeader: View {
 
 struct WishlistCooldownCards: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.surfacePresentations) private var presentations
     private var wishes: [WishItem] {
         Wishlist.cooldownDue(store.current, now: Dates.now).compactMap { candidate in
             guard case .openWish(let id) = candidate.action else { return nil }
@@ -87,10 +86,8 @@ struct WishlistCooldownCards: View {
         ForEach(wishes) { wish in CooldownWishCard(wish: wish, record: record) }
     }
     private func record(_ wish: WishItem) {
-        presentations.presentSheet {
-            NavigationStack { QuickEntryView(prefill: QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title)) }
-                .environment(store).appErrors().yubaiSheetBackground()
-        }
+        store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title,
+                                                                  subcategory: wish.subcategory)))
     }
 }
 

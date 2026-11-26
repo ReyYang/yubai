@@ -20,7 +20,8 @@ struct ButlerReceipt: Identifiable, Equatable {
         guard update("开始记账", recordUndo: false, entryMotion: false, showToast: false, {
             FirstUse.prepareForEntry(&$0, now: Dates.now)
         }) else { return }
-        sheetSource = nil; sheet = importing ? .imports : .addEntry
+        if importing { sheetSource = nil; sheet = .imports }
+        else { openEntrySheet() }
     }
     func stopRenewal(_ renewal: HomeRenewal) {
         guard update("停掉", entryMotion: false, showToast: false, {
@@ -121,8 +122,7 @@ struct HomeTaskCard: View {
         }, no: {
             // Recording the purchase links the wish through the existing unique
             // match path. The source choice is preserved in the entry editor.
-            store.sheetSource = nil
-            store.sheet = .prefilledEntry(QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title, fromReserve: true))
+            store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: wish.category, amount: wish.amount, purpose: wish.title, fromReserve: true)))
         }).accessibilityIdentifier("cooldownButlerCard")
     }
     private func restraintCard(_ value: HomeRestraint) -> some View {
@@ -258,7 +258,7 @@ struct TodoView: View {
     private var ids: [String] { items.map(\.id) }
     private var top: HomeTask? { deck.ids.first.flatMap { id in items.first { $0.id == id } } }
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8) {
+        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "butlerInboxScroll") {
             if let top {
                 HomeTaskCard(item: top)
                     .id(top.id)

@@ -22,26 +22,38 @@ extension Ledger {
         savingRule = sharing ? .share(lastSavingSharePercent ?? 20) : .fixed(lastFixedSavingTarget ?? 0)
     }
 
-    /// Only posted income in cash/bank accounts contributes, using the same
-    /// reconciliation boundary as Finance's cash balance (including archived accounts).
+    /// Income earmarks and transfers count on the cash account's posting date.
+    func fixedSavingsPosting(for entry: Entry, accountsByID: [UUID: Account], now: Date) -> (account: Account, date: Date)? {
+        guard entry.deletedAt == nil, entry.intoFixedSavings else { return nil }
+        let accountID: UUID?
+        switch entry.nature {
+        case .income: accountID = entry.accountID
+        case .transfer: accountID = entry.otherAccountID
+        default: return nil
+        }
+        guard let accountID, let account = accountsByID[accountID],
+              account.kind == .cash || account.kind == .bank else { return nil }
+        let date = entry.postingDate(for: accountID)
+        return date <= now ? (account, date) : nil
+    }
+
     func fixedSavingsFromIncome(now: Date) -> Int64 {
         let accountsByID = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         return entries.reduce(Int64(0)) { total, entry in
-            guard entry.deletedAt == nil, entry.nature == .income, entry.intoFixedSavings,
-                  let account = accountsByID[entry.accountID], account.kind == .cash || account.kind == .bank else { return total }
-            let posting = entry.postingDate(for: account.id)
-            return posting <= now && account.includes(entry, posting: posting) ? total + entry.amount : total
+            guard let posting = fixedSavingsPosting(for: entry, accountsByID: accountsByID, now: now),
+                  posting.account.includes(entry, posting: posting.date) else { return total }
+            return total + entry.amount
         }
     }
 
     public func fixedSavingsTotal(now: Date = Dates.now) -> Int64 {
-        (fixedSavings ?? 0) + migratedSavingCredit + fixedSavingsFromIncome(now: now) - reserveSpent(now: now) - reserveCovered(now: now) + savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } - carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount }
+        (fixedSavings ?? 0) + migratedSavingCredit + fixedSavingsFromIncome(now: now) + recoveryReserveCredit(now: now) - reserveSpent(now: now) - reserveCovered(now: now) + savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } - carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount }
     }
 
     /// Reverse all derived income and withdrawals to keep the stored base
     /// nonnegative; editing/deleting source entries reverses their contribution.
     public mutating func setFixedSavingsTotal(_ total: Int64, now: Date = Dates.now) {
-        let base = max(0, min(Money.limit + migratedSavingCredit, total) - fixedSavingsFromIncome(now: now) + reserveSpent(now: now) + reserveCovered(now: now) - savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } + carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount })
+        let base = max(0, min(Money.limit + migratedSavingCredit, total) - fixedSavingsFromIncome(now: now) - recoveryReserveCredit(now: now) + reserveSpent(now: now) + reserveCovered(now: now) - savingsTransfers.filter { $0.date <= now }.reduce(0) { $0 + $1.delta } + carryReleases.filter { $0.date <= now }.reduce(0) { $0 + $1.amount })
         migratedSavingCredit = min(migratedSavingCredit, base)
         fixedSavings = base - migratedSavingCredit
     }

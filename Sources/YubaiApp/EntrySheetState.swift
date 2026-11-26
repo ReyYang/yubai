@@ -1,0 +1,513 @@
+import SwiftUI
+import YubaiCore
+
+enum EntryDrawer: Equatable {
+    case purpose, currency, calendar, source, destination, subcategory, newCategory, renameCategory, split
+}
+
+struct EntrySheetDraft: Equatable {
+    var type: EntryType = .expense
+    var expression = EntryAmountExpression()
+    var purpose = ""
+    var category: String?
+    var subcategory: String?
+    var accountID: UUID?
+    var destinationID: UUID?
+    var date = Dates.now
+    var screenshot: Data?
+    var repeatMonthly = false
+    var exception: EntryException?
+    var incomeNextCycle = false
+    var currency: BillCurrency = .cny
+    var exchangeRate = ""
+    var personalShare = ""
+    var originalNature: Nature?
+    var recoveryParticipants: [RecoveryParticipant]?
+    var relatedEntryID: UUID?
+    var intoFixedSavings = false
+
+    var nature: Nature {
+        if let originalNature { return originalNature }
+        switch type {
+        case .expense: return .expense
+        case .income: return .income
+        case .transfer: return .transfer
+        case .deposit: return .investBuy
+        }
+    }
+    var isRoute: Bool { type == .transfer || type == .deposit }
+    var hasContent: Bool { !expression.isEmpty || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
+    init() {}
+
+    static func dayLabel(for date: Date, now: Date) -> String {
+        let day = Dates.day(date)
+        if day == Dates.day(now) { return "今天" }
+        if day == Dates.day(Dates.addDays(-1, to: now)) { return "昨天" }
+        if day == Dates.day(Dates.addDays(-2, to: now)) { return "前天" }
+        let parts = Dates.calendar.dateComponents([.month, .day], from: day)
+        return "\(parts.month ?? 1)月\(parts.day ?? 1)日"
+    }
+
+    init(prefill: QuickEntryPrefill, ledger: Ledger) {
+        let nature = prefill.nature ?? .expense
+        switch nature {
+        case .investBuy: type = .deposit
+        case .transfer where prefill.intoFixedSavings: type = .deposit
+        default: type = nature.paired ? .transfer : nature.inflow ? .income : .expense
+        }
+        switch nature {
+        case .expense, .income, .investBuy, .transfer: break
+        default: originalNature = nature
+        }
+        if let category = prefill.category, !Classification.isPending(category), !isRoute {
+            let assignment = ledger.categoryAssignment(category: category, subcategory: prefill.subcategory, income: nature.categoryIncome)
+            self.category = assignment.category
+            subcategory = assignment.subcategory
+        }
+        accountID = prefill.accountID
+        destinationID = prefill.otherAccountID
+        intoFixedSavings = prefill.intoFixedSavings
+        exception = prefill.fromReserve ? .reserve : nil
+        date = prefill.date ?? Dates.now
+        relatedEntryID = prefill.relatedEntryID
+        purpose = prefill.purpose ?? ""
+        screenshot = prefill.screenshot
+        expression = EntryAmountExpression(cents: prefill.amount ?? 0)
+        if let entry = prefill.copiedEntry {
+            if let pending = entry.pendingRecovery {
+                exception = pending == .split ? .split : .reimbursement
+            }
+            recoveryParticipants = entry.recoveryParticipants
+            if let share = entry.personalExpense { personalShare = Money.input(share) }
+            incomeNextCycle = entry.countsFromCycleStart != nil
+            if let currency = entry.originalCurrency, let original = entry.originalAmount, original > 0 {
+                self.currency = currency
+                exchangeRate = NSDecimalNumber(decimal: Decimal(entry.amount) / Decimal(original)).stringValue
+            }
+        }
+    }
+}
+
+@MainActor @Observable final class EntrySheetViewModel: Identifiable {
+    let id = UUID()
+    @ObservationIgnored private weak var store: AppStore?
+    private var fixtureLedger: Ledger
+    let settled: Bool
+    let isPrefilled: Bool
+    let fixtureNow: Date?
+    let editingID: UUID?
+    let categoryOnly: Bool
+    var draft: EntrySheetDraft
+    var drawer: EntryDrawer?
+    var categoryPanel = false
+    var categoryEditing = false
+    var inputText = ""
+    var suggestion: CategoryAssignment?
+    var effect: EntryEffect?
+    var categoryPulse = 0
+    var failure: String?
+    @ObservationIgnored private var previewTask: Task<Void, Never>?
+    private var fixtureBaseline: EntrySheetDraft?
+    var fixtureTopCategories: [String] = []
+    var routeShowsBalance = false
+    var autoFocusSubcategory = true
+    var fixtureDayLabel: String?
+    var fixtureRepeatDay: Int?
+    var fixtureSplitNames: [String] = []
+    private(set) var didSave = false
+    @ObservationIgnored private var shouldReplacePrefill = false
+
+    init(store: AppStore, prefill: QuickEntryPrefill?, editingID: UUID? = nil, categoryOnly: Bool = false) {
+        self.store = store
+        fixtureLedger = Ledger()
+        settled = false
+        isPrefilled = prefill != nil
+        fixtureNow = HomeFixture.current?.now
+        self.editingID = editingID
+        self.categoryOnly = categoryOnly
+        categoryPanel = categoryOnly
+        shouldReplacePrefill = editingID != nil
+        if let prefill {
+            draft = EntrySheetDraft(prefill: prefill, ledger: store.current)
+            if let participants = prefill.copiedEntry?.recoveryParticipants {
+                fixtureSplitNames = ["我"] + participants.map(\.name)
+            }
+        } else if let retained = store.retainedEntryDraft {
+            draft = retained
+        } else {
+            draft = EntrySheetDraft()
+            draft.date = HomeFixture.current?.now ?? Dates.now
+            draft.type = store.lastEntryType
+            if store.accounts.contains(where: { $0.id == store.lastEntryAccountID && !$0.archived }) {
+                draft.accountID = store.lastEntryAccountID
+            }
+        }
+        normalizeAccounts()
+    }
+
+    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date) {
+        store = nil
+        self.fixtureLedger = fixtureLedger
+        self.draft = draft
+        settled = true
+        isPrefilled = false
+        fixtureNow = now
+        editingID = nil
+        categoryOnly = false
+        fixtureBaseline = draft
+        normalizeAccounts()
+        effect = input(category: selectedCategory).flatMap { EntrySaveMapper.effect(for: $0, in: fixtureLedger, now: now) }
+    }
+
+    var ledger: Ledger { store?.current ?? fixtureLedger }
+    var now: Date { fixtureNow ?? Dates.now }
+    var hasReceipt: Bool { draft.screenshot != nil }
+    var hidesKeypad: Bool { drawer == .purpose || (drawer == .subcategory && !categoryPanel) }
+    var hidesAmounts: Bool { store?.preferences.hideAmounts == true }
+    var signedRate: Decimal? {
+        let clean = draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean.isEmpty { return FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now)?.cnyPerUnit }
+        let separator = Locale.current.decimalSeparator ?? "."
+        let normalized = clean.replacingOccurrences(of: separator, with: ".")
+        guard normalized.allSatisfy({ "0123456789.".contains($0) }),
+              normalized.filter({ $0 == "." }).count <= 1 else { return nil }
+        return Decimal(string: normalized, locale: Locale(identifier: "en_US_POSIX"))
+    }
+    var canRepeat: Bool {
+        guard editingID == nil else { return false }
+        return draft.originalNature == nil && (draft.type == .income || draft.type == .expense ||
+            (draft.type == .deposit && account(draft.destinationID)?.kind == .investment))
+    }
+    var money: Int64 { draft.expression.evaluatedCents ?? 0 }
+    var localMoney: Int64? {
+        guard draft.currency != .cny else { return money }
+        guard let rate = signedRate else { return nil }
+        return ManualExchangeRate(currency: draft.currency, cnyPerUnit: rate, updatedAt: now).convert(money)
+    }
+    var splitCount: Int64 { Int64(max(2, fixtureSplitNames.count)) }
+    var myShare: Int64 {
+        let total = localMoney ?? 0
+        let defaultShare = (total + splitCount - 1) / splitCount
+        let entered = try? Money.parse(draft.personalShare)
+        return min(total, max(0, entered ?? defaultShare))
+    }
+
+    var categories: [YubaiCore.Category] {
+        ledger.orderedCategories(income: draft.nature.categoryIncome)
+    }
+    var topCategories: [YubaiCore.Category] {
+        let available = categories
+        if let initial = fixtureBaseline, draft.type == initial.type, !fixtureTopCategories.isEmpty {
+            return fixtureTopCategories.compactMap { name in available.first { $0.name == name } }
+        }
+        let currentLedger = ledger
+        let counts = currentLedger.activeEntries.reduce(into: [String: Int]()) { counts, entry in
+            guard entry.nature == draft.nature else { return }
+            counts[entry.category, default: 0] += 1
+        }
+        var ranked = available.enumerated().sorted {
+            let left = counts[$0.element.name, default: 0], right = counts[$1.element.name, default: 0]
+            return left == right ? $0.offset < $1.offset : left > right
+        }.map(\.element)
+        if let name = draft.category ?? suggestion?.category,
+           let selected = ranked.firstIndex(where: { $0.name == name }), selected >= DSLayout.categoryRow - 1 {
+            let category = ranked.remove(at: selected)
+            ranked.insert(category, at: DSLayout.categoryRow - 2)
+        }
+        return Array(ranked.prefix(DSLayout.categoryRow - 1))
+    }
+    var subcategories: [String] {
+        categories.first(where: { $0.name == draft.category })?.subcategories ?? []
+    }
+
+    func account(_ id: UUID?) -> Account? { ledger.accounts.first { $0.id == id } }
+    func accounts(destination: Bool) -> [Account] {
+        let original = editingID.flatMap { id in ledger.entries.first { $0.id == id } }
+        let originalID = destination ? original?.otherAccountID : original?.accountID
+        let selectedID = destination ? draft.destinationID : draft.accountID
+        return EntrySaveMapper.selectableAccounts(in: ledger, keeping: originalID).filter { account in
+            if account.id == originalID && account.id == selectedID { return true }
+            if destination {
+                guard draft.isRoute, account.id != draft.accountID else { return false }
+                return draft.type != .deposit || [.investment, .bank, .cash].contains(account.kind)
+            }
+            return draft.type != .deposit || account.kind == .bank || account.kind == .cash
+        }
+    }
+
+    private func normalizeAccounts() {
+        let sources = accounts(destination: false)
+        if !sources.contains(where: { $0.id == draft.accountID }) {
+            let suggested = ManualBookkeeping.defaultAccount(in: ledger, nature: draft.nature)?.id
+            let alternatives = sources.filter { $0.id != draft.destinationID }
+            draft.accountID = alternatives.first(where: { $0.id == suggested })?.id
+                ?? alternatives.first?.id ?? sources.first?.id
+        }
+        guard draft.isRoute else { return }
+        let destinations = accounts(destination: true)
+        if !destinations.contains(where: { $0.id == draft.destinationID }) {
+            let preferred = draft.type == .deposit ? destinations.first(where: { $0.kind == .investment }) : nil
+            draft.destinationID = preferred?.id ?? destinations.first?.id
+        }
+    }
+    func select(_ type: EntryType) {
+        guard type != draft.type else { return }
+        draft.type = type
+        draft.originalNature = nil
+        draft.relatedEntryID = nil
+        draft.intoFixedSavings = false
+        draft.destinationID = nil
+        draft.category = nil
+        draft.subcategory = nil
+        draft.exception = nil
+        draft.repeatMonthly = false
+        draft.incomeNextCycle = false
+        draft.personalShare = ""
+        draft.recoveryParticipants = nil
+        fixtureSplitNames = []
+        suggestion = nil
+        drawer = nil
+        normalizeAccounts()
+    }
+    func select(category: String) {
+        if draft.category != category { draft.subcategory = nil }
+        draft.category = category
+        suggestion = nil
+        if drawer == .subcategory { drawer = nil }
+    }
+
+    func toggleDrawer(_ target: EntryDrawer) {
+        inputText = ""
+        if target == .subcategory { autoFocusSubcategory = true }
+        drawer = drawer == target ? nil : target
+    }
+
+    func toggleRepeat() {
+        draft.repeatMonthly.toggle()
+        if draft.repeatMonthly { draft.exception = nil }
+        fixtureRepeatDay = nil
+        drawer = nil
+    }
+
+    func cycleException() {
+        switch draft.exception {
+        case nil: draft.exception = .reserve
+        case .reserve: draft.exception = .reimbursement
+        case .reimbursement: draft.exception = .split
+        case .split: draft.exception = nil
+        }
+        if draft.exception != nil { draft.repeatMonthly = false }
+        if drawer == .split && draft.exception != .split { drawer = nil }
+    }
+
+    var dayLabel: String {
+        fixtureDayLabel ?? EntrySheetDraft.dayLabel(for: draft.date, now: now)
+    }
+
+    func setDate(_ value: Date) {
+        draft.date = value
+        fixtureDayLabel = nil
+        drawer = nil
+    }
+
+    func selectAccount(_ id: UUID, destination: Bool) {
+        if destination {
+            draft.destinationID = id
+        } else {
+            if draft.isRoute && draft.destinationID == id { draft.destinationID = draft.accountID }
+            draft.accountID = id
+        }
+        normalizeAccounts()
+        if !canRepeat { draft.repeatMonthly = false }
+        drawer = nil
+    }
+
+    func dismissCategoryPanel() {
+        drawer = nil
+        categoryEditing = false
+        categoryPanel = false
+    }
+
+    func renameCategory() {
+        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let category = draft.category, !name.isEmpty else { return }
+        if name == category { drawer = nil; return }
+        let income = draft.nature.categoryIncome
+        if mutateLedger("编辑分类", { try CategoryModel.rename(category, to: name, income: income, in: &$0) }) {
+            draft.category = name
+            drawer = nil
+        }
+    }
+
+    func addCategory() {
+        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let new = YubaiCore.Category(name, income: draft.nature.categoryIncome)
+        if mutateLedger("添加分类", { try CategoryModel.add(new, in: &$0) }) {
+            select(category: name)
+            drawer = nil
+        }
+    }
+
+    func addSubcategory() {
+        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let category = draft.category, !name.isEmpty else { return }
+        let income = draft.nature.categoryIncome
+        if mutateLedger("添加小类", { try CategoryModel.addSubcategory(name, to: category, income: income, in: &$0) }) {
+            draft.subcategory = name
+            drawer = nil
+        }
+    }
+
+    private func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
+        if let store { return store.update(reason, entryMotion: false, showToast: false, update) }
+        do { try update(&fixtureLedger); return true }
+        catch { failure = error.localizedDescription; return false }
+    }
+
+    private func input(category: CategoryAssignment?) -> EntrySaveInput? {
+        guard let accountID = draft.accountID, draft.expression.canSave else { return nil }
+        guard draft.currency == .cny || (signedRate != nil && (localMoney ?? 0) > 0) else { return nil }
+        var input = EntrySaveInput(type: draft.type, amountCents: money, currency: draft.currency, exchangeRate: signedRate,
+            purpose: draft.purpose, category: category?.category ?? Classification.pendingCategory,
+            subcategory: category?.subcategory, accountID: accountID, destinationAccountID: draft.destinationID,
+            date: draft.date, repeatMonthly: draft.repeatMonthly && canRepeat, exception: draft.exception,
+            incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: draft.originalNature,
+            relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings, preserveTime: editingID != nil)
+        if let people = draft.recoveryParticipants, let localMoney,
+           people.reduce(Int64(0), { $0 + $1.amount }) == localMoney - myShare {
+            input.recoveryParticipants = editingID == nil
+                ? people.map { RecoveryParticipant(name: $0.name, amount: $0.amount) }
+                : people
+        }
+        return input
+    }
+
+    private var selectedCategory: CategoryAssignment? {
+        draft.category.map { CategoryAssignment(category: $0, subcategory: draft.subcategory) }
+    }
+
+    func schedulePreview() {
+        previewTask?.cancel()
+        let ledger = ledger
+        let now = now
+        let selection = selectedCategory
+        let currentInput = input(category: selection)
+        let purpose = draft.purpose
+        let date = draft.date
+        let nature = draft.nature
+        let needsGuess = !draft.isRoute && selection == nil && !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if !needsGuess { suggestion = nil }
+        if currentInput?.exception == nil, currentInput?.repeatMonthly != true { effect = nil }
+        previewTask = Task { [weak self] in
+            do { try await Task.sleep(for: EntrySpec.inputDebounce) }
+            catch { return }
+            let computation = Task.detached(priority: .userInitiated) {
+                let guess = needsGuess ? CategoryGuesser.guess(purpose, nature: nature, date: date, in: ledger) : nil
+                var resolved = currentInput
+                if let guess {
+                    resolved?.category = guess.category
+                    resolved?.subcategory = guess.subcategory
+                }
+                return (guess, resolved.flatMap { EntrySaveMapper.effect(for: $0, in: ledger, now: now) })
+            }
+            let (guess, preview) = await withTaskCancellationHandler {
+                await computation.value
+            } onCancel: { computation.cancel() }
+            guard !Task.isCancelled else { return }
+            self?.suggestion = guess
+            self?.effect = preview
+        }
+    }
+
+    func cancelPreview() {
+        previewTask?.cancel()
+        previewTask = nil
+    }
+
+    func pressAmountKey(_ key: String) {
+        if shouldReplacePrefill && (key.first?.isNumber == true || key == ".") { draft.expression.reset() }
+        shouldReplacePrefill = false
+        draft.expression.press(key)
+    }
+
+    func save() -> Bool {
+        guard !didSave, draft.expression.canSave else { return false }
+        if let store, let editingID, categoryOnly {
+            guard let selection = selectedCategory else { return false }
+            let result = store.update("改分类") { try CategoryModel.confirm(selection, entryIDs: [editingID], in: &$0) }
+            didSave = result
+            return result
+        }
+        let selection = selectedCategory ?? (draft.isRoute ? nil :
+            CategoryGuesser.guess(draft.purpose, nature: draft.nature, date: draft.date, in: ledger))
+        if editingID == nil, !draft.isRoute, selection == nil, draft.relatedEntryID == nil {
+            categoryPulse &+= 1
+            return false
+        }
+        guard let input = input(category: selection) else {
+            failure = draft.accountID == nil ? "先选择一个账户。" : "请核对金额或汇率。"
+            return false
+        }
+        let now = now
+        let userSelected = selectedCategory != nil
+        if let store, let editingID {
+            let result = store.update("编辑") { try EntrySaveMapper.edit(editingID, input: input, in: &$0, now: now) }
+            didSave = result
+            return result
+        }
+        do {
+            let change = try EntrySaveMapper.makeChange(input, in: ledger, now: now)
+            func apply(_ ledger: inout Ledger) throws {
+                _ = try change.apply(to: &ledger)
+                guard userSelected, let selection else { return }
+                for case .addEntry(let added) in change.items {
+                    guard ledger.entries.first(where: { $0.id == added.id })?.relatedEntryID == nil,
+                          SubcategoryClassifier.valid(selection, in: ledger, nature: added.nature) else { continue }
+                    try CategoryModel.confirm(selection, entryIDs: [added.id], in: &ledger)
+                }
+            }
+            let saved: Bool
+            if let store {
+                saved = store.update("记一笔", apply)
+                if saved {
+                    if !isPrefilled { store.retainedEntryDraft = nil }
+                    store.lastEntryType = draft.type
+                    store.lastEntryAccountID = draft.accountID
+                }
+            } else {
+                try apply(&fixtureLedger)
+                saved = true
+            }
+            didSave = saved
+            return saved
+        } catch {
+            failure = error.localizedDescription
+            return false
+        }
+    }
+
+    #if DEBUG
+    func restoreFixtureDraft(_ previous: EntrySheetViewModel) {
+        fixtureLedger = previous.fixtureLedger
+        if previous.didSave || !previous.draft.hasContent {
+            var fresh = EntrySheetDraft()
+            fresh.type = previous.draft.type
+            fresh.accountID = previous.draft.accountID
+            fresh.date = now
+            draft = fresh
+        } else {
+            draft = previous.draft
+        }
+        drawer = nil
+        categoryPanel = false
+        normalizeAccounts()
+    }
+    #endif
+
+    func retainDraft() {
+        guard let store, editingID == nil, !didSave, !isPrefilled || draft.hasContent else { return }
+        store.retainedEntryDraft = draft.hasContent ? draft : nil
+    }
+}

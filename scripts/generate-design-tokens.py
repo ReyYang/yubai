@@ -72,13 +72,20 @@ def theme(data):
     lines += ['    }', '', '    enum Material {', '        struct Descriptor {', '            let swift: String', '            let fallbackName: String', f'            var fallback: SwiftUI.Material {{ .{data["material"]["bar"]["fallback"].removesuffix("Material")} }}', '        }']
     for name, token in items(data['material']):
         lines += [f"        /// {token['usage']}", f'        static let {camel(name)} = Descriptor(swift: {literal(token["swift"])}, fallbackName: {literal(token["fallback"])})']
-    lines += ['    }', '', '    enum Icon {']
-    for name, symbol in items(data['icon']['symbols']):
-        lines += [f'        static let {camel(name)} = {literal(symbol)}']
-    lines += ['        enum Weight {']
-    for name, weight in items(data['icon']['weight']):
-        lines += [f'            static let {camel(name)}: SwiftUI.Font.Weight = .{weight}']
-    lines += ['        }', '    }', '',
+    lines += ['    }', '', '    enum Icon: String, CaseIterable, Identifiable, Sendable {']
+    glyphs = list(items(data['icon']['glyphs']))
+    for name, _ in glyphs:
+        lines += [f'        case {camel(name)} = {literal(name)}']
+    lines += ['', '        var id: String { rawValue }',
+              f'        static let grid: CGFloat = {data["icon"]["grid"]}',
+              f'        static let outline: CGFloat = {data["icon"]["outline"]}',
+              '', '        var phosphor: String {', '            switch self {']
+    for name, token in glyphs:
+        lines += [f'            case .{camel(name)}: {literal(token["phosphor"])}']
+    lines += ['            }', '        }', '', '        var pathData: String {', '            switch self {']
+    for name, token in glyphs:
+        lines += [f'            case .{camel(name)}: {literal(token["d"])}']
+    lines += ['            }', '        }', '    }', '',
               '    private static func adaptive(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> SwiftUI.Color {',
               '        #if os(iOS)',
               '        return SwiftUI.Color(uiColor: UIColor(dynamicProvider: { traits in',

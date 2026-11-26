@@ -79,6 +79,15 @@ class TokenGenerationTests(unittest.TestCase):
         self.assertIn('tracking: -0.3', self.outputs['DSTheme.swift'])
         self.assertIn('Capsule(style: .continuous)', self.outputs['DSTheme.swift'])
 
+    def test_icons_emit_all_glyphs_with_path_data(self):
+        theme = self.outputs['DSTheme.swift']
+        self.assertIn('enum Icon: String, CaseIterable, Identifiable, Sendable', theme)
+        self.assertIn('static let grid: CGFloat = 256', theme)
+        self.assertIn('static let outline: CGFloat = 6', theme)
+        for name, token in GEN.items(self.data['icon']['glyphs']):
+            self.assertIn(f'case {GEN.camel(name)} = {GEN.literal(name)}', theme)
+            self.assertIn(GEN.literal(token['d']), theme)
+
     def test_shadow_has_four_fields_and_separate_scheme_opacity(self):
         theme = self.outputs['DSTheme.swift']
         shadow = theme.split('struct Shadow {', 1)[1].split('enum Material', 1)[0]
@@ -130,7 +139,7 @@ class HostedProjectTests(unittest.TestCase):
         self.assertIn(ident('snapshot-link'), obj('snapshot-frameworks'))
         self.assertIn('BUNDLE_LOADER = "$(TEST_HOST)"', obj('snapshot-config:Debug'))
         self.assertIn('TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Yubai.app/Yubai"', obj('snapshot-config:Debug'))
-        for file in ('DSTheme.swift', 'DSMotion.swift', 'DSStyle.swift', 'DSComponents.swift', 'DesignSystemGalleryView.swift'):
+        for file in ('DSTheme.swift', 'DSMotion.swift', 'DSStyle.swift', 'DSComponents.swift', 'DesignSystemGalleryView.swift', 'DSIconView.swift'):
             self.assertIn(ident('Sources/YubaiApp/' + file), pbx)
         testables = ET.parse(paths[1]).findall('./TestAction/Testables/TestableReference/BuildableReference')
         self.assertIn('YubaiDesignSystemTests', [element.attrib['BlueprintName'] for element in testables])

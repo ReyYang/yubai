@@ -106,15 +106,15 @@ class YubaiUITestCase: XCTestCase {
             ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear",
              "coverFromReserve", "deficitKeep", "saveMemory", "addEntry", "manageQuickRepeats", "takeSavings", "putBackSavings",
-             "confirmSavingsTransfer", "amountSheetCancel", "butlerAICorrectionSave"].contains(identifier) {
+             "confirmSavingsTransfer", "amountSheetCancel", "cancelBudgetKeypad", "deleteBudgetKeypad",
+             "openAssistantHub", "openButlerInbox", "butlerAICorrectionSave"].contains(identifier) {
             query = app.buttons
-        } else if ["butlerAIText", "ledgerStatus", "reserveTotal"].contains(identifier) { query = app.staticTexts }
+        } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
         else if ["mainNavigation", "rootHeaderRegion", "quickRepeatMenu", "savingsTransferSheet", "savingsTransferPreview",
                  "transferSavedPreview", "transferAvailablePreview", "amountSheetAmount", "fixedBottomBar"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
         else if ["entriesSearch", "frequentEntryPurpose"].contains(identifier) { query = app.textFields }
         else if ["butlerAICorrectionText", "memoryText"].contains(identifier) { query = app.textViews }
-        else if identifier == "entriesScroll" { query = app.collectionViews }
-        else if ["formulaPage", "savingTabScroll", "whereCategoryPage", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
+        else if ["entriesScroll", "formulaPage", "savingTabScroll", "whereCategoryPage", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
             query = app.scrollViews
         } else { query = app.descendants(matching: .any) }
         let target = query.matching(identifier: identifier).firstMatch

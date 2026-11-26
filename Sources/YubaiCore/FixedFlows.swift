@@ -123,15 +123,39 @@ extension FixedFlows {
         var preview = ledger; try change.apply(to: &preview)
         return change
     }
+    private static func settlementDestination(for plan: Plan, in ledger: Ledger) -> UUID? {
+        guard plan.nature.paired else { return nil }
+        if let id = plan.otherAccountID { return id }
+        // Older investment plans stored the destination only on their first payment.
+        guard plan.nature == .investBuy else { return nil }
+        let linked = Set(ledger.activeEntries.lazy.filter { $0.planID == plan.id && $0.nature == .investBuy }
+            .compactMap(\.otherAccountID))
+        return linked.count == 1 ? linked.first : nil
+    }
+
+    private static func canSettle(_ plan: Plan, source: UUID, destination: UUID?, in ledger: Ledger) -> Bool {
+        guard let destination else { return plan.nature != .investBuy }
+        guard destination != source, let target = ledger.accounts.first(where: { $0.id == destination }) else { return false }
+        guard let required = plan.nature.requiredPairedDestination else { return true }
+        return target.kind == required && ledger.accounts.contains {
+            $0.id == source && ($0.kind == .cash || $0.kind == .bank)
+        }
+    }
+
     public static func settle(planID: UUID, occurrence: Date, amount: Int64? = nil, accountID: UUID? = nil, in ledger: Ledger, now: Date = Dates.now) throws -> ChangeSet {
         guard let plan = ledger.plans.first(where: { $0.id == planID && $0.active }), plan.occurrenceIndex(on: occurrence) != nil else { throw YubaiError.invalid("找不到这期固定收付。") }
         let payments = FixedFlowPayments(in: ledger, now: now); let remaining = payments.remaining(for: plan, on: occurrence)
         guard remaining > 0 else { throw YubaiError.invalid(plan.inflow ? "这期已经收到了。" : "这期已经付了。") }
         guard let account = accountID ?? plan.accountID ?? ManualBookkeeping.defaultAccount(in: ledger, nature: plan.nature)?.id else { throw YubaiError.invalid("先添加一个收付款账户。") }
+        let destination = settlementDestination(for: plan, in: ledger)
+        guard canSettle(plan, source: account, destination: destination, in: ledger) else {
+            throw YubaiError.invalid("请核对固定收付的目标账户。")
+        }
         let day = Dates.day(occurrence); let today = Dates.day(now)
-        let draft = EntryDraft(date: ManualBookkeeping.entryDate(for: min(day, today), now: now), amount: amount ?? remaining,
+        var draft = EntryDraft(date: ManualBookkeeping.entryDate(for: min(day, today), now: now), amount: amount ?? remaining,
                                amountConfirmed: true, nature: plan.nature, accountID: account, title: plan.title, category: plan.category,
                                planID: plan.id, occurrence: day, intoFixedSavings: plan.intoFixedSavings)
+        draft.otherAccountID = destination
         let c = Dates.calendar; let label = "\(c.component(.month, from: day))月\(c.component(.day, from: day))日"
         var change = ChangeSet(source: "用户操作", reason: "「\(plan.title)」\(label)这期" + (plan.inflow ? "收到了" : "付了"), items: [.addEntry(draft)])
         change.createdAt = now
@@ -174,9 +198,12 @@ extension FixedFlows {
                   !scheduled.contains(FixedFlowPaymentKey(id: id, day: Dates.day(occurrence.date))),
                   ledger.accounts.contains(where: { $0.id == account }),
                   Dates.day(occurrence.date) >= Dates.day(plan.autoPaySince ?? plan.dueDate), Dates.day(occurrence.date) <= today else { return nil }
-            let draft = EntryDraft(date: ManualBookkeeping.entryDate(for: Dates.day(occurrence.date), now: now), amount: occurrence.amount,
+            let destination = settlementDestination(for: plan, in: ledger)
+            guard canSettle(plan, source: account, destination: destination, in: ledger) else { return nil }
+            var draft = EntryDraft(date: ManualBookkeeping.entryDate(for: Dates.day(occurrence.date), now: now), amount: occurrence.amount,
                                    amountConfirmed: true, nature: plan.nature, accountID: account, title: plan.title, category: plan.category,
                                    planID: id, occurrence: Dates.day(occurrence.date), intoFixedSavings: plan.intoFixedSavings)
+            draft.otherAccountID = destination
             return .addEntry(draft)
         }
         guard !items.isEmpty else { return nil }
@@ -268,6 +295,7 @@ extension FixedFlows {
         }
         let distance = abs(Dates.calendar.dateComponents([.day], from: Dates.day(entry.date), to: Dates.day(occurrence)).day ?? Int.max)
         return distance <= 3 && entry.nature == plan.nature &&
+            (plan.otherAccountID == nil || entry.otherAccountID == plan.otherAccountID) &&
             (entry.amount == amount || (overlap(entry, plan) && (plan.estimated || abs(entry.amount - amount) <= amount / 10)) || (allowEstimateWithoutName && plan.estimated))
     }
     public static func matchingEntries(planID: UUID, occurrence: Date, in ledger: Ledger, now: Date) -> [Entry] {
@@ -289,7 +317,8 @@ extension FixedFlows {
     public static func linkCandidates(planID: UUID, in ledger: Ledger, now: Date) -> [Entry] {
         guard let plan = ledger.plans.first(where: { $0.id == planID }) else { return [] }
         let from = Dates.addDays(-45, to: now)
-        return ledger.entries.filter { $0.deletedAt == nil && $0.date >= from && $0.date <= now && $0.planID == nil && $0.rentID == nil && $0.nature == plan.nature && !$0.fromReserve }
+        return ledger.entries.filter { $0.deletedAt == nil && $0.date >= from && $0.date <= now && $0.planID == nil && $0.rentID == nil && $0.nature == plan.nature && !$0.fromReserve &&
+            (plan.otherAccountID == nil || $0.otherAccountID == plan.otherAccountID) }
             .sorted { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date > $1.date }
     }
     public static func markPaid(planID: UUID, occurrence: Date, with entryID: UUID, in ledger: inout Ledger) throws {
@@ -297,6 +326,7 @@ extension FixedFlows {
               ledger.plans[p].occurrenceIndex(on: occurrence) != nil, !ledger.plans[p].isSkipped(on: occurrence),
               ledger.entries[e].planID == nil, ledger.entries[e].rentID == nil, !ledger.entries[e].fromReserve,
               ledger.entries[e].nature == ledger.plans[p].nature,
+              ledger.plans[p].otherAccountID == nil || ledger.plans[p].otherAccountID == ledger.entries[e].otherAccountID,
               FixedFlowPayments(in: ledger).remaining(for: ledger.plans[p], on: occurrence) > 0 else {
             throw YubaiError.invalid("找不到这期固定收付。")
         }
