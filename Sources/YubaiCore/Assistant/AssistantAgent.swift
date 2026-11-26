@@ -20,6 +20,10 @@ public struct AssistantReply: Equatable, Sendable {
     public let evidenceEntryIDs: [UUID]
     public let toolTrace: [AssistantToolTrace]
     public let unverifiedAmounts: [String]
+    public init(proposedChangeSets: [ChangeSet], text: String, evidenceEntryIDs: [UUID] = [], toolTrace: [AssistantToolTrace] = [], unverifiedAmounts: [String] = []) {
+        self.proposedChangeSets = proposedChangeSets; self.text = text; self.evidenceEntryIDs = evidenceEntryIDs
+        self.toolTrace = toolTrace; self.unverifiedAmounts = unverifiedAmounts
+    }
 }
 
 public struct AssistantAgent: Sendable {

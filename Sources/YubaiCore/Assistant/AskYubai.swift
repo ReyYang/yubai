@@ -8,6 +8,10 @@ public struct PurchaseJudgment: Equatable, Sendable {
     public var subcategory: String? = nil
     public let hasProfile: Bool
     public let facts: JSONValue
+    public init(title: String, amount: Int64, category: String?, subcategory: String? = nil, hasProfile: Bool, facts: JSONValue, usedMemoryIDs: [UUID] = []) {
+        self.title = title; self.amount = amount; self.category = category; self.subcategory = subcategory
+        self.hasProfile = hasProfile; self.facts = facts; self.usedMemoryIDs = usedMemoryIDs
+    }
 }
 public struct JudgePurchaseTool: AssistantTool {
     public init() {}

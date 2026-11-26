@@ -237,7 +237,7 @@ struct CloudSendLogView: View {
                     .accessibilityHint("发送记录只存在本机内存，关掉应用就清空；汇总图仅包含保留的记录")
             }
             if groups.isEmpty {
-                EmptyState("paperplane", "还没有发送记录", action: "问余白", onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyCloudSendLog")
+                EmptyState("paperplane", "还没有发送记录", action: "问余白", onAction: { store.openAsk() }).accessibilityIdentifier("emptyCloudSendLog")
             } else {
                 summaryCard
                 Segmented(choices: [(false, "全部"), (true, "没成功 \(groups.filter(\.hasFailure).count)")], selection: $onlyFailures).accessibilityIdentifier("cloudLogFilter")

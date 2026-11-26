@@ -9,6 +9,9 @@ import Network
     private var monitor: NWPathMonitor?
     private var generation = UUID()
     func start() {
+        #if DEBUG
+        if AskFixture.current != nil { connected = true; return }
+        #endif
         #if DEBUG && targetEnvironment(simulator)
         if UITestSupport.script != nil { connected = true; return }
         #endif

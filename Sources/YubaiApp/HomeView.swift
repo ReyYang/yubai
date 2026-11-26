@@ -86,8 +86,8 @@ struct HomeView: View {
                  openBudget: { store.tabRouteRequest = .formula },
                  openSettings: { store.tabRouteRequest = .settings },
                  openBill: { store.billCardID = $0 },
-                 openAsk: { store.tabRouteRequest = .askDraft($0) },
-                 openVoice: { store.tabRouteRequest = .askDraft("") },
+                 openAsk: { store.openAsk($0, send: true) },
+                 openVoice: { store.openAsk(voice: true) },
                  recordSalary: { store.requestCaptureSheet(.prefilledEntry(.init(category: nil, amount: nil, purpose: "工资", nature: .income))) },
                  cover: { amount in
                      _ = store.update("补上") { try Reserve.transfer(.take, amount: amount, in: &$0, now: store.financialNow) }

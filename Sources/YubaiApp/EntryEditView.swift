@@ -233,7 +233,7 @@ struct EntryEditForm: View {
             let subject = clean.isEmpty ? draft.displayTitle : clean
             let cents = currentAmount > 0 ? currentAmount : draft.amount
             let question = "\(subject)，\(Money.text(cents))，该不该买？"
-            store.sheetSource = nil; store.sheet = .ask(question)
+            store.requestCaptureSheet(.ask(question))
         } label: {
             HStack(spacing: YubaiSpace.space8) {
                 AssistantMark(size: YubaiFont.navTitle.size, color: YubaiColor.brandInk)

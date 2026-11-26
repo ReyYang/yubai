@@ -142,6 +142,6 @@ struct YubaiTabView: View {
     }
     private func openQuestion(_ text: String) {
         focused = false
-        store.tabRouteRequest = .askQuestion(text)
+        store.openAsk(text, send: true)
     }
 }

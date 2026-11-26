@@ -39,7 +39,7 @@ enum TabRoute: Hashable {
     case weekly(UUID?), whereCategory(title: String, categories: [String], isOther: Bool, selection: OverviewPeriodSelection), memories
     case entryDetail(UUID)
     case assets, accountDetail(UUID), overviewBills(Set<String>, DateInterval, Set<UUID>)
-    case categoryBudget(String), savingWish(UUID), askQuestion(String), askDraft(String), assistantHub
+    case categoryBudget(String), savingWish(UUID), assistantHub
     case yearlyBills, saving, cycleBills
     case butlerEvidence(UUID), butlerEvidenceEntries(UUID)
     case recurring, categorySettings, aiSettings, currency, notices, accountEdit(UUID)
@@ -106,7 +106,7 @@ enum AppSheet: Identifiable {
     private(set) var ledger = Ledger() {
         didSet {
             if oldValue.id != ledger.id {
-                askConversation = AskConversationState()
+                ask.reset(); askRequest = nil
                 resetRootNavigation()
             }
             if oldValue != ledger { invalidateDerived() }
@@ -547,7 +547,13 @@ enum AppSheet: Identifiable {
     #if os(iOS)
     var pagingLocked = false
     #endif
-    var askConversation = AskConversationState()
+    let ask = AskController()
+    /// 问余白 is open. Set through `openAsk`.
+    var askRequest: AskRequest?
+    func openAsk(_ text: String = "", send: Bool = false, voice: Bool = false) {
+        guard !locked else { return }
+        askRequest = AskRequest(text: text, send: send, voice: voice)
+    }
     var rootScrollRequest: [Destination: Int] = [:]
     var sheet: AppSheet?; var error: String?
     var entrySheet: EntrySheetViewModel?
@@ -684,8 +690,14 @@ enum AppSheet: Identifiable {
             return
         }
         if let fixture = HomeFixture.current {
-            let seed = fixture.makeLedger()
+            var seed = fixture.makeLedger()
+            let askMessages = AskFixture.current?.seed(&seed.ledger, now: fixture.now)
             ledger = seed.ledger
+            // After the ledger: a new ledger id resets the conversation.
+            if let askFixture = AskFixture.current, let askMessages {
+                ask.seed(askMessages)
+                if askFixture.opensSheet { askRequest = AskRequest() }
+            }
             loadingLedger = false
             billCardID = seed.billID
             tabRouteRequest = fixture.initialRoute
@@ -1111,7 +1123,7 @@ enum AppSheet: Identifiable {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked)
-                Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked)
+                Button("问余白") { store.openAsk() }.keyboardShortcut("k").disabled(store.locked)
             }
             CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
         }
@@ -1167,6 +1179,7 @@ struct RootView: View {
     @State private var tabBarHeight = HomeSpec.tabHeight
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     private var toastBottomPadding: CGFloat {
+        if store.askRequest != nil { return keyboardVisible ? YubaiSpace.none : AskSpec.composerHeight }
         if keyboardVisible || tabBarHidden { return YubaiSpace.none }
         return tabBarHeight
     }
@@ -1183,7 +1196,7 @@ struct RootView: View {
                 else if store.needsOnboarding { OnboardView().transition(.opacity) }
                 else { mainContentWithInboxLifecycle }
             }
-            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.showsOverviewOverlay) && !store.locked)
+            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.showsOverviewOverlay || store.askRequest != nil) && !store.locked)
             .allowsHitTesting((store.entrySheet == nil && store.billCardID == nil && !store.showsOverviewOverlay) || store.locked)
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
@@ -1208,6 +1221,7 @@ struct RootView: View {
         .yubaiFont(YubaiFont.body).buttonStyle(TextLinkStyle()).toggleStyle(RowToggleStyle()).foregroundStyle(YubaiColor.label).background { PaperCanvas() }
         .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
+        .modifier(AskOverlayHost())
         .overlay(alignment: .bottom) {
             if !store.locked, !store.showsOverviewOverlay, store.entrySheet == nil, let notice = store.unsortedUndo {
                 Toast(text: HomeButler.privacyText(notice.label, hidden: store.preferences.hideAmounts), onUndo: { store.undoUnsorted(notice.id) }, onDismiss: {
@@ -1255,11 +1269,11 @@ struct RootView: View {
             guard !store.loadingLedger, !store.isDesignFixture else { return }
             if newValue == .background { store.flushBeforeSuspension() }
             if newValue == .active {
-                store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
+                store.purgeExpiredEntries(); store.ask.expireIfNeeded(ledgerID: store.current.id); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
-                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.toast = nil; store.locked = true
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true
             }
         }
         .task(id: phase == .active && !store.locked) {
@@ -1484,8 +1498,6 @@ struct RootView: View {
         case .butlerEvidenceEntries(let id): ButlerSuggestionEntriesPage(suggestionID: id)
         case .categoryBudget(let category): BudgetDetailView(initialCategory: category)
         case .savingWish(let id): WishlistView(focusedWishID: id)
-        case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
-        case .askDraft(let text): AskYubaiView(initialText: text)
         case .budget: BudgetDetailView(startsEditing: true)
         case .assistantHub: YubaiTabView(asDestination: true)
         case .billDetail(let id): BillDetailView(planID: id)
@@ -1554,7 +1566,7 @@ struct RootView: View {
         case .editPlan(let id): FixedFlowEditor(planID: id)
         case .imports: ImportView()
         case .accounts: AccountsView()
-        case .ask(let text): AskYubaiView(initialText: text)
+        case .ask: EmptyView()
         case .wishlist(let id): WishlistView(focusedWishID: id).manualSheetHeader("心愿单", cancelTitle: "关闭", showsAction: false)
         case .backup: BackupView()
         case .history: RecoveryVersionsView()
@@ -1624,6 +1636,17 @@ private struct WeeklyPushTask: ViewModifier {
             await store.waitForLedger()
             guard !Task.isCancelled else { return }
             await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush, time: store.preferences.reviewTime)
+        }
+    }
+}
+/// 问余白 above the page and its bar, under the toast and the entry editor it can open.
+private struct AskOverlayHost: ViewModifier {
+    @Environment(AppStore.self) private var store
+    func body(content: Content) -> some View {
+        content.overlay {
+            if !store.locked, let request = store.askRequest {
+                AskSheetOverlay(request: request, close: { if store.askRequest?.id == request.id { store.askRequest = nil } }).id(request.id)
+            }
         }
     }
 }

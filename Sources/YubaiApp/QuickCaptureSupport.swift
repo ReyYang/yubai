@@ -45,6 +45,7 @@ extension AppStore {
             switch next {
             case .addEntry: openEntrySheet()
             case .prefilledEntry(let prefill): openEntrySheet(prefill)
+            case .ask(let text): openAsk(text, send: !text.isEmpty)
             case .editEntry(let id):
                 if let entry = current.entries.first(where: { $0.id == id && $0.deletedAt == nil }) { openBillEditor(entry) }
                 else { error = "找不到账单。" }

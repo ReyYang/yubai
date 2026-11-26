@@ -171,6 +171,8 @@ import UIKit
     static let cloud = CloudAIStatus()
     static var isConfigured: Bool {
         #if DEBUG && targetEnvironment(simulator)
+        // Fixture boards stand in for a saved fake key; no request is sent from them.
+        if let fixture = AskFixture.current, UITestSupport.script == nil { return fixture.aiConnected }
         if let configured = UITestSupport.configuredKeyOverride { return configured }
         #endif
         return cloud.configured

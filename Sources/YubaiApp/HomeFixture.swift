@@ -18,6 +18,8 @@ enum HomeFixture: Equatable {
             return args[index + 1]
         }
         if let mode = value("-YubaiHomeFixture").flatMap(Home.init(rawValue:)) { return .home(mode) }
+        // 问余白 boards sit on the home normal board.
+        if value("-YubaiAskFixture") != nil { return .home(.normal) }
         if let mode = value("-YubaiBudgetFixture").flatMap(Budget.init(rawValue:)) { return .budget(mode) }
         if let mode = value("-YubaiBillFixture").flatMap(Bill.init(rawValue:)) {
             return .bill(mode, menu: args.contains("-YubaiBillMenu"))

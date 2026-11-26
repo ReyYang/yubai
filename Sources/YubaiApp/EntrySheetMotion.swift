@@ -157,6 +157,8 @@ struct EntrySheetPositionModifier: ViewModifier {
     let reduced: Bool
     let onClose: () -> Void
     var tracksOverview = false
+    /// What shows under the sheet when it is pulled above its rest position.
+    var fill = DS.Color.tray
 
     func body(content: Content) -> some View {
         TimelineView(.animation(paused: motion.flight == nil)) { tick in
@@ -166,7 +168,7 @@ struct EntrySheetPositionModifier: ViewModifier {
             content
                 .offset(y: y)
                 .background(alignment: .bottom) {
-                    if y < 0 { DS.Color.tray.frame(height: -y).allowsHitTesting(false) }
+                    if y < 0 { fill.frame(height: -y).allowsHitTesting(false) }
                 }
                 .opacity(motion.opacity)
         }
