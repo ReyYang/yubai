@@ -110,7 +110,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
         launch("v47-spend"); tap("fundsFormula"); tap("formulaRow_bills")
         tap("editFixedFlow_47000000-0000-0000-0000-000000471040"); tap("billDetailAmount")
         XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5))
-        tap("cancelManualSheet"); gone("fixedFlowTitle"); back(); back()
+        dismissNativeSheet(in: app); gone("fixedFlowTitle"); back(); back()
         tap("formulaRow_spent"); tap("ledgerEntry_47000000-0000-0000-0000-000000471100"); tap("billMore"); tap("entryDetailEdit")
         XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
         XCTAssertEqual(element("entryKeypadAmount").value as? String, "24.00")
@@ -179,9 +179,9 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     func testTakePreviewUpdatesBothTotalsAndSharedUndoRestoresThem() {
         launch(); let home = amount("fundsFormula"); saved(); tap("takeSavings"); keys("500")
         let confirm = element("confirmSavingsTransfer")
-        XCTAssertTrue(waitForStableFrame(element("amountSheetCancel")))
-        XCTAssertGreaterThanOrEqual(element("amountSheetCancel").frame.height, 44)
-        XCTAssertLessThan(element("amountSheetCancel").frame.maxY, element("amountSheetAmount").frame.minY)
+        XCTAssertTrue(waitForStableFrame(element("nativeSheetHeader")))
+        XCTAssertFalse(app.buttons["取消"].exists)
+        XCTAssertLessThan(element("nativeSheetHeader").frame.maxY, element("amountSheetAmount").frame.minY)
         XCTAssertLessThan(element("amountSheetAmount").frame.maxY, element("transferSavedPreview").frame.minY)
         XCTAssertLessThanOrEqual(element("transferAvailablePreview").frame.maxY, confirm.frame.minY)
         XCTAssertLessThan(confirm.frame.maxY, element("keypad_1").frame.minY)
@@ -204,7 +204,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
             launch(); saved(); tap(button); keys(value)
             XCTAssertFalse(element("confirmSavingsTransfer").isEnabled)
             XCTAssertFalse(app.alerts.firstMatch.exists)
-            tap("amountSheetCancel"); XCTAssertEqual(amount("reserveTotal"), 500_000)
+            dismissNativeSheet(in: app); XCTAssertEqual(amount("reserveTotal"), 500_000)
         }
     }
     func testDarkPutBackLimitPresentsSettledPreviewAtDefaultAndLargestText() {
@@ -228,7 +228,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
             XCTAssertTrue(waitForNativeTransition(in: app, deadline: deadline))
             XCTAssertTrue(waitForStableFrame(preview, deadline: deadline))
             XCTAssertEqual(app.state, .runningForeground)
-            tap("amountSheetCancel"); XCTAssertEqual(amount("reserveTotal"), 500_000)
+            dismissNativeSheet(in: app); XCTAssertEqual(amount("reserveTotal"), 500_000)
         }
     }
     func testFloorCanBeChangedClearedAndRestoredWithoutChangingMoney() {
@@ -358,7 +358,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
             XCTAssertTrue(element("savingsTransferPreview").exists)
             keys("200")
             XCTAssertTrue(element("confirmSavingsTransfer").isEnabled)
-            tap("amountSheetCancel"); gone("savingsTransferSheet")
+            dismissNativeSheet(in: app); gone("savingsTransferSheet")
             XCTAssertTrue(element("savingsTopupCard").exists)
         }
     }

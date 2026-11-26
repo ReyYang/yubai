@@ -419,6 +419,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         tap("overviewPeriod"); tap("overviewPeriod_custom"); tap("overviewQuick_thisYear"); tap("overviewPeriodApply")
         wait { self.element("overviewPeriod").label.contains("自定义") }
         tap("overviewPeriod"); tap("overviewPeriod_current")
+        XCTAssertTrue(waitForDisappearance(element("reviewPeriodSheet")))
         let category = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "overviewCategory_")).firstMatch
         tapControl(category, in: app)
         XCTAssertTrue(element("whereCategoryEntries").waitForExistence(timeout: 5))
@@ -465,18 +466,17 @@ final class Round47HomeFlowTests: YubaiUITestCase {
                 launch("v47-after", large: large, hidden: hidden, dark: dark)
                 openAssistantHub(); tap("openPaydaySetup")
                 XCTAssertTrue(element("paydaySetupSheet").waitForExistence(timeout: 5))
-                for (title, cancelID) in [("哪天发工资", "paydaySetupCancel"), ("工资", "amountSheetCancel")] {
-                    if cancelID == "amountSheetCancel" { tap("paydaySetupAmount") }
-                    let text = app.staticTexts[title], cancel = element(cancelID)
+                for title in ["哪天发工资", "工资"] {
+                    if title == "工资" { tap("paydaySetupAmount") }
+                    let text = app.staticTexts[title]
                     XCTAssertTrue(waitForStableFrame(text))
                     XCTAssertEqual(text.label, title)
                     XCTAssertGreaterThan(text.frame.width, 0)
                     XCTAssertGreaterThanOrEqual(text.frame.minX, app.windows.firstMatch.frame.minX)
                     XCTAssertLessThanOrEqual(text.frame.maxX, app.windows.firstMatch.frame.maxX)
-                    if large {
-                        XCTAssertGreaterThan(text.frame.height, 22)
-                        XCTAssertLessThanOrEqual(text.frame.maxY, cancel.frame.minY)
-                    } else { XCTAssertEqual(text.frame.midY, cancel.frame.midY, accuracy: 0.5) }
+                    XCTAssertEqual(text.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 2)
+                    if large { XCTAssertGreaterThan(text.frame.height, 22) }
+                    XCTAssertFalse(app.buttons["取消"].exists)
                     XCTAssertNoThrow(try auditAppText(in: app, dynamicType: true) { issue in
                         XCTFail("Shared sheet titles must grow without clipping: " + issue.detailedDescription)
                         return true
@@ -485,9 +485,10 @@ final class Round47HomeFlowTests: YubaiUITestCase {
                     XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
                     XCTAssertTrue(waitForStableFrame(text))
                     XCTAssertEqual(text.label, title)
-                    XCTAssertTrue(cancel.isHittable)
                 }
-                tap("amountSheetCancel"); tap("paydaySetupCancel")
+                dismissNativeSheet(in: app)
+                XCTAssertTrue(waitForDisappearance(element("paydaySetupAmountDone")))
+                dismissNativeSheet(in: app)
                 XCTAssertTrue(waitForDisappearance(element("paydaySetupSheet")))
                 app.terminate()
             }

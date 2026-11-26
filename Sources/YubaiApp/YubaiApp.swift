@@ -1156,7 +1156,7 @@ struct RootView: View {
                 if store.loadingLedger { ProgressView() }
                 else if store.locked { lockedView }
                 else if let failure = store.loadFailure { recoveryView(failure) }
-                else { mainContent }
+                else { mainContentWithInboxLifecycle }
             }
             .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.showsOverviewOverlay) && !store.locked)
             .allowsHitTesting((store.entrySheet == nil && store.billCardID == nil && !store.showsOverviewOverlay) || store.locked)
@@ -1302,6 +1302,14 @@ struct RootView: View {
         .onChange(of: store.locked) { _, value in if !value { Task { await store.configureSync(); store.runCycleMaintenance() }; if store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }; if let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
+    private var mainContentWithInboxLifecycle: some View {
+        mainContent.onChange(of: store.inboxItems.isEmpty, initial: true) { _, empty in
+            if empty, store.tabRouteRequest == nil, tabPaths[store.destination]?.last == .todo {
+                tabPaths[store.destination]?.removeLast()
+            }
+        }
+    }
+
     private func openURL(_ url: URL) {
         if url.scheme?.lowercased() == "yubai" { store.handleCaptureURL(url); return }
         guard url.isFileURL else { return }
@@ -1418,6 +1426,9 @@ struct RootView: View {
             tabPaths[.insights] = []
             store.destination = .insights
         }
+        else if tabPaths[store.destination]?.last == .todo && store.inboxItems.isEmpty {
+            tabPaths[store.destination] = [route]
+        }
         else if route != .saving || tabPaths[store.destination]?.last != .saving {
             // UIKit's scene delegate and SwiftUI can deliver the same saving link.
             tabPaths[store.destination, default: []].append(route)
@@ -1441,7 +1452,7 @@ struct RootView: View {
         case .categoryBudget(let category): BudgetDetailView(initialCategory: category)
         case .savingWish(let id): WishlistView(focusedWishID: id)
         case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
-        case .askDraft(let text): AskYubaiView(initialText: text)
+        case .askDraft(let text): AskYubaiView(initialText: text, focusesDraft: !text.isEmpty)
         case .budget: BudgetDetailView(startsEditing: true)
         case .assistantHub: YubaiTabView(asDestination: true)
         case .billDetail(let id): BillDetailView(planID: id)

@@ -41,7 +41,8 @@ struct ReviewView: View {
                                   delta: hidden ? nil : $0.changePercent.map(OverviewDisplay.percent))
                 }, showsShares: !hidden, hidesAmounts: hidden) { id in
                     if let category = snapshot.slices.first(where: { $0.id == id }) { open(category) }
-                }.accessibilityIdentifier("overviewDonut")
+                }.accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("overviewDonut")
             }
         }.dsFillWidth().accessibilityElement(children: .contain).accessibilityIdentifier("reviewPage")
     }

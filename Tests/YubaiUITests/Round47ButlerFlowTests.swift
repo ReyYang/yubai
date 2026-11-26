@@ -124,10 +124,9 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         for large in [false, true] {
             launch(large: large); tap("butlerAIEvidence"); tap("butlerAIIncorrect")
             typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app)
-            let cancel = element("cancelManualSheet")
-            XCTAssertTrue(cancel.exists && cancel.isHittable)
+            XCTAssertTrue(element("nativeSheetHeader").exists)
             let deadline = ProcessInfo.processInfo.systemUptime + 5
-            cancel.tap()
+            dismissNativeSheet(in: app)
             XCTAssertTrue(UIConditionWait.run(timeout: 3, deadline: deadline, read: {
                 !self.element("butlerAICorrectionText").exists && self.element("butlerAIEvidencePage").exists
             }), "Correction must respond to a second control within five seconds (large=\(large))")
@@ -169,7 +168,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
                 assertBambooReadyForCapture(in: app)
                 XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
                 XCTAssertEqual(app.state, .runningForeground)
-                tap("cancelManualSheet")
+                dismissNativeSheet(in: app)
                 XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
                 XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
                 XCTAssertTrue(element(nested ? "butlerAIEvidencePage" : "butlerSuggestionCard").exists)
@@ -267,7 +266,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             XCTAssertTrue(edit.isHittable)
             XCTAssertFalse(element("memoryText").exists, "A swipe must not activate the pushed editor")
             tapControl(edit, in: app, reveals: false)
-            XCTAssertTrue(element("cancelManualSheet").waitForExistence(timeout: 5))
+            XCTAssertTrue(element("nativeSheetHeader").waitForExistence(timeout: 5))
             try auditFocusedSheet("memoryText")
             element("memoryText").typeText("周四和同事拼单")
             try auditFocusedSheet("memoryText")
@@ -316,7 +315,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             })
             tap("butlerAIIncorrect")
             XCTAssertTrue(waitForKeyboardEditing("butlerAICorrectionText", in: app))
-            tap("cancelManualSheet")
+            dismissNativeSheet(in: app)
             XCTAssertTrue(waitForDisappearance(element("butlerAICorrectionText")))
             tap("butlerAIAccept")
             wait { !self.element("butlerSuggestionCard").exists }
@@ -362,7 +361,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         tap("sendAskHome"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); openAssistantHub()
         tap("askSuggestion_1"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); openAssistantHub()
         tap("openProfile"); XCTAssertTrue(element("emptyState_profile").exists)
-        tap("addPrinciple"); XCTAssertTrue(element("principleText").waitForExistence(timeout: 5)); tap("cancelManualSheet")
+        tap("addPrinciple"); XCTAssertTrue(element("principleText").waitForExistence(timeout: 5)); dismissNativeSheet(in: app)
         openAssistantHub(); tap("openMemories"); XCTAssertTrue(element("emptyState_memories").exists)
         XCTAssertTrue(element("emptyMemories").exists)
     }
@@ -379,9 +378,9 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         tap("openWishlist"); XCTAssertTrue(element("emptyState_wish").exists)
         XCTAssertFalse(element("wishlistSavings").exists)
         tap("emptyAction_wish")
-        XCTAssertTrue(element("wishTitle").waitForExistence(timeout: 5)); tap("cancelManualSheet"); backToRoot()
+        XCTAssertTrue(element("wishTitle").waitForExistence(timeout: 5)); dismissNativeSheet(in: app); backToRoot()
         openAssistantHub(); tap("openFixedFlows"); XCTAssertTrue(element("emptyState_bills").waitForExistence(timeout: 5))
-        tap("emptyAction_bills"); XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5)); tap("cancelManualSheet"); backToRoot()
+        tap("emptyAction_bills"); XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5)); dismissNativeSheet(in: app); backToRoot()
         tap("openSettings"); tap("openSpendingParts")
         XCTAssertTrue(element("spendingPartsPage").exists)
         let category = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'newBudget_'")).firstMatch
@@ -459,7 +458,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
                 XCTAssertTrue((field.value as? String ?? "").contains("午饭"))
                 XCTAssertTrue(waitForKeyboardDismissal(in: app))
                 XCTAssertTrue(element("keypad_1").isHittable)
-                tap("amountSheetCancel")
+                dismissNativeSheet(in: app)
             }
             XCTAssertTrue(element("emptyState_frequent").exists)
             app.terminate()

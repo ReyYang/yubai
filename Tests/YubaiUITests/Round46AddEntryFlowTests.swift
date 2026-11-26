@@ -57,7 +57,7 @@ final class Round46AddEntryFlowTests: YubaiUITestCase {
     }
     func testExplicitFinishRetainsCategoryDateAndAccountAcrossEntries() {
         launch(); tap("addEntry"); tap("entryDate_yesterday"); record("32")
-        XCTAssertEqual(app.buttons["cancelManualSheet"].label, "完成")
+        XCTAssertFalse(app.buttons["取消"].exists)
         XCTAssertEqual(element("entryKeypadAmount").value as? String, "0.00")
         assertStays("entrySessionSummary")
         keys("8"); XCTAssertTrue(app.buttons["entryCategory_餐饮"].isSelected)
@@ -65,7 +65,7 @@ final class Round46AddEntryFlowTests: YubaiUITestCase {
         XCTAssertEqual(app.buttons["entryAccountChip"].value as? String, "招行储蓄卡")
         tap("saveQuickEntry"); wait { self.element("entrySessionSummary").label.contains("已记 2 笔") }
         XCTAssertTrue(element("entrySessionSummary").label.contains("40.00")); XCTAssertFalse(element("toastMessage").exists)
-        tap("cancelManualSheet"); wait { self.element("addEntry").isHittable }
+        dismissEntrySheet(in: app); wait { self.element("addEntry").isHittable }
     }
     func testSessionEditsOneEntryAndRestoresTheUnfinishedDraft() {
         launch(); tap("addEntry"); purpose("咖啡"); record("32")
@@ -121,7 +121,7 @@ final class Round46AddEntryFlowTests: YubaiUITestCase {
         tap("entryNature_transfer"); keys("500")
         XCTAssertTrue(element("entrySavingHint").label.contains("不变"))
         tap("transferDestinationAccount"); XCTAssertTrue(element("entryInlineAccounts").exists)
-        prefix("entryAccountChoice_").tap(); tap("saveQuickEntry"); tap("cancelManualSheet")
+        prefix("entryAccountChoice_").tap(); tap("saveQuickEntry"); dismissEntrySheet(in: app)
         wait { self.element("addEntry").isHittable }
         XCTAssertEqual(element("availableFunds").label, before)
     }

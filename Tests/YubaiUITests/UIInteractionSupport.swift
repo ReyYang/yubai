@@ -106,7 +106,7 @@ class YubaiUITestCase: XCTestCase {
             ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear",
              "coverFromReserve", "deficitKeep", "saveMemory", "addEntry", "manageQuickRepeats", "takeSavings", "putBackSavings",
-             "confirmSavingsTransfer", "amountSheetCancel", "cancelBudgetKeypad", "deleteBudgetKeypad",
+             "confirmSavingsTransfer", "cancelBudgetKeypad", "deleteBudgetKeypad",
              "openAssistantHub", "openButlerInbox", "butlerAICorrectionSave"].contains(identifier) {
             query = app.buttons
         } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
@@ -238,6 +238,35 @@ class YubaiUITestCase: XCTestCase {
             start.press(forDuration: 0.05, thenDragTo: end)
         }
         XCTAssertTrue(waitForDisappearance(amount), "Entry sheet did not dismiss", file: file, line: line)
+    }
+
+    func dismissNativeSheet(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let header = control("nativeSheetHeader", in: app)
+        let surface = control("nativeSheetSurface", in: app)
+        let anchor = header.exists ? header : surface
+        guard anchor.waitForExistence(timeout: 5), waitForStableFrame(anchor) else {
+            XCTFail("Native sheet missing before downward drag", file: file, line: line)
+            return
+        }
+        let window = app.windows.firstMatch
+        let safe = window.frame
+        let frame = anchor.frame
+        let startY = max(safe.minY + 12, frame.minY + (header.exists ? 3 : 8))
+        let endY = min(safe.maxY - 18, startY + safe.height * 0.48)
+        let origin = window.coordinate(withNormalizedOffset: .zero)
+        let start = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: startY - safe.minY))
+        let end = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: endY - safe.minY))
+        start.press(forDuration: 0.05, thenDragTo: end)
+    }
+
+    func dismissCurrentSheet(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        if control("nativeSheetSurface", in: app).exists {
+            dismissNativeSheet(in: app, file: file, line: line)
+        } else if control("entryKeypadAmount", in: app).exists {
+            dismissEntrySheet(in: app, file: file, line: line)
+        } else {
+            tapControl(control("closeSheet", in: app), in: app, file: file, line: line)
+        }
     }
 
     /// Remember the frame already read by the settling helper. Everything else

@@ -4,6 +4,7 @@ import YubaiCore
 struct AccountEditor: View {
     @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
     var account: Account?
+    var isPushed = false
     @State private var name = ""; @State private var kind = AccountKind.bank; @State private var amount = ""
     @State private var at = Dates.now; @State private var verified = true; @State private var note = ""; @State private var limit = ""
     @State private var loaded = false; @State private var reconcileNow = false
@@ -18,7 +19,7 @@ struct AccountEditor: View {
         }.editorForm().manualSheetNavigation()
             .safeAreaInset(edge: .top) {
                 ManualSheetHeader(title: account == nil ? "添加账户" : "对一下余额", enabled: validationError == nil,
-                                  actionIdentifier: "saveAccount", cancel: cancel, action: save).padding(.horizontal, YubaiSpace.space20)
+                                  cancelTitle: isPushed ? "返回" : "取消", actionIdentifier: "saveAccount", cancel: cancel, action: save).padding(.horizontal, YubaiSpace.space20)
             }
             .entryDiscardGuard(dirty: loaded && signature != initialSignature, amount: (try? Money.parse(amount, allowNegative: true)) ?? 0, confirming: $confirmingDiscard)
             .onAppear {
@@ -168,7 +169,7 @@ struct AccountsView: View {
                         .buttonStyle(SecondaryButtonStyle(compact: true)).accessibilityIdentifier("reconcileAll")
                 }
                 if !store.accounts.isEmpty {
-                    NavigationLink { AccountEditor(account: nil) } label: { Text("加一个账户") }
+                    NavigationLink { AccountEditor(account: nil, isPushed: true) } label: { Text("加一个账户") }
                         .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("addAccount")
                 }
             }

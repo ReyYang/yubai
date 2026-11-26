@@ -186,10 +186,7 @@ private struct StoragePhotosSheet: View {
                 Task { if await store.deleteOldScreenshots(months: months, now: now) { dismiss() } }
             }.buttonStyle(DestructiveButtonStyle()).disabled(selected.isEmpty || store.storageBusy || store.syncBusy || store.checkingCloudAvailability || store.organizingPendingImports || store.organizingBatchID != nil).padding(.top, YubaiSpace.gapSection)
                 .accessibilityIdentifier("deleteStoragePhotos")
-            Button { dismiss() } label: {
-                Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
-                    .frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.gapGroup)
+
         }
     }
 }
@@ -235,10 +232,7 @@ private struct StorageEraseSheet: View {
                     .background(YubaiColor.card, in: Capsule()).contentShape(Capsule()).opacity(confirmation == "抹掉" ? 1 : 0.55)
             }.buttonStyle(PressButtonStyle()).disabled(confirmation != "抹掉" || currentRecoveryCount == nil || store.syncBusy || store.checkingCloudAvailability || store.storageBusy)
                 .padding(.top, YubaiSpace.gapGroup).accessibilityIdentifier("eraseDeviceData")
-            Button { dismiss() } label: {
-                Text("取消").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.labelMuted)
-                    .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space8)
+
         }.task(id: backingUp) {
             guard !backingUp else { return }
             if currentRecoveryCount == nil { currentRecoveryCount = recoveryCount }

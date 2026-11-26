@@ -314,7 +314,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
                 XCTAssertTrue(segment.isSelected)
                 XCTAssertEqual(app.buttons.matching(identifier: id).count, 1)
             }
-            tap("amountSheetCancel")
+            dismissNativeSheet(in: app)
         }
     }
     func testLargestDeficitRescueRevealsAboveTheEntryPillAndRemainsUndoable() {
@@ -411,9 +411,11 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     }
     func testMismatchReconciliationRemovesCardAndUpdatesRealDate() {
         launch("v47r-mismatch"); openInbox(); expect("mismatchText", contains: "账面比卡里多 412.00")
-        tap("openReconcile"); reconcile("10174"); expect("overviewValuationDifference", contains: "−412.00")
+        tap("openReconcile"); expect("overviewBookAmount", contains: "9,762.00")
+        reconcile("10174"); expect("overviewValuationDifference", contains: "+412.00")
         tap("reconcileApply"); gone("reconcileSheet"); gone("balanceMismatchCard")
         backToHome(); tap("tab_insights"); tap("overviewSegment_资产"); tap("overviewAccount_招行储蓄卡")
+        expect("overviewAccountBalance", contains: "10,174.00")
         expect("overviewAccountReconciled", contains: "11.20 核对过")
         app.terminate(); launchApp(app); gone("balanceMismatchCard")
     }
@@ -438,7 +440,8 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         for script in ["v47r-next-bill", "v47r-next-quarterly"] {
             launch(script); openInbox(); expect("billHeadsUpText", contains: script == "v47r-next-bill" ? "一年一次" : "一季一次")
             tap("openBillHeadsUp"); XCTAssertTrue(element("billDetailAmount").waitForExistence(timeout: 5))
-            tap("BackButton"); gone("billHeadsUpCard")
+            tap("BackButton"); gone("letterInbox"); gone("billHeadsUpCard")
+            XCTAssertTrue(element("fundsFormula").waitForExistence(timeout: 5))
         }
     }
     func testPaydayTopupUsesBoardButtonsAndRevealsOnlyTheNextCard() {
