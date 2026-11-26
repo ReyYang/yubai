@@ -307,3 +307,14 @@ public enum Onboarding {
         ledger = next
     }
 }
+
+/// 心愿与回顾: the three counts the settings rows show.
+public enum WishesHub {
+    public static func wishCount(in ledger: Ledger) -> Int { ledger.wishlist.filter { $0.status == .thinking }.count }
+    public static func valueCount(in ledger: Ledger) -> Int {
+        ledger.profile.generous.count + ledger.profile.restrain.count + ledger.profile.principles.count
+    }
+    public static func lastLetter(in ledger: Ledger) -> Date? {
+        ledger.cards.filter { $0.kind == .weeklyLetter }.map(\.createdAt).max()
+    }
+}

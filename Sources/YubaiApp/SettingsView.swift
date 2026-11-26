@@ -33,6 +33,7 @@ struct SettingsView: View {
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
                             link(.memory, "余白记得的", "\(store.settingsSummary.memoryCount) 条", id: "openMemories") { store.tabRouteRequest = .memories }
+                            link(.heart, "心愿与回顾", "\(WishesHub.wishCount(in: ledger)) 件心愿", id: "openWishesHub") { store.tabRouteRequest = .wishesHub }
                             link(.bell, "通知", "\(SettingsDisplay.noticeCount(store.preferences)) 项", id: "openNoticeSettings") { store.tabRouteRequest = .notices }
                         }
                         DSSettingsCard {
@@ -550,7 +551,14 @@ struct ImportHistoryView: View {
     @State private var filename = ""
     var body: some View {
         Page {
-            if store.imports.isEmpty { EmptyState("square.and.arrow.down", "还没有导入记录", action: "导入账单", onAction: { store.sheet = .imports }).accessibilityIdentifier("emptyImportHistory") }
+            DSSettingsCard {
+                Button { store.sheet = .imports } label: {
+                    HStack(spacing: DS.Space.s12) {
+                        DSIconView(icon: .inbox, size: DS.Size.icon, color: DS.Color.accentInk)
+                        Text("导入账单").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.accentInk).dsFillWidth()
+                    }.frame(minHeight: SettingsSpec.row).contentShape(Rectangle())
+                }.dsPressStyle().accessibilityIdentifier("importBills")
+            }
             CardRows(Array(store.imports.reversed())) { batch in
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     NavigationLink {

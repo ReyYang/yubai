@@ -42,7 +42,7 @@ enum TabRoute: Hashable {
     case categoryBudget(String), savingWish(UUID), assistantHub
     case yearlyBills, saving, cycleBills
     case butlerEvidence(UUID), butlerEvidenceEntries(UUID)
-    case recurring, categorySettings, aiSettings, currency, notices, accountEdit(UUID)
+    case recurring, categorySettings, aiSettings, currency, notices, accountEdit(UUID), wishesHub
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -1514,6 +1514,7 @@ struct RootView: View {
         case .aiSettings: AISettingsView()
         case .currency: CurrencyView()
         case .notices: NoticeSettingsView()
+        case .wishesHub: WishesHubView()
         case .accountEdit(let id): AccountEditView(accountID: id)
         case .categories: CategoriesView()
         case .savingRule: SavingsView()

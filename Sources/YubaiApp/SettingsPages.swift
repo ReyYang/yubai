@@ -600,3 +600,34 @@ struct SettingsConfirm: View {
         .onAppear { withAnimation(DSMotion.bouncyAnimation) { shown = true } }
     }
 }
+
+/// 心愿与回顾: one card routing to the three existing pages.
+struct WishesHubView: View {
+    @Environment(AppStore.self) private var store
+
+    var body: some View {
+        let ledger = store.current
+        VStack(spacing: .zero) {
+            OverviewNavigationBar(title: "心愿与回顾")
+            ScrollView {
+                DSSettingsCard {
+                    row(.heart, "心愿单", "\(WishesHub.wishCount(in: ledger)) 件", first: true, id: "openWishlist") { store.tabRouteRequest = .wishlist }
+                    row(.mail, "每周来信", WishesHub.lastLetter(in: ledger).map(SettingsDisplay.monthDay) ?? "", id: "openWeekly") { store.tabRouteRequest = .weekly(nil) }
+                    row(.compass, "消费观", "\(WishesHub.valueCount(in: ledger)) 条", id: "openProfile") { store.tabRouteRequest = .profile }
+                }.padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s4)
+            }.scrollIndicators(.hidden)
+        }
+        .background(DS.Color.bg.ignoresSafeArea())
+        .dsEdgeSwipeBack()
+        .accessibilityIdentifier("wishesHubPage")
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
+    }
+
+    private func row(_ icon: DS.Icon, _ name: String, _ value: String, first: Bool = false, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            DSSettingsRow(icon: icon, name: name, accessory: .link(value), separator: !first)
+        }.dsPressStyle().accessibilityIdentifier(id)
+    }
+}
