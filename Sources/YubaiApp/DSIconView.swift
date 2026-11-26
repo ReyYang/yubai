@@ -43,7 +43,8 @@ struct DSIconView: View {
     }
 
     var body: some View {
-        let scale = size / DS.Icon.grid
+        let line = icon.line
+        let scale = size / (line?.grid ?? DS.Icon.grid)
         let basePath = Self.cachedPaths[icon] ?? Path()
         let scaled = basePath.applying(CGAffineTransform(scaleX: scale, y: scale))
         let fillStyle: AnyShapeStyle = color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.foreground)
@@ -52,15 +53,19 @@ struct DSIconView: View {
             .frame(width: size, height: size)
             .mask {
                 ZStack {
-                    scaled.fill(Color.black)
-                    scaled.stroke(
-                        Color.black,
-                        style: StrokeStyle(
-                            lineWidth: size * DS.Icon.outline / DS.Icon.grid,
-                            lineCap: .round,
-                            lineJoin: .round
+                    if let line {
+                        scaled.stroke(Color.black, style: StrokeStyle(lineWidth: line.stroke * scale, lineCap: .round, lineJoin: .round))
+                    } else {
+                        scaled.fill(Color.black)
+                        scaled.stroke(
+                            Color.black,
+                            style: StrokeStyle(
+                                lineWidth: size * DS.Icon.outline / DS.Icon.grid,
+                                lineCap: .round,
+                                lineJoin: .round
+                            )
                         )
-                    )
+                    }
                 }
             }
             .accessibilityHidden(true)
