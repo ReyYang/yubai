@@ -60,7 +60,7 @@ import YubaiCore
     func openButlerNotice(_ id: String) {
         if locked { pendingButlerTaskID = id; return }
         resetRootNavigation()
-        if homeTasks.contains(where: { $0.id == id }) { butlerFocusID = id }
+        destination = .ledger
     }
 }
 
