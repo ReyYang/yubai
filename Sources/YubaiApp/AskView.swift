@@ -260,6 +260,8 @@ private struct AskThread: View {
                 }.padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s16)
             }.scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
                 .accessibilityIdentifier("askScroll")
+                // Reopening lands on the latest turn; a short thread does not move.
+                .onAppear { if let last = messages.last { proxy.scrollTo(last.id, anchor: .bottom) } }
                 .onChange(of: messages.count) { _, _ in
                     guard let last = messages.last else { return }
                     withAnimation(reduceMotion ? nil : DSMotion.smoothAnimation) { proxy.scrollTo(last.id, anchor: .bottom) }
