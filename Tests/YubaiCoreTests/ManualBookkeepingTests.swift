@@ -489,4 +489,16 @@ final class EntryRepetitionTests: XCTestCase {
         var pad = EntryKeypad(amount: 3850); pad.press("+"); pad.press("2"); pad.reset()
         XCTAssertEqual(pad, EntryKeypad()); XCTAssertNil(pad.expressionText); XCTAssertNil(pad.pendingOperator)
     }
+
+    func testKeypadGroupedTextAddsThousandsSeparatorsWhileTyping() {
+        var pad = EntryKeypad()
+        for key in ["3", "2", "0", "5", "6"] { pad.press(key) }
+        XCTAssertEqual(pad.groupedText, "32,056")
+        pad.press("."); XCTAssertEqual(pad.groupedText, "32,056.")
+        pad.press("4"); pad.press("0"); XCTAssertEqual(pad.groupedText, "32,056.40")
+        XCTAssertEqual(EntryKeypad.grouped("1234567.8"), "1,234,567.8")
+        XCTAssertEqual(EntryKeypad.grouped("999"), "999")
+        XCTAssertEqual(EntryKeypad.grouped("-1000"), "−1,000")
+        XCTAssertEqual(EntryKeypad().groupedText, "0")
+    }
 }
