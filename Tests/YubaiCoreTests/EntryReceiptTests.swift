@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round46AddEntryTests: XCTestCase {
+final class EntryReceiptTests: XCTestCase {
     private let now = Dates.parse("2026-11-20 12:00")!
     private func ledger() -> Ledger {
         var ledger = Ledger()

@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round47IntegrationTests: XCTestCase {
+final class CrossFeatureIntegrationTests: XCTestCase {
     private let now = Dates.parse("2026-11-20 20:00")!
 
     private func seed() throws -> Ledger {

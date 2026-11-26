@@ -1,11 +1,11 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round46ButlerTests: XCTestCase {
+final class ButlerRenewalTests: XCTestCase {
     private let now = Dates.parse("2026-11-20 12:00")!
     private func date(_ value: String) -> Date { Dates.parse(value)! }
     private func ledger() -> Ledger {
-        var value = Round45Fixture.ledger()
+        var value = LedgerFixture.ledger()
         value.preferences.onboardingComplete = true
         value.preferences.profileColdStartDone = true
         return value

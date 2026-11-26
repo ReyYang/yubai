@@ -1,19 +1,19 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45BImportTests: XCTestCase {
-    let now = Round45BFixture.now
-    func d(_ text: String) -> Date { Round45BFixture.d(text) }
+final class RecurringRecognitionTests: XCTestCase {
+    let now = FutureLedgerFixture.now
+    func d(_ text: String) -> Date { FutureLedgerFixture.d(text) }
     func recognitionLedger() -> (Ledger, UUID) {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         var batch = ImportBatch(filename: "流水.csv", importedCount: 6, duplicateCount: 0, skippedCount: 0)
         batch.importedAt = now; batch.undo = ImportUndo(updatedAt: ledger.updatedAt); ledger.imports = [batch]
         for date in ["2026-09-10", "2026-10-10", "2026-11-10"] {
-            var entry = Round45BFixture.entry(ledger, date: date, amount: 800_000, title: "公司", category: "工资奖金", nature: .income)
+            var entry = FutureLedgerFixture.entry(ledger, date: date, amount: 800_000, title: "公司", category: "工资奖金", nature: .income)
             entry.batchID = batch.id; ledger.entries.append(entry)
         }
         for (index, date) in ["2026-09-05", "2026-10-05", "2026-11-05"].enumerated() {
-            var entry = Round45BFixture.entry(ledger, date: date, amount: 16_000 + Int64(index) * 100, title: "电费", category: "居家")
+            var entry = FutureLedgerFixture.entry(ledger, date: date, amount: 16_000 + Int64(index) * 100, title: "电费", category: "居家")
             entry.batchID = batch.id; ledger.entries.append(entry)
         }
         return (ledger, batch.id)
@@ -67,11 +67,11 @@ final class Round45BImportTests: XCTestCase {
         return (data, try BillImporter.preview(data: data, filename: "流水.csv", accountID: ledger.accounts[0].id, ledger: ledger))
     }
     func manual(_ ledger: Ledger, date: String = "2026-11-19 12:00") -> Entry {
-        var row = Round45BFixture.entry(ledger, date: date, amount: 3200, title: "和朋友午饭", category: "餐饮")
+        var row = FutureLedgerFixture.entry(ledger, date: date, amount: 3200, title: "和朋友午饭", category: "餐饮")
         row.purpose = "和朋友午饭"; row.recordedAt = now; row.userEdited = true; return row
     }
     func testImportMergeKeepsManualPurposeCategoryIDAndUndoesWithBatch() throws {
-        var ledger = Round45BFixture.ledger(); let original = manual(ledger); ledger.entries = [original]
+        var ledger = FutureLedgerFixture.ledger(); let original = manual(ledger); ledger.entries = [original]
         let before = ledger
         let (data, preview) = try preview("日期,金额,收支,用途\n2026-11-20 10:00,32.00,支出,某某技术有限公司\n", in: ledger)
         let batch = try BillImporter.commit(preview, data: data, to: &ledger, now: now)
@@ -85,13 +85,13 @@ final class Round45BImportTests: XCTestCase {
         BillImporter.undo(batchID: batch.id, in: &ledger, now: now); XCTAssertEqual(ledger, before)
     }
     func testSameTimestampManualRowIsReadyForMerge() throws {
-        var ledger = Round45BFixture.ledger(); ledger.entries = [manual(ledger)]
+        var ledger = FutureLedgerFixture.ledger(); ledger.entries = [manual(ledger)]
         let (_, result) = try preview("日期,金额,收支,用途\n2026-11-19 12:00,32.00,支出,商户\n", in: ledger)
         XCTAssertEqual(result.readyCount, 1); XCTAssertEqual(result.selectedEntries.count, 1)
     }
     func testManualMatchingAccountUnknownAmbiguityAndDayBoundary() {
-        var ledger = Round45BFixture.ledger(); let row = manual(ledger, date: "2026-11-19 23:59"); ledger.entries = [row]
-        var imported = Round45BFixture.entry(ledger, date: "2026-11-20 00:01", amount: 3200)
+        var ledger = FutureLedgerFixture.ledger(); let row = manual(ledger, date: "2026-11-19 23:59"); ledger.entries = [row]
+        var imported = FutureLedgerFixture.entry(ledger, date: "2026-11-20 00:01", amount: 3200)
         XCTAssertEqual(BillImporter.manualMergeCandidate(for: imported, in: ledger)?.id, row.id)
         imported.date = d("2026-11-21"); XCTAssertNil(BillImporter.manualMergeCandidate(for: imported, in: ledger))
         imported.date = now; imported.accountID = UUID()
@@ -103,7 +103,7 @@ final class Round45BImportTests: XCTestCase {
         imported.amount = -3200; XCTAssertNil(BillImporter.manualMergeCandidate(for: imported, accountIsUnknown: true, in: ledger))
     }
     func testMergePaidBillAndUndoRestoresExactPlanAndHandRecord() throws {
-        var ledger = Round45BFixture.ledger(); var row = manual(ledger)
+        var ledger = FutureLedgerFixture.ledger(); var row = manual(ledger)
         var plan = Plan(title: "电费", amount: 3200, dueDate: d("2026-11-20"), frequency: .monthly)
         plan.accountID = row.accountID; plan.settledOccurrences = [plan.dueDate]
         row.planID = plan.id; row.occurrence = plan.dueDate; ledger.plans = [plan]; ledger.entries = [row]
@@ -115,7 +115,7 @@ final class Round45BImportTests: XCTestCase {
         BillImporter.undo(batchID: batch.id, in: &ledger, now: now); XCTAssertEqual(ledger, before)
     }
     func testAutoLinkAddsPlanCompletionToBatchUndo() throws {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         var plan = Plan(title: "电费", amount: 3200, dueDate: d("2026-11-20"), frequency: .monthly)
         plan.accountID = ledger.accounts[0].id; ledger.plans = [plan]
         let before = ledger
@@ -126,7 +126,7 @@ final class Round45BImportTests: XCTestCase {
         BillImporter.undo(batchID: batch.id, in: &ledger, now: now); XCTAssertEqual(ledger, before)
     }
     func testTwoImportedRowsCannotConsumeOneManualRecord() throws {
-        var ledger = Round45BFixture.ledger(); ledger.entries = [manual(ledger)]
+        var ledger = FutureLedgerFixture.ledger(); ledger.entries = [manual(ledger)]
         let (data, result) = try preview("日期,金额,收支,用途\n2026-11-20 10:00,32.00,支出,商户甲\n2026-11-20 11:00,32.00,支出,商户乙\n", in: ledger)
         _ = try BillImporter.commit(result, data: data, to: &ledger, now: now)
         XCTAssertEqual(ledger.activeEntries.count, 3)

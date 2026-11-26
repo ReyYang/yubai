@@ -1,11 +1,11 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45BScheduleTests: XCTestCase {
-    let now = Round45BFixture.now
-    func d(_ text: String) -> Date { Round45BFixture.d(text) }
+final class BillScheduleMoveTests: XCTestCase {
+    let now = FutureLedgerFixture.now
+    func d(_ text: String) -> Date { FutureLedgerFixture.d(text) }
     func billLedger() -> Ledger {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         var bill = Plan(title: "电费", amount: 18_000, dueDate: d("2026-11-25"), frequency: .monthly)
         bill.accountID = ledger.accounts[0].id; ledger.plans = [bill]; return ledger
     }
@@ -34,7 +34,7 @@ final class Round45BScheduleTests: XCTestCase {
     }
     func testMoveMigratesPaidAndSkippedReferencesAndRoundTrips() throws {
         var ledger = billLedger(); let id = ledger.plans[0].id
-        let entry = Round45BFixture.entry(ledger, date: "2026-11-20", amount: 18_000)
+        let entry = FutureLedgerFixture.entry(ledger, date: "2026-11-20", amount: 18_000)
         ledger.entries = [entry]
         try FixedFlows.markPaid(planID: id, occurrence: d("2026-11-25"), with: entry.id, in: &ledger)
         try FixedFlows.moveOccurrence(planID: id, occurrence: d("2026-11-25"), to: d("2026-11-29"), in: &ledger, now: now)
@@ -51,14 +51,14 @@ final class Round45BScheduleTests: XCTestCase {
     func testMoveMatchesAndAutoLinksAtNewDate() throws {
         var ledger = billLedger(); let id = ledger.plans[0].id
         try FixedFlows.moveOccurrence(planID: id, occurrence: d("2026-11-25"), to: d("2026-11-20"), in: &ledger, now: now)
-        let entry = Round45BFixture.entry(ledger, date: "2026-11-20 10:00", amount: 18_000)
+        let entry = FutureLedgerFixture.entry(ledger, date: "2026-11-20 10:00", amount: 18_000)
         ledger.entries = [entry]
         XCTAssertEqual(FixedFlows.matchingEntries(planID: id, occurrence: d("2026-11-20"), in: ledger, now: now).map(\.id), [entry.id])
         XCTAssertEqual(FixedFlows.autoLink(&ledger, addedEntryIDs: [entry.id], now: now).first?.occurrence, d("2026-11-20"))
         XCTAssertEqual(Finance.formula(ledger, now: now).billsPaid, 1)
     }
     func testMovedSalaryDueAndCycleUseReplacementDay() throws {
-        var ledger = Round45Fixture.ledger(); ledger.paydayConfirmSince = d("2026-12-10")
+        var ledger = LedgerFixture.ledger(); ledger.paydayConfirmSince = d("2026-12-10")
         let id = ledger.plans[0].id
         try FixedFlows.moveOccurrence(planID: id, occurrence: d("2026-12-10"), to: d("2026-12-13"), in: &ledger, now: now)
         XCTAssertNil(Payday.due(in: ledger, now: d("2026-12-12")))

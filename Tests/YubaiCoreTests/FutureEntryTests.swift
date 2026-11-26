@@ -1,11 +1,11 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45BEntryTests: XCTestCase {
-    let now = Round45BFixture.now
-    func d(_ text: String) -> Date { Round45BFixture.d(text) }
+final class FutureEntryTests: XCTestCase {
+    let now = FutureLedgerFixture.now
+    func d(_ text: String) -> Date { FutureLedgerFixture.d(text) }
     func testFutureEntryLeavesAllCurrentNumbersUnchangedAndPostsAtCycleEdge() throws {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         let before = Finance.funds(ledger, now: now), pace = Finance.spendableBreakdown(ledger, now: now)
         let change = try ManualBookkeeping.change(amount: 1200, nature: .expense, accountID: ledger.accounts[0].id,
             day: d("2026-12-01"), purpose: "午饭", category: "餐饮", now: now)
@@ -22,7 +22,7 @@ final class Round45BEntryTests: XCTestCase {
         XCTAssertTrue(Finance.upcomingEntries(in: ledger, now: arrives).isEmpty)
     }
     func testFutureReserveAndEarmarkedIncomeDoNotChangePocketOrOverview() throws {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         let before = Reserve.overview(ledger, now: now)
         for (nature, reserve, saved) in [(Nature.expense, true, false), (.income, false, true)] {
             let change = try ManualBookkeeping.change(amount: 12_000, nature: nature, accountID: ledger.accounts[0].id,
@@ -36,7 +36,7 @@ final class Round45BEntryTests: XCTestCase {
         XCTAssertEqual(Reserve.overview(ledger, now: d("2026-11-22")).total, before.total)
     }
     func testFutureLinkedBillDoesNotMarkPaidOrChangeBudgetUntilDate() throws {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         var bill = Plan(title: "会员", amount: 2000, dueDate: d("2026-11-25"))
         bill.accountID = ledger.accounts[0].id; bill.autoPay = true; ledger.plans = [bill]
         let before = Finance.funds(ledger, now: now).available
@@ -51,7 +51,7 @@ final class Round45BEntryTests: XCTestCase {
         XCTAssertEqual(Finance.funds(ledger, now: d("2026-11-26")).available, before)
     }
     func testFutureSalaryDoesNotCloseCycleOrClearDueEarly() throws {
-        var ledger = Round45Fixture.ledger(); ledger.paydayConfirmSince = d("2026-12-10")
+        var ledger = LedgerFixture.ledger(); ledger.paydayConfirmSince = d("2026-12-10")
         let before = Finance.cycleInfo(in: ledger, now: now), id = ledger.plans[0].id
         let change = try ManualBookkeeping.change(amount: 801_000, nature: .income, accountID: ledger.accounts[0].id,
             day: d("2026-12-12"), purpose: "工资", category: "工资奖金", link: (id, d("2026-12-10")), now: now)
@@ -70,7 +70,7 @@ final class Round45BEntryTests: XCTestCase {
         XCTAssertEqual(Finance.cycleInfo(in: early, now: at).start, at)
     }
     func testFutureZeroNegativeAndInvalidDateAreRejected() {
-        let ledger = Round45BFixture.ledger()
+        let ledger = FutureLedgerFixture.ledger()
         for amount in [0, -1, Money.limit + 1] {
             XCTAssertThrowsError(try ManualBookkeeping.change(amount: amount, nature: .expense, accountID: ledger.accounts[0].id,
                 day: d("2026-12-01"), purpose: "午饭", category: "餐饮", now: now))
@@ -79,7 +79,7 @@ final class Round45BEntryTests: XCTestCase {
             day: .distantFuture, purpose: "午饭", category: "餐饮", now: now))
     }
     func testReceiptSeparateAndMergedSelectionUsesShopAndExactCents() throws {
-        let ledger = Round45BFixture.ledger()
+        let ledger = FutureLedgerFixture.ledger()
         let lines = ReceiptTextParser.drafts(lines: ["2026-11-19", "苹果 ¥12.34", "纸巾 ¥5.67"], now: now)
         XCTAssertEqual(lines.count, 2)
         let separate = try ReceiptTextParser.entryDrafts(from: lines, shopName: "超市", mode: .separate, in: ledger, accountID: ledger.accounts[0].id)
@@ -90,7 +90,7 @@ final class Round45BEntryTests: XCTestCase {
         XCTAssertEqual(try ReceiptTextParser.entryDrafts(from: [lines[0]], shopName: "超市", mode: .merged, in: ledger, accountID: ledger.accounts[0].id).first?.amount, 1234)
     }
     func testReceiptInvalidAmountsMixedDirectionsAndOverflow() {
-        let ledger = Round45BFixture.ledger(), account = ledger.accounts[0].id
+        let ledger = FutureLedgerFixture.ledger(), account = ledger.accounts[0].id
         func line(_ amount: Int64, _ nature: Nature = .expense) -> ReceiptTextParser.Draft {
             .init(date: now, amount: amount, title: "苹果", nature: nature, dateNeedsReview: false, directionNeedsReview: false)
         }
@@ -99,8 +99,8 @@ final class Round45BEntryTests: XCTestCase {
         }
     }
     func reconciled() throws -> (Ledger, UUID) {
-        var ledger = Round45BFixture.ledger()
-        ledger.entries = [Round45BFixture.entry(ledger, date: "2026-11-17", amount: 1000)]
+        var ledger = FutureLedgerFixture.ledger()
+        ledger.entries = [FutureLedgerFixture.entry(ledger, date: "2026-11-17", amount: 1000)]
         let book = Finance.balance(ledger.accounts[0], in: ledger, at: now)
         // A pre-revision unitemized expense remains splittable after upgrading.
         var legacy = Entry(date: now.addingTimeInterval(-1), amount: 41_200, accountID: ledger.accounts[0].id, title: "没细记")

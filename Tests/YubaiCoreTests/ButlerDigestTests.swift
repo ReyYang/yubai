@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round47ButlerAITests: XCTestCase {
+final class ButlerDigestTests: XCTestCase {
     let now = Dates.parse("2026-11-20 20:00")!
     func seed() -> Ledger {
         var ledger = Ledger(); ledger.updatedAt = now; ledger.profile.updatedAt = now

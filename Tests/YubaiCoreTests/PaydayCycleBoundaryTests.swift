@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-enum Round45Fixture {
+enum LedgerFixture {
     static func date(_ text: String) -> Date { Dates.parse(text)! }
     static var now: Date { date("2026-11-20 12:00") }
     static func ledger() -> Ledger {
@@ -21,11 +21,11 @@ enum Round45Fixture {
         Entry(date: date(text), amount: amount, nature: nature, accountID: ledger.accounts[0].id, title: title, category: category)
     }
 }
-final class Round45CycleTests: XCTestCase {
-    let now = Round45Fixture.now
-    func d(_ text: String) -> Date { Round45Fixture.date(text) }
+final class PaydayCycleBoundaryTests: XCTestCase {
+    let now = LedgerFixture.now
+    func d(_ text: String) -> Date { LedgerFixture.date(text) }
     func testUpgradeKeepsCurrentCycleAndOnlyEnablesNextPayday() {
-        var l = Round45Fixture.ledger(); let before = Finance.cycleInfo(in: l, now: now)
+        var l = LedgerFixture.ledger(); let before = Finance.cycleInfo(in: l, now: now)
         Finance.enablePaydayConfirmation(&l, now: now)
         XCTAssertEqual(l.paydayConfirmSince, d("2026-12-10"))
         XCTAssertEqual(Finance.cycleInfo(in: l, now: now), before)
@@ -33,7 +33,7 @@ final class Round45CycleTests: XCTestCase {
         XCTAssertEqual(l.paydayConfirmSince, d("2026-12-10"))
     }
     func testLateSalaryExtendsCycleAndDoesNotCloseOrShowDaily() {
-        var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
+        var l = LedgerFixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
         let at = d("2026-12-12 12:00"), info = Finance.cycleInfo(in: l, now: at)
         XCTAssertEqual(info.start, d("2026-11-10")); XCTAssertEqual(info.end, d("2026-12-12")); XCTAssertEqual(info.lateSince, d("2026-12-10"))
         XCTAssertEqual(Finance.funds(l, now: at).salaryLateDays, 2); XCTAssertEqual(Finance.spendableBreakdown(l, now: at).waterBar?.tick, 1)
@@ -44,9 +44,9 @@ final class Round45CycleTests: XCTestCase {
         XCTAssertEqual(Finance.funds(l, now: at).committed, 361_000)
     }
     func testEarlyIncomeAndEarliestOfTwoConfirmationsDefineStartAndDeleteReverts() throws {
-        var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
+        var l = LedgerFixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
         let at = d("2026-12-09 12:00")
-        var early = Round45Fixture.entry(l, amount: 400_000, date: "2026-12-09 09:00", nature: .income)
+        var early = LedgerFixture.entry(l, amount: 400_000, date: "2026-12-09 09:00", nature: .income)
         early.planID = l.plans[0].id; early.occurrence = d("2026-12-10")
         var later = early; later.id = UUID(); later.date = d("2026-12-10 10:00")
         l.entries += [later, early]
@@ -58,7 +58,7 @@ final class Round45CycleTests: XCTestCase {
     }
     func testConfirmAmountsAndPreviewIncludeRealLeftover() throws {
         for (amount, saveExtra) in [(851_000 as Int64, false), (851_000, true), (751_000, false)] {
-            var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
+            var l = LedgerFixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
             let at = d("2026-12-12 12:00"), due = try XCTUnwrap(Payday.due(in: l, now: at))
             let before = Finance.balance(l.accounts[0], in: l, at: at)
             let preview = Payday.preview(due, amount: amount, extraToSavings: saveExtra, in: l, now: at)
@@ -73,8 +73,8 @@ final class Round45CycleTests: XCTestCase {
         }
     }
     func testMissingPaydayMergesPeriodsAndClosesOnce() throws {
-        var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
-        var entry = Round45Fixture.entry(l, amount: 801_000, date: "2027-01-10 09:00", nature: .income)
+        var l = LedgerFixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
+        var entry = LedgerFixture.entry(l, amount: 801_000, date: "2027-01-10 09:00", nature: .income)
         entry.planID = l.plans[0].id; entry.occurrence = d("2027-01-10"); l.entries.append(entry)
         let historical = Finance.cycleInfo(in: l, now: d("2026-12-20"))
         XCTAssertEqual(historical.start, d("2026-11-10")); XCTAssertEqual(historical.end, d("2027-01-09"))
@@ -85,7 +85,7 @@ final class Round45CycleTests: XCTestCase {
     }
     func testLeftoverIsAskedOnceKeepOrSaveAndMigration() throws {
         for choice in [LeftoverChoice.keep, .save] {
-            var l = Round45Fixture.ledger(); l.plans = []; l.entries = []; l.cycleAnchor = .calendarMonth
+            var l = LedgerFixture.ledger(); l.plans = []; l.entries = []; l.cycleAnchor = .calendarMonth
             l.savingHistory = [CycleSaving(cycleStart: d("2026-10-01"), cycleEnd: d("2026-10-31"), income: 801_000, target: 200_000, saved: 200_000, unspent: 21_200)]
             l.accounts[0].anchorBalance = 961_200
             XCTAssertEqual(Finance.funds(l, now: now).available, 0)
@@ -99,14 +99,14 @@ final class Round45CycleTests: XCTestCase {
         }
     }
     func testAutoPaySkipsAnchorOnlyAndCalendarModePreservesBehavior() {
-        var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10"); l.plans[0].autoPay = true
+        var l = LedgerFixture.ledger(); l.paydayConfirmSince = d("2026-12-10"); l.plans[0].autoPay = true
         let at = d("2026-12-10 12:00")
         XCTAssertNil(FixedFlows.autoSettle(in: l, now: at))
         l.cycleAnchor = .calendarMonth
         XCTAssertEqual(Finance.cycleInfo(in: l, now: at).start, d("2026-12-01")); XCTAssertNil(Finance.cycleInfo(in: l, now: at).lateSince)
     }
     func testShortMonthPastThresholdSkippedAndUnknown() {
-        var l = Round45Fixture.ledger(); l.plans = [Plan(title: "Salary", amount: 100, dueDate: d("2026-01-31"), frequency: .monthly, inflow: true, nature: .income)]
+        var l = LedgerFixture.ledger(); l.plans = [Plan(title: "Salary", amount: 100, dueDate: d("2026-01-31"), frequency: .monthly, inflow: true, nature: .income)]
         l.paydayConfirmSince = d("2026-02-28")
         XCTAssertEqual(Finance.cycleInfo(in: l, now: d("2026-03-01")).lateSince, d("2026-02-28"))
         l.plans[0].skippedOccurrences = [d("2026-02-28")]
@@ -117,11 +117,11 @@ final class Round45CycleTests: XCTestCase {
     }
 }
 
-extension Round45CycleTests {
+extension PaydayCycleBoundaryTests {
     func testEarlyBoundaryDoesNotCloseOverlappingHistoryAgain() throws {
-        var l = Round45Fixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
+        var l = LedgerFixture.ledger(); l.paydayConfirmSince = d("2026-12-10")
         l.savingHistory = [CycleSaving(cycleStart: d("2026-11-10"), cycleEnd: d("2026-12-09"), income: 801_000, target: 200_000, saved: 200_000)]
-        var early = Round45Fixture.entry(l, amount: 801_000, date: "2026-12-09 09:00", nature: .income)
+        var early = LedgerFixture.entry(l, amount: 801_000, date: "2026-12-09 09:00", nature: .income)
         early.planID = l.plans[0].id; early.occurrence = d("2026-12-10"); l.entries.append(early)
         let before = l
         Savings.closeCycles(&l, now: d("2026-12-09 12:00"))
@@ -132,9 +132,9 @@ extension Round45CycleTests {
     }
 }
 
-extension Round45CycleTests {
+extension PaydayCycleBoundaryTests {
     func testFullNewCycleStoryCarries212ThenSavingItReturnsBudgetTo2400() throws {
-        var l = Round45Fixture.ledger(); l.plans.removeAll { !$0.inflow }
+        var l = LedgerFixture.ledger(); l.plans.removeAll { !$0.inflow }
         let at = d("2026-12-10 12:00")
         Savings.closeCycles(&l, now: at)
         let record = try XCTUnwrap(Savings.carryNotice(in: l, now: at))

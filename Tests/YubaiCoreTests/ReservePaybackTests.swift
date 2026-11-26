@@ -1,15 +1,15 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45BReserveTests: XCTestCase {
-    let now = Round45BFixture.now
-    func d(_ text: String) -> Date { Round45BFixture.d(text) }
+final class ReservePaybackTests: XCTestCase {
+    let now = FutureLedgerFixture.now
+    func d(_ text: String) -> Date { FutureLedgerFixture.d(text) }
     func withdrawn(_ amount: Int64 = 120_000) -> Ledger {
-        var ledger = Round45BFixture.ledger()
-        var entry = Round45BFixture.entry(ledger, date: "2026-11-19", amount: amount, title: "大衣", category: "衣着")
+        var ledger = FutureLedgerFixture.ledger()
+        var entry = FutureLedgerFixture.entry(ledger, date: "2026-11-19", amount: amount, title: "大衣", category: "衣着")
         entry.fromReserve = true; ledger.entries = [entry]
         for stamp in ["2026-11-01", "2026-12-01", "2027-01-01", "2027-02-01"] {
-            ledger.entries.append(Round45BFixture.entry(ledger, date: stamp, amount: 140_000, nature: .income))
+            ledger.entries.append(FutureLedgerFixture.entry(ledger, date: stamp, amount: 140_000, nature: .income))
         }
         return ledger
     }
@@ -50,8 +50,8 @@ final class Round45BReserveTests: XCTestCase {
         XCTAssertEqual(Reserve.paybackProgress(ledger, now: d("2027-02-02")).first?.remaining, 0)
     }
     func testCoverOfferAndInvalidCountAreAtomic() throws {
-        var ledger = Round45BFixture.ledger()
-        ledger.entries.append(Round45BFixture.entry(ledger, date: "2026-11-01", amount: 100_000, nature: .income))
+        var ledger = FutureLedgerFixture.ledger()
+        ledger.entries.append(FutureLedgerFixture.entry(ledger, date: "2026-11-01", amount: 100_000, nature: .income))
         try Overspend.cover(&ledger, source: .fromReserve, amount: 60_000, now: now)
         let before = ledger, offer = try XCTUnwrap(Reserve.paybackOffers(ledger, now: now).first)
         XCTAssertEqual(offer.withdrawal, .cover(ledger.cycleCovers[0].id))
@@ -66,7 +66,7 @@ final class Round45BReserveTests: XCTestCase {
         var ledger = withdrawn()
         let source = ledger.entries[0]
         try Reserve.answerPayback(.purchase(source.id), cycles: 3, in: &ledger, now: now)
-        var refund = Round45BFixture.entry(ledger, date: "2026-11-20 10:00", amount: 110_000, nature: .refund)
+        var refund = FutureLedgerFixture.entry(ledger, date: "2026-11-20 10:00", amount: 110_000, nature: .refund)
         refund.relatedEntryID = source.id; ledger.entries.append(refund)
         XCTAssertEqual(Finance.funds(ledger, now: now).savingTarget, 110_000)
         ledger.entries.removeLast(); ledger.entries[0].deletedAt = now
@@ -87,8 +87,8 @@ final class Round45BReserveTests: XCTestCase {
         XCTAssertEqual(Finance.funds(ledger, now: d("2026-12-02")).savingTarget, 4000)
     }
     func testPaybackWaitsThroughLateSalaryAndUsesActualNextCycle() throws {
-        var ledger = Round45Fixture.ledger(); ledger.paydayConfirmSince = d("2026-12-10")
-        var purchase = Round45BFixture.entry(ledger, date: "2026-11-19", amount: 12_000)
+        var ledger = LedgerFixture.ledger(); ledger.paydayConfirmSince = d("2026-12-10")
+        var purchase = FutureLedgerFixture.entry(ledger, date: "2026-11-19", amount: 12_000)
         purchase.fromReserve = true; ledger.entries.append(purchase)
         try Reserve.answerPayback(.purchase(purchase.id), cycles: 3, in: &ledger, now: now)
         Savings.closeCycles(&ledger, now: d("2026-12-12")); XCTAssertTrue(ledger.savingHistory.isEmpty)

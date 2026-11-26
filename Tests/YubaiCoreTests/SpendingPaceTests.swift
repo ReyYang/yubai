@@ -1,11 +1,11 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45PaceTests: XCTestCase {
-    let now = Round45Fixture.now
+final class SpendingPaceTests: XCTestCase {
+    let now = LedgerFixture.now
     func testStorylineAndTodayPurchasesAdvanceWaterFill() throws {
-        var l = Round45Fixture.ledger(); let before = Finance.spendableBreakdown(l, now: now)
-        XCTAssertEqual(before.start, Round45Fixture.date("2026-11-10")); XCTAssertEqual(before.end, Round45Fixture.date("2026-12-09"))
+        var l = LedgerFixture.ledger(); let before = Finance.spendableBreakdown(l, now: now)
+        XCTAssertEqual(before.start, LedgerFixture.date("2026-11-10")); XCTAssertEqual(before.end, LedgerFixture.date("2026-12-09"))
         XCTAssertEqual(before.income, 801_000); XCTAssertEqual(before.spent, 83_600)
         let change = try ManualBookkeeping.change(amount: 3200, nature: .expense, accountID: l.accounts[0].id, day: now, purpose: "Lunch", category: "餐饮", now: now)
         try change.apply(to: &l)
@@ -15,40 +15,40 @@ final class Round45PaceTests: XCTestCase {
         XCTAssertGreaterThan(after.waterBar!.fill, before.waterBar!.fill)
     }
     func testWaterTickCountsTodayAndRespectsFinalDay() {
-        let l = Round45Fixture.ledger()
+        let l = LedgerFixture.ledger()
         for (date, tick) in [("2026-11-10 12:00", 1.0/30), ("2026-11-20 12:00", 11.0/30), ("2026-12-09 12:00", 1.0)] {
-            XCTAssertEqual(Finance.spendableBreakdown(l, now: Round45Fixture.date(date)).waterBar!.tick, tick, accuracy: 0.00001)
+            XCTAssertEqual(Finance.spendableBreakdown(l, now: LedgerFixture.date(date)).waterBar!.tick, tick, accuracy: 0.00001)
         }
     }
     func testFastThresholdHasStrictFifteenPercentBoundary() {
         for (spend, fast) in [(Int64(45_000), false), (45_001, true)] {
-            var l = Round45Fixture.ledger(); l.plans.removeAll { !$0.inflow }; l.savingRule = nil
-            l.entries[0].amount = 100_000; l.entries = [l.entries[0], Round45Fixture.entry(l, amount: spend, date: "2026-11-17")]
-            let bar = Finance.spendableBreakdown(l, now: Round45Fixture.date("2026-11-18")).waterBar!
+            var l = LedgerFixture.ledger(); l.plans.removeAll { !$0.inflow }; l.savingRule = nil
+            l.entries[0].amount = 100_000; l.entries = [l.entries[0], LedgerFixture.entry(l, amount: spend, date: "2026-11-17")]
+            let bar = Finance.spendableBreakdown(l, now: LedgerFixture.date("2026-11-18")).waterBar!
             XCTAssertEqual(bar.fast, fast)
             XCTAssertEqual(bar.fill, Double(spend)/100_000, accuracy: 0.00001)
         }
     }
     func testNoIncomeAndUnknownPlanHideTheWaterBar() {
-        var l = Round45Fixture.ledger(); l.entries.removeAll { $0.nature == .income }
+        var l = LedgerFixture.ledger(); l.entries.removeAll { $0.nature == .income }
         XCTAssertNil(Finance.spendableBreakdown(l, now: now).waterBar)
-        l = Round45Fixture.ledger(); l.plans.removeAll { $0.inflow }
+        l = LedgerFixture.ledger(); l.plans.removeAll { $0.inflow }
         XCTAssertNil(Finance.spendableBreakdown(l, now: now).waterBar)
     }
     func testRefundsAndPaidBillsUseAllPeriodSpending() {
-        var l = Round45Fixture.ledger(); let before = Finance.spendableBreakdown(l, now: now)
-        var refund = Round45Fixture.entry(l, amount: 1000, date: "2026-11-20 11:00", nature: .refund)
+        var l = LedgerFixture.ledger(); let before = Finance.spendableBreakdown(l, now: now)
+        var refund = LedgerFixture.entry(l, amount: 1000, date: "2026-11-20 11:00", nature: .refund)
         refund.relatedEntryID = l.entries[1].id; l.entries.append(refund)
         XCTAssertEqual(Finance.spendableBreakdown(l, now: now).spent, before.spent - 1000)
-        var bill = Round45Fixture.entry(l, amount: 1000, date: "2026-11-20 11:00")
+        var bill = LedgerFixture.entry(l, amount: 1000, date: "2026-11-20 11:00")
         bill.planID = l.plans[1].id; bill.occurrence = l.plans[1].dueDate; l.entries.append(bill)
         XCTAssertEqual(Finance.spendableBreakdown(l, now: now).spent, before.spent)
     }
 }
 
 extension PerformanceScaleTests {
-    func testRound45PaceAt200000EntriesIsNoSlowerThanPartsSummary() throws {
-        let at = Round45Fixture.now
+    func testPaceAt200000EntriesIsNoSlowerThanPartsSummary() throws {
+        let at = LedgerFixture.now
         var ledger = Ledger(); ledger.cycleAnchor = .calendarMonth
         ledger.accounts = [Account(name: "Bank", balance: 50_000_000, at: at)]
         ledger.spendingParts = [SpendingPart(name: "Food", amount: 10_000_000, categories: ["餐饮"])]
@@ -72,6 +72,6 @@ extension PerformanceScaleTests {
         XCTAssertEqual(formula.available, pace.available); XCTAssertEqual(reserve.total, 0)
         XCTAssertLessThanOrEqual(formulaTime, max(1, summaryTime * 1.25))
         XCTAssertLessThanOrEqual(reserveTime, max(1, summaryTime * 1.25))
-        print("Round45 200000 entries: pace=\(paceTime)s formula=\(formulaTime)s reserve=\(reserveTime)s summary=\(summaryTime)s")
+        print("Pace 200000 entries: pace=\(paceTime)s formula=\(formulaTime)s reserve=\(reserveTime)s summary=\(summaryTime)s")
     }
 }

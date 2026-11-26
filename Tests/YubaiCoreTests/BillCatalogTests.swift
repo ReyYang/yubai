@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round46BillTests: XCTestCase {
+final class BillCatalogTests: XCTestCase {
     func day(_ year: Int = 2026, _ month: Int = 11, _ day: Int = 20) -> Date {
         Dates.calendar.date(from: DateComponents(year: year, month: month, day: day))!
     }

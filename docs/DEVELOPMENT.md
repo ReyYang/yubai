@@ -2,10 +2,10 @@
 
 Xcode 26 / Apple SDK，Swift 5 语言模式；最低 iOS 26 / macOS 14。Linux 的 Core 构建与单元测试使用下方 SwiftPM 路径；Apple 应用与 UI 仍须在 Xcode 验证，历史 1.0 的验证报告不覆盖 2.0。
 
-- `Sources/YubaiApp`：四项导航「现在／洞察／账目／我」，右下角常驻按钮「问余白」。首页复用 Finance 的待付款期次；依据打开精简记录详情。ProfileView 负责消费观、储蓄目标与「始终留着」目标。SettingsView 负责「我」的入口、导入记录、备份和恢复版本。
+- `Sources/YubaiApp`：当前界面（2026-11 起按新设计从零重写，旧界面在新界面替换它的 PR 里删除）、设计系统 `DSTheme` / `DSMotion`（由 `design-tokens.json` 生成）、小组件与快捷入口支持。
 - `Sources/YubaiCore`：schema 2（兼容 schema 1）、财务计算、导入解析与去重、ChangeSet、助手工具、管家与来信、加密备份和原子存储。还能花默认观察到下一次符合条件的固定收入；90 天内没有时看 90 天。「始终留着」目标取 `profile.floorAmount`，不扣减还能花或预测余额，日常预留自动估算。旧 horizonDays / emergencyReserve / dailyLiving / isSample 等字段保留解码与往返，不再控制 UI 或资金默认值。主动问答的指定日期预测通过函数参数传入范围。
 - `Tests/YubaiCoreTests`：计算、兼容、整理、撤销、隐私和备份测试；SampleData.swift 仅属于测试目标。Fixtures 是合成资料；SPM 和 Xcode 原生测试目标使用同一份文件。
-- `Tests/YubaiUITests`：五条离线流程：空账本开户、CSV 整理问答与整批撤销、克制卡片静音、数字问答到依据详情、消费原则持久化与备份入口。
+- `Tests/YubaiUITests`：旧界面的流程测试与截图走查，随旧界面一起删除；合并门禁只跑核心流程。
 - `scripts/generate-project.py`：生成 app、CoreTests 和 UITests 的工程引用与共享 scheme，包括签名配置和平台权限文件。源文件移动或删除后运行；生成结果纳入版本管理。
 - `scripts/testflight.sh [ios|mac|all]`：付费团队配置完成后归档、上传 TestFlight；默认 ios。当前本人暂不加入付费计划，免费团队直接安装仍是测试路径。设置、构建号和安装见 [TESTFLIGHT.md](TESTFLIGHT.md)。
 
@@ -41,10 +41,6 @@ conservative = baseline - 截至预测日已知付款 - 此前日常开销
 
 购买后 `after = available - amount`：小于 0 仅允许 skip；否则低于已设目标允许 wait／skip；达到目标时继续核对原有克制次数／金额规则。优先级为实际缺口、目标缺口、克制规则；目标与克制规则同为 wait／skip 时保留较早的目标理由。付款缺口卡只看保守路径小于 0，已设目标仅作背景事实；每周来信沿用不扣目标的 Finance 结果。AI 平静陈述目标与差额，不责备。
 
-App 本轮只从首页 HeroCard 的 reserved 合计移除目标、删除计算页「始终留着」扣减行；不新增行或视图，首页目标新行等待设计稿。新增／改动可见中文模板为「在存钱与日常开销 X」「想始终留着 X，按现在能留住」「想始终留着 X，还差 Y」「买了以后离始终留着的 X 还差 Y。」；均为金额事实。原稿、Figma、截图与分发包未同步。
-
-本轮使用 Swift 6.2.4，改动 Swift 文件的 19 项条件语法解析、夹具 JSON、新增链接与 `git diff --check` 通过。`swift test` 将缓存改至可写的 `/tmp` 后，因 `swift-crypto`／`swift-asn1` 未缓存、代理不可连接及 GitHub DNS 不可用，停在依赖下载；未构建／运行单测。Apple SDK 编译与 UI 实跑仍待 Mac。
-
 ## Linux Core 构建与测试
 
 Ubuntu 24.04 / Swift 6.2.4，从仓库根目录运行。云端容器访问不了 swift.org 时，先用 `scripts/install-linux-swift.sh` 从 Docker Hub 官方 `swift:6.2-noble` 镜像取出工具链（约 1.2 GB，默认装到 `/opt/swift-rootfs`，已安装则跳过）：
@@ -71,7 +67,7 @@ Linux 的 `KeychainAPIKeyStorage` 只在进程内共享密钥，不写磁盘；i
 
 ## GitHub Actions
 
-两个工作流都会消耗 GitHub 额度，所以只能在 Actions 页手动运行，不随 PR 或推送自动跑；运行前先确认要花这笔额度。日常验证免费做：YubaiCore 用 `scripts/install-linux-swift.sh` 在本地或 Claude 容器里跑 `swift test`，App 构建与 UI 测试在自己的 Mac 上跑。
+工作流只在 Actions 页手动运行，不随 PR 或推送自动跑。仓库公开时标准运行器免费，可以直接跑；仓库若改回私有，先问 owner。
 
 - `Linux Core`（`.github/workflows/linux-core.yml`）：在 `swift:6.2-noble` 容器里确认 Xcode 工程与生成器一致、编译 YubaiCore 并跑 `swift test`。
 - `iOS`（`.github/workflows/ios.yml`）：用 macOS 26 runner 上最新的 Xcode 26，在 iPhone 模拟器上编译并跑 Core 与 UI 测试；UI 测试在关键页面和失败时截图，作为 `ios-screenshots` 产物上传，测试日志为 `ios-test-logs`。手动运行时勾选 `release_builds` 可加做不签名的 iOS／macOS Release 构建。私有仓库的 macOS 分钟按 10 倍计入额度。
@@ -87,7 +83,6 @@ Linux 的 `KeychainAPIKeyStorage` 只在进程内共享密钥，不写磁盘；i
 Mac Xcode 应用默认 `YUBAI_MAC_SANDBOX = NO`，免费 Personal Team 直接安装保持非沙盒。在 `Config/Local.xcconfig` 设为 `YES` 才增加 App Sandbox、网络客户端、用户选中文件读写和麦克风输入 entitlement。Mac App Store / TestFlight 要求沙盒，`scripts/testflight.sh` 对 `mac` 和 `all` 的 Mac archive 命令行强制传入 `YUBAI_MAC_SANDBOX=YES`，不改日常安装的本机配置。系统文件导入 / 恢复已有安全作用域，备份和原件导出使用系统 fileExporter，不保存长期外部 URL；沙盒构建可能拒绝容器外的自定义开发数据目录。`scripts/package-mac.sh` 从已构建的 Info.plist 读取版本，临时签名时显式保留已有沙盒 entitlement，有 iCloud 权限时仍保留原构建签名。它仅打包本地 DMG，不用于 TestFlight。
 
 图标目录包含 iOS 通用 1024 图标和完整 Mac 尺寸。旧 iOS PNG 为 RGBA；`scripts/make-icon.swift` 已改为输出不含 alpha 的 RGB iOS PNG。TestFlight 脚本将 Sources、Tests、Config、工程和 Package.swift 复制到构建目录，在副本中重建图标并归档；既不运行工程生成器，也不改工作区的图标。开发者以后手工运行绘图脚本时，也会得到无 alpha 的 iOS 图标。当前无 Xcode，未运行上述脚本、工程生成器、shellcheck 或归档上传验证。
-
 
 ## 可选 iCloud 账本
 
@@ -128,7 +123,6 @@ YUBAI_ICLOUD = YES
 `LedgerSyncTests` 使用两个临时目录和假的 `LedgerVersionSource`，覆盖附件迁移、校验／容量、独立恢复附件、完整加密备份往返、两种冲突选择及恢复顺序、失效选择与位置切换。现有 repository 初始化和 load/save/recover/Backup API 继续可用；测试改为显式按需读取附件、解压恢复 JSON 后断言，容量与损坏断言遵循新语义。问余白截图保存前经 `ImageCompression`：ImageIO 缩长边至 2048、HEIC／JPEG 质量 0.8，仅更小时替换；Linux 或失败保留原件。
 
 在 Xcode 验证默认 NO 的 iOS / Mac 构建与测试后，再用上方单行启用 YES，重复两端构建。真实同步需两端有效签名、同一 Apple ID、iCloud Drive；核对首次空云端、已有不同账本、下载占位、离线待上传、前台远端更新、同时编辑冲突、选择期间再次更新、切回本机及退出登录。静态检查与临时目录测试不能代替这些系统行为的设备验证。
-
 
 ## 快速记账与 App Group
 

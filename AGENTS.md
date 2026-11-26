@@ -12,7 +12,7 @@
 
 > Avoid unnecessary secondary labels and descriptions. Let the layout do the explaining.
 
-完整规则在设计系统 README 第一节「少写字，让版式说话」，对照稿在设计稿「第十六轮 · 少写字」（两者都是私有页面，链接不进仓库，由 owner 或 Claude 在任务里提供）。写 SwiftUI 时：
+写 SwiftUI 时：
 
 - 界面上可见的字只有四种：标题、数字和事实、控件上的字（按钮写结果）、状态。副标题、说明句、口号、操作提示、步骤清单、安慰或邀请的话、「例如：…」占位、「（可选）」默认不写。
 - 想加一行说明之前，按顺序换成：删掉 → 层级（位置、分组、字重、amber）→ 控件（›、勾框、禁用态、建议芯片、「去设置」按钮）→ 状态和数字 → 挪到发生那一刻（确认框、撤销提示条）。都不行才写一行，且只写事实或数字。
@@ -41,20 +41,32 @@
 ### 二、双区职责
 
 1. **设计框架**（设计系统：颜色、字体、间距、圆角、阴影、组件、素材）是所有 SwiftUI 的唯一长期契约。真源是仓库根 `design-tokens.json`，`DSTheme.swift` / `DSMotion.swift` 与网页设计系统都由它生成；每个 token 必须能 1:1 映射到原生 SwiftUI。业务页面禁止裸色值、裸间距、裸圆角和临时样式。
-2. **画布**（页面原型与交互）是给 owner 看的呈现，用来提前看清 iPhone 上的真实样子。必须模拟真实原生界面：标准 iPhone 视口、状态栏与灵动岛、底部安全区与 Home Indicator、原生导航栏、原生 `.sheet` 半屏、按压弹簧反馈。只画 SwiftUI 原生能 1:1 实现的效果；颜色、字号、圆角、组件全部引用设计框架，不另起炉灶。
+2. **画布**（页面原型与交互）是给 owner 看的呈现，用来提前看清 iPhone 上的真实样子。必须模拟真机：标准 iPhone 视口、状态栏与灵动岛、底部安全区与 Home Indicator、按压弹簧反馈；导航栏、半屏、底栏等控件按设计框架自绘。只画 SwiftUI 能 1:1 实现的效果；颜色、字号、圆角、组件全部引用设计框架，不另起炉灶。
 
 ### 三、冲突仲裁
 
 1. 新旧 API：Apple 官方 Skill 优先于社区 Skill，无条件。
 2. Web 示例 vs 原生：`apple-design` 只吸收物理原则（弹簧、1:1 跟手、松手继承速度、动画中途可打断）。落到 SwiftUI 100% 用原生：`.clipShape(.rect(cornerRadius:style: .continuous))`、`Animation.spring` / `KeyframeTimeline`、`.sensoryFeedback`。忽略其中的 CSS 毫秒 transition、`backdrop-filter` 示例和「Initial Response」开场白；弹簧参数只用 `design-tokens.json` 的 snappy / smooth / standard / bouncy。
 3. 品牌视觉 vs 系统默认：外观服从设计框架（定制色板、定制悬浮栏、Switch 等）；底层几何（连续圆角）、弹簧手感、触觉、无障碍服从 Apple 与 `apple-design`。设计框架或画布里出现 SwiftUI 无法 1:1 复现的效果（如 `spread` 扩散阴影、任意 blur），先向 owner 指出差异并给 2 个原生替代方案，由 owner 拍板，不私自改设计。
-4. 社区规范之间：取当前最低 iOS 版本下更简洁、零多余抽象的写法。`swiftui-expert-skill` 的「Liquid Glass 需用户明确要求」已由 owner 决定（仅浮层用玻璃）；其中建议安装 RocketSim 等第三方工具时，先问 owner。
+4. 社区规范之间：取当前最低 iOS 版本下更简洁、零多余抽象的写法。控件外观全部自绘（见下节），不用系统 Liquid Glass 外观；其中建议安装 RocketSim 等第三方工具时，先问 owner。
 
 ### 四、每轮交付闭环
 
 1. 先画布后代码：新页面或改版先在画布给出贴近真机的完整呈现，并标明引用了设计框架的哪些组件与 token。
 2. owner 确认画布后，再产出严格对齐的 SwiftUI 与 `#Preview`，保证画布、设计框架、SwiftUI 三者一致；实现中发现画布不合理，先回头改画布。
 <!-- ios-agent-skills:end -->
+
+## 界面框架与做法（owner 2026-11-25 定，取代「原生组件优先」「底栏用系统玻璃」「仅浮层用玻璃」）
+
+依据：记一笔一屏用 SwiftUI 自绘和 UIKit 各做一遍的对比试验（分支 `feat/entry-framework-bakeoff`，仅作试验，不合并）：静态画面差 0.3%，真机 40 圈自动演示两边都几乎无卡顿。
+
+1. 新界面留在 SwiftUI，从零重写。只有量出来 SwiftUI 做不到的地方才用 UIKit 补，并写明量到的数据。
+2. 控件外观全部按设计框架自绘（底栏、开关、分段、按钮、半屏等）；手势、触觉、无障碍、键盘等行为用系统的。
+3. 数字规格：每批页面先从高保真画布把尺寸、间距、字号、圆角、颜色抄成一份数字规格（有 token 用 token，没有的集中在一个规格文件并注明画布来源），代码只照规格画。
+4. 写界面的 agent 在 owner 的 Mac 上边看边改：每改一处就编译、启动、截图、对照规格，修到对为止；交付包含截图、录屏、日志、报告。
+5. 动效在真机上量：App 内自动演示 + 系统 Animation Hitches 录制，不用模拟器录屏判断流畅度。当前 Xcode 27.1 对 iOS 27.2.1 的真机自动测试连不上，不要在真机上用 XCTest 驱动手势。
+6. 拖动和动画进行中不重新生成整屏或整块内容，逐帧变化的状态放在最小范围里；验收时报告动画期间内容的重算次数。
+7. 不知道怎么做的功能或动画，先看 Telegram 的做法（项目共享文件夹 `reference/telegram-ios/`，源码不进仓库），只学思路不复制（GPL）。
 
 ## 过程不欠债（owner 2026-11-25 定）
 
