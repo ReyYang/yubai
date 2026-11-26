@@ -143,7 +143,6 @@ swift test
 | [INSTALL-iPhone.md](docs/INSTALL-iPhone.md) | 免费团队真机安装 |
 | [TESTFLIGHT.md](docs/TESTFLIGHT.md) | 将来有付费账号后的 TestFlight 流程 |
 | [CONTEXT.md](CONTEXT.md) | 界面用词与领域词汇 |
-| [SCREEN_GALLERY.md](docs/SCREEN_GALLERY.md) | 截屏巡游、覆盖清单与运行方法 |
 | [HISTORY.md](docs/HISTORY.md) | 历次改动的详细记录 |
 
 ## 参与

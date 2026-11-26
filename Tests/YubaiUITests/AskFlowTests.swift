@@ -38,12 +38,12 @@ final class AskFlowTests: YubaiUITestCase {
         tap("askHomeSearch")
         XCTAssertTrue(any("askSheet").waitForExistence(timeout: 8))
         label("askVerdict", contains: "先别买", timeout: 15)
-        label("askVerdictCard", contains: "4,969.40")
+        XCTAssertTrue(app.staticTexts["4,969.40"].waitForExistence(timeout: 5), "the after value comes from YubaiCore")
     }
 
     func testApprovalAppliesOnlyOnConfirmAndUndoBringsItBack() {
         launch("approve")
-        label("askApprovalCard", contains: "冲抵")
+        label("askPrimary", contains: "确认冲抵")
         tap("askPrimary")
         label("askDone", contains: "已冲抵")
         tap("undoLastChange")

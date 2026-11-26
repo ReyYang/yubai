@@ -10,7 +10,6 @@ struct QuickRepeatMenu: View {
         let entry: EntryHistory.Repeat?
     }
     @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
     let dismiss: () -> Void
     @State private var items: [Item] = QuickRepeatMenu.fixtureItems ?? []
 
@@ -20,52 +19,23 @@ struct QuickRepeatMenu: View {
         : nil
 
     var body: some View {
-        VStack(spacing: .zero) {
-            VStack(spacing: .zero) {
-                ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                    row(item, index: index)
-                        .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
-                }
-            }.padding(.horizontal, DS.Space.s16)
-            if !items.isEmpty { DS.Color.separator.frame(height: HomeSpec.oftenBand) }
-            Button {
-                dismiss(); store.sheetSource = nil; store.sheet = .frequentEntries
-            } label: {
-                Text("编辑常用").dsText(DS.Font.tBody).foregroundStyle(DS.Color.accentInk)
-                    .frame(maxWidth: .infinity, minHeight: HomeSpec.oftenRow, alignment: .leading)
-                    .padding(.horizontal, DS.Space.s16).contentShape(Rectangle())
-            }.dsPressStyle().accessibilityIdentifier("manageQuickRepeats")
-        }
-        .frame(maxWidth: textSize.isAccessibilitySize ? .infinity : HomeSpec.oftenWidth)
-        .background(DS.Color.raised).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
-        .dsShadow(DS.Shadow.float)
-        .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
-        .task(id: store.ledgerRevision) {
-            guard QuickRepeatMenu.fixtureItems == nil else { return }
-            let ledger = store.current, now = Dates.now
-            let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now, limit: HomeSpec.oftenRows) }.value
-            guard !Task.isCancelled else { return }
-            items = value.map { Item(id: $0.id, purpose: $0.purpose, amount: $0.amount, entry: $0) }
-        }
-    }
-
-    private func row(_ item: Item, index: Int) -> some View {
         let hide = store.preferences.hideAmounts
-        let amount = HomeDisplay.money(item.amount, hidden: hide)
-        return Button { record(item) } label: {
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: DS.Space.s4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: DS.Space.s8))
-            layout {
-                Text(item.purpose).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1).dsFillWidth()
-                Text(amount).dsText(HomeSpec.oftenAmount).foregroundStyle(DS.Color.ink2).fixedSize()
-            }.frame(maxWidth: .infinity, minHeight: HomeSpec.oftenRow).contentShape(Rectangle())
-        }.dsPressStyle().accessibilityIdentifier("quickRepeat_\(index)")
-            .accessibilityLabel(item.purpose + "，" + (hide ? "金额已隐藏" : amount) + "，记下")
+        OftenMenuCard(rows: items.map { ($0.id, $0.purpose, HomeDisplay.money($0.amount, hidden: hide)) },
+                      onRow: { index in record(items[index]) },
+                      onEdit: { dismiss(); store.sheetSource = nil; store.sheet = .frequentEntries })
+            .task(id: store.ledgerRevision) {
+                guard QuickRepeatMenu.fixtureItems == nil else { return }
+                let ledger = store.current, now = Dates.now
+                let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now, limit: HomeSpec.oftenRows) }.value
+                guard !Task.isCancelled else { return }
+                items = value.map { Item(id: $0.id, purpose: $0.purpose, amount: $0.amount, entry: $0) }
+            }
     }
 
     private func record(_ item: Item) {
-        defer { dismiss(); store.homeEntrySession = false }
+        // Not a home entry session: the save shows the undo toast instead of the receipt highlight.
+        defer { dismiss() }
         guard let entry = item.entry else { return }
-        store.homeEntrySession = true
         let now = Dates.now
         let usable = store.accounts.first { $0.id == entry.accountID && !$0.archived } ?? ManualBookkeeping.defaultAccount(in: store.current)
         guard let account = usable else { return }
@@ -87,6 +57,42 @@ struct QuickRepeatMenu: View {
             store.setEntrySaveToast("已记下 1 笔")
             store.finishEntrySaveMotion()
         } catch { store.error = error.localizedDescription }
+    }
+}
+
+/// The 常用 card: rows 48, a 6 pt band, then 编辑常用.
+struct OftenMenuCard: View {
+    let rows: [(id: String, name: String, amount: String)]
+    var onRow: (Int) -> Void = { _ in }
+    var onEdit: () -> Void = {}
+    @Environment(\.dynamicTypeSize) private var textSize
+
+    var body: some View {
+        VStack(spacing: .zero) {
+            VStack(spacing: .zero) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    Button { onRow(index) } label: {
+                        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: DS.Space.s4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: DS.Space.s8))
+                        layout {
+                            Text(row.name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1).dsFillWidth()
+                            Text(row.amount).dsText(HomeSpec.oftenAmount).foregroundStyle(DS.Color.ink2).fixedSize()
+                        }.frame(maxWidth: .infinity, minHeight: HomeSpec.oftenRow).contentShape(Rectangle())
+                    }.dsPressStyle().accessibilityIdentifier("quickRepeat_\(index)")
+                        .accessibilityLabel(row.name + "，" + row.amount + "，记下")
+                        .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                }
+            }.padding(.horizontal, DS.Space.s16)
+            if !rows.isEmpty { DS.Color.separator.frame(height: HomeSpec.oftenBand) }
+            Button(action: onEdit) {
+                Text("编辑常用").dsText(DS.Font.tBody).foregroundStyle(DS.Color.accentInk)
+                    .frame(maxWidth: .infinity, minHeight: HomeSpec.oftenRow, alignment: .leading)
+                    .padding(.horizontal, DS.Space.s16).contentShape(Rectangle())
+            }.dsPressStyle().accessibilityIdentifier("manageQuickRepeats")
+        }
+        .frame(maxWidth: textSize.isAccessibilitySize ? .infinity : HomeSpec.oftenWidth)
+        .background(DS.Color.raised).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
     }
 }
 

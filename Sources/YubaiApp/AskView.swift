@@ -136,8 +136,8 @@ struct AskSheetOverlay: View {
                             drag: { motion.drag($0) }, release: { motion.release($0, reduced: reduced, onClose: close) })
                 .background(DS.Color.bg)
                 .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
+                // The page behind is hidden from VoiceOver by the root; not .isModal, so the undo toast stays reachable.
                 .accessibilityElement(children: .contain)
-                .accessibilityAddTraits(.isModal)
                 .accessibilityAction(.escape, dismiss)
                 .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: close, fill: DS.Color.bg))
                 .padding(.top, AskSpec.sheetTop)
@@ -457,7 +457,10 @@ private struct AskApprovalView: View {
     }
 
     private func confirm(_ card: YubaiCore.AskApproval) {
-        _ = store.apply(change.confirmingAmounts(), label: "问余白修改")
+        // The generic entry toast would read 已记下 1 笔; this change is an offset.
+        if store.apply(change.confirmingAmounts(), label: "问余白修改", silently: true) {
+            store.toast = card.action == "确认" ? "已改好" : card.action.replacingOccurrences(of: "确认", with: "已")
+        }
     }
 }
 
@@ -594,11 +597,11 @@ private struct AskLocalCard: View {
                     }
                 }
                 if needsAI { AskNeedsAIRow(openSettings: openSettings).padding(.top, AskSpec.buttonsTop) }
-            }.askCard().accessibilityIdentifier("askPurchaseFacts")
+            }.askCard().accessibilityElement(children: .contain).accessibilityIdentifier("askPurchaseFacts")
         case .summary(let facts):
             VStack(alignment: .leading, spacing: AskSpec.rowsGap) {
                 ForEach(facts, id: \.self) { Text(hide ? "金额已隐藏" : $0).dsText(AskSpec.body).monospacedDigit().foregroundStyle(DS.Color.ink) }
-            }.askCard().accessibilityIdentifier("askSummary")
+            }.askCard().accessibilityElement(children: .combine).accessibilityIdentifier("askSummary")
         }
     }
 }

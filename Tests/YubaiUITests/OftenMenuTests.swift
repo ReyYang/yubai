@@ -27,9 +27,15 @@ final class OftenMenuTests: YubaiUITestCase {
         launch()
         openMenu()
         XCTAssertTrue(any("quickRepeat_0").label.contains("午饭"))
+        let lunches = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'"))
+        let before = lunches.count
         any("quickRepeat_0").tap()
         XCTAssertTrue(waitForDisappearance(any("quickRepeatMenu")))
-        XCTAssertTrue(any("undoLastChange").waitForExistence(timeout: 5))
+        XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { lunches.count == before + 1 }), "one tap records the row")
+        let undo = any("undoLastChange")
+        XCTAssertTrue(undo.waitForExistence(timeout: 5))
+        undo.tap()
+        XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { lunches.count == before }), "撤销 takes it back")
         XCTAssertFalse(any("entrySheet").exists, "a long press is not a tap on 记一笔")
     }
 

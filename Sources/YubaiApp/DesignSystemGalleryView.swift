@@ -36,7 +36,7 @@ struct DesignSystemGalleryView: View {
         // Preserve the interactive gallery's specimen order.
         case listRow, budgetRow, accordion, hero, tabBar, entryPills, keypad, categoryPicker, effectLine
         case floatingCard, sheet, segmented, button, alertCard, donut, subCalendar, toggle
-        case balanceChart, stackedBar, periodOption
+        case balanceChart, stackedBar, periodOption, ask
     }
     enum IsolatedComponent: String {
         case sheet = "Sheet", categoryPicker = "CategoryPicker", entryPills = "EntryPills"
@@ -45,6 +45,7 @@ struct DesignSystemGalleryView: View {
         case effectLine = "EffectLine", keypad = "Keypad", icon = "Icon", categoryPanel = "CategoryPanel"
         case balanceChart = "BalanceChart", stackedBar = "StackedBar", donut = "Donut", periodOption = "PeriodOption"
         case brandTile = "BrandTile", settingsRow = "SettingsRow", shareChips = "ShareChips", typeGrid = "TypeGrid", dayGrid = "DayGrid"
+        case verdictCard = "VerdictCard", approvalCard = "ApprovalCard", batchRow = "BatchRow", askComposer = "AskComposer", oftenMenu = "OftenMenu"
     }
     let section: Section?
     var isolatedComponent: IsolatedComponent?
@@ -135,6 +136,9 @@ struct DesignSystemGalleryView: View {
                 .environment(\.dsAnimationsEnabled, false)
         case .hero, .dayBars, .budgetRow, .listRow, .tabBar, .alertCard, .floatingCard, .segmented:
             homeSpecimen(component).frame(maxWidth: HomeSpec.galleryWidth, alignment: .leading)
+                .environment(\.dsAnimationsEnabled, false)
+        case .verdictCard, .approvalCard, .batchRow, .askComposer, .oftenMenu:
+            AskGallerySpecimen(component: component).frame(maxWidth: HomeSpec.galleryContentWidth, alignment: .leading)
                 .environment(\.dsAnimationsEnabled, false)
         }
     }
@@ -450,6 +454,12 @@ struct DesignSystemGalleryView: View {
             specimen("StackedBar") { stackedBarSpecimens }
         case .periodOption:
             specimen("PeriodOption") { periodSpecimen }
+        case .ask:
+            specimen("问余白") {
+                VStack(alignment: .leading, spacing: DS.Space.s16) {
+                    ForEach([IsolatedComponent.verdictCard, .approvalCard, .batchRow, .askComposer, .oftenMenu], id: \.self) { AskGallerySpecimen(component: $0) }
+                }
+            }
         case .categoryPicker:
             specimen("CategoryPicker") { categorySpecimen }
         case .effectLine:
@@ -675,4 +685,41 @@ private struct EntryCategoryGallery: View {
     }
 }
 
+
+/// 问余白 components with the canvas data (`Ask.dc.html`, `Home.dc.html` often).
+private struct AskGallerySpecimen: View {
+    let component: DesignSystemGalleryView.IsolatedComponent
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        switch component {
+        case .verdictCard:
+            VStack(spacing: DS.Space.s12) {
+                AskVerdictCard(word: "先别买", tone: .skip, change: ("还能花", "6,268.40", "4,969.40", false),
+                               reason: "购物只剩 182.00，买了要从机动余钱补 1,117.00",
+                               expanders: [.init(id: "changes", title: "账上还有 2 项变化", rows: []), .init(id: "worth", title: "值不值 · 3 条", rows: [])])
+                AskVerdictCard(word: "建议延后", tone: .wait, change: ("购物还剩", "182.00", "超 717.00", true),
+                               reason: "12.10 起购物有 1,500.00，现在的被子还能撑 17 天", remind: "12.10 提醒我")
+                AskVerdictCard(word: "可以去", tone: .buy, change: ("吃饭还剩", "1,236.00", "1,048.00", false),
+                               reason: "这月外出聚餐 2 次，低于你平时的 4 次")
+            }
+        case .approvalCard:
+            AskApprovalCard(title: "把到账的 36.50 冲抵昨天的打车", change: ("还能花", "6,268.40", "¥6,304.90", true),
+                            facts: [AskFact(key: "原账单", value: "打车 · 11月22日 · -36.50"), AskFact(key: "到账", value: "招行储蓄 +36.50"),
+                                    AskFact(key: "交通", value: "187.50 → 151.00")], action: "确认冲抵")
+        case .batchRow:
+            VStack(spacing: .zero) {
+                AskBatchRow(name: "美团外卖", detail: "吃饭 · 11月23日", amount: "-36.80", checked: true, separator: false)
+                AskBatchRow(name: "滴滴", detail: "交通 · 11月22日", amount: "-36.50", checked: false, duplicate: true)
+                AskBatchRow(name: "便利店", detail: "吃饭 · 11月22日", amount: "-12.00", checked: false)
+                AskBatchRow(name: "退款", detail: "购物 · 优衣库", amount: "+59.00", checked: true, income: true)
+            }.padding(.horizontal, DS.Space.s16).background(DS.Color.raised, in: .rect(cornerRadius: AskSpec.bubbleRadius, style: .continuous))
+        case .askComposer:
+            AskComposer(text: $text, focus: $focused).frame(height: AskSpec.composerHeight, alignment: .top)
+        default:
+            OftenMenuCard(rows: [("1", "午饭", "25.00"), ("2", "地铁", "4.00"), ("3", "咖啡", "18.00"), ("4", "房租", "3,500.00")])
+        }
+    }
+}
 #endif

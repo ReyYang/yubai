@@ -33,7 +33,7 @@ TEST_RUNNER_DS_SNAPSHOT_RECORD=1 TEST_RUNNER_DS_SNAPSHOT_EXPORT_DIR=/tmp/ds-png 
 
 记录全部用 `DS_SNAPSHOT_RECORD=1`；验证时去掉该变量（`.missing`）。缺失基线会记录并失败，已有基线不匹配也失败。`DS_SNAPSHOT_EXPORT_DIR` 每次导出用于比对的实际 PNG，即使完全匹配也导出。xcodebuild 转发变量用 `TEST_RUNNER_` 前缀。取回生成的 `Tests/YubaiDesignSystemTests/__Snapshots__`，审阅后再纳入版本控制。本 Linux 工作区没有 Apple SDK，因此本次不伪造 PNG 基线或 MP4。
 
-手动工作流 `design-system.yml` 的 record 默认 false、video 默认 true，无 push/PR 触发。它编译后跑 hosted 快照，再用同一模拟器录制约 30 秒动效测试；只在 record 模式容忍成功记录引起的断言，崩溃、PNG 写入失败和其他断言仍失败。记录与验证模式均用 `scripts/check-ds-snapshot-result.py` 校验导出的 20 张 PNG，标准库 zlib 解码 8-bit、非交错的灰度、RGB、LA、RGBA，拒绝全透明或单一纯色图片。上传 PNG、基线、视频和 xcresult，保存 14 天。动效测试不靠截图：触发四种弹簧往返、play all、按住按钮、数字三次变化、原生 sheet 拖动关闭、Toggle、Accordion。`python3 scripts/ui-test-shards.py --parts design-system-motion --validate-parts` 可显式选中；默认门禁与旧截图 inventory 都不包含它。
+手动工作流 `design-system.yml` 的 record 默认 false、video 默认 true，无 push/PR 触发。它编译后跑 hosted 快照，再用同一模拟器录制约 30 秒动效测试；只在 record 模式容忍成功记录引起的断言，崩溃、PNG 写入失败和其他断言仍失败。记录与验证模式均用 `scripts/check-ds-snapshot-result.py` 校验导出的 20 张 PNG，标准库 zlib 解码 8-bit、非交错的灰度、RGB、LA、RGBA，拒绝全透明或单一纯色图片。上传 PNG、基线、视频和 xcresult，保存 14 天。动效测试不靠截图：触发四种弹簧往返、play all、按住按钮、数字三次变化、原生 sheet 拖动关闭、Toggle、Accordion。动效测试用 `-only-testing:YubaiUITests/DesignSystemMotionTests` 显式选中。
 
 ## 本次可见中文字符串
 
