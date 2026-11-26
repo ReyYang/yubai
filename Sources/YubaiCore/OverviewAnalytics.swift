@@ -12,9 +12,8 @@ public enum OverviewQuickRange: CaseIterable, Sendable {
         let today = Dates.day(now)
         switch self {
         case .lastThreeCycles:
-            let previous = Finance.cycle(in: ledger, now: cycle.start.addingTimeInterval(-1))
-            let first = Finance.cycle(in: ledger, now: previous.start.addingTimeInterval(-1))
-            return .custom(start: first.start, end: today)
+            let cycles = OverviewAnalytics.comparisonCycles(in: ledger, now: now, currentStart: cycle.start)
+            return .custom(start: Dates.day(cycles.earlier.start), end: today)
         case .thisYear:
             return .custom(start: Dates.calendar.dateInterval(of: .year, for: today)!.start, end: today)
         case .samePeriodLastYear:
@@ -101,24 +100,24 @@ public struct OverviewBalanceSeries: Equatable, Sendable {
 public enum OverviewAnalytics {
     public static func periodWindow(selection: OverviewPeriodSelection, in ledger: Ledger, now: Date) -> OverviewPeriodWindow {
         let current = Finance.cycle(in: ledger, now: now)
-        let previous = Finance.cycle(in: ledger, now: current.start.addingTimeInterval(-1))
         switch selection {
         case .current:
+            let previous = comparisonCycles(in: ledger, now: now, currentStart: current.start).previous
             let end = min(now, Dates.addDays(1, to: Dates.day(current.end)))
             let elapsed = Dates.calendar.dateComponents([.day, .hour, .minute, .second, .nanosecond], from: current.start, to: end)
-            let comparisonEnd = min(Dates.addDays(1, to: Dates.day(previous.end)),
-                                    Dates.calendar.date(byAdding: elapsed, to: previous.start) ?? previous.start)
-            return OverviewPeriodWindow(interval: DateInterval(start: current.start, end: end),
+            let comparisonEnd = min(previous.end, Dates.calendar.date(byAdding: elapsed, to: previous.start) ?? previous.start)
+            // An exclusive endpoint immediately after now includes the posting at now.
+            let inclusiveNow = Date(timeIntervalSinceReferenceDate: now.timeIntervalSinceReferenceDate.nextUp)
+            return OverviewPeriodWindow(interval: DateInterval(start: current.start, end: end == now ? inclusiveNow : end),
                                         comparison: DateInterval(start: previous.start, end: comparisonEnd),
                                         displayedRange: Dates.day(current.start)...Dates.day(current.end))
         case .previous:
-            let earlier = Finance.cycle(in: ledger, now: previous.start.addingTimeInterval(-1))
-            let end = Dates.addDays(1, to: Dates.day(previous.end))
-            let days = dayCount(from: previous.start, to: end)
-            let comparisonEnd = min(Dates.addDays(days, to: earlier.start), Dates.addDays(1, to: Dates.day(earlier.end)))
-            return OverviewPeriodWindow(interval: DateInterval(start: previous.start, end: end),
+            let (previous, earlier) = comparisonCycles(in: ledger, now: now, currentStart: current.start)
+            let days = dayCount(from: previous.start, to: previous.end)
+            let comparisonEnd = min(Dates.addDays(days, to: earlier.start), earlier.end)
+            return OverviewPeriodWindow(interval: previous,
                                         comparison: DateInterval(start: earlier.start, end: comparisonEnd),
-                                        displayedRange: Dates.day(previous.start)...Dates.day(previous.end))
+                                        displayedRange: Dates.day(previous.start)...Dates.day(previous.end.addingTimeInterval(-1)))
         case let .custom(first, last):
             let start = Dates.day(min(first, last))
             let lastDay = Dates.day(max(first, last))
@@ -128,6 +127,19 @@ public enum OverviewAnalytics {
                                         comparison: DateInterval(start: comparisonStart, end: start),
                                         displayedRange: start...lastDay)
         }
+    }
+
+    fileprivate static func comparisonCycles(in ledger: Ledger, now: Date, currentStart: Date)
+        -> (previous: DateInterval, earlier: DateInterval) {
+        let closed = Finance.pastCycles(ledger, now: now, limit: 2)
+        let previous = closed.first ?? completedCycle(in: ledger, before: currentStart)
+        let earlier = closed.dropFirst().first { $0.end <= previous.start } ?? completedCycle(in: ledger, before: previous.start)
+        return (previous, earlier)
+    }
+
+    private static func completedCycle(in ledger: Ledger, before start: Date) -> DateInterval {
+        let cycle = Finance.cycle(in: ledger, now: start.addingTimeInterval(-1))
+        return DateInterval(start: cycle.start, end: min(start, Dates.addDays(1, to: Dates.day(cycle.end))))
     }
 
     public static func review(in ledger: Ledger, selection: OverviewPeriodSelection, now: Date) -> OverviewReviewSnapshot {
@@ -147,32 +159,33 @@ public enum OverviewAnalytics {
                                                 previous: members.reduce(0) { $0 + comparison[$1, default: 0] },
                                                 isOther: true, isAnomaly: false))
         }
+        let savingsCycles = historicalSavingCycles(in: ledger, since: data.window.comparison.start, now: now)
         return OverviewReviewSnapshot(spent: data.current.reduce(0) { $0 + $1.amount },
                                       previousSpent: data.previous.reduce(0) { $0 + $1.amount },
-                                      saved: saving(in: ledger, during: data.window.interval, now: now),
-                                      previousSaved: saving(in: ledger, during: data.window.comparison, now: now),
+                                      saved: saving(in: ledger, during: data.window.interval, closedCycles: savingsCycles, now: now),
+                                      previousSaved: saving(in: ledger, during: data.window.comparison, closedCycles: savingsCycles, now: now),
                                       window: data.window,
                                       anomaly: anomaly.map { slice($0, amount: byCategory[$0, default: 0], previous: comparison[$0, default: 0], anomaly: true) },
                                       slices: slices.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount })
     }
 
-    public static func categoryDrill(in ledger: Ledger, title: String, categories: [String],
+    public static func categoryDrill(in ledger: Ledger, title: String, categories: [String], isOther: Bool,
                                      selection: OverviewPeriodSelection, now: Date) -> OverviewCategoryDrill {
         let data = spending(in: ledger, selection: selection, now: now)
         let members = Set(categories)
         let current = data.current.filter { members.contains($0.assignment.category) }
         let previous = data.previous.filter { members.contains($0.assignment.category) }
-        let anomaly = categories.count == 1 && categories.first == anomalyCategory(
+        let anomaly = !isOther && categories.count == 1 && categories.first == anomalyCategory(
             totals(data.current) { $0.assignment.category }, totals(data.previous) { $0.assignment.category })
         func group(_ row: Spending) -> String {
-            categories.count > 1 ? row.assignment.category : row.assignment.subcategory ?? "未分类"
+            isOther ? row.assignment.category : row.assignment.subcategory ?? "未分类"
         }
         let earlier = totals(previous, by: group)
         let ordered = orderedTotals(totals(current, by: group))
         let slices = ordered.enumerated().map { index, pair in
             slice(pair.key, amount: pair.value, previous: earlier[pair.key, default: 0], anomaly: anomaly && index == 0)
         }
-        let budget = categories.count == 1 ? HomeBudgets(in: ledger, now: now).ordered.first {
+        let budget = !isOther && categories.count == 1 ? HomeBudgets(in: ledger, now: now).ordered.first {
             $0.categories.contains(categories[0])
         } : nil
         return OverviewCategoryDrill(title: title, amount: current.reduce(0) { $0 + $1.amount },
@@ -186,8 +199,10 @@ public enum OverviewAnalytics {
         let balances = ledger.accounts.filter { !$0.archived }.map {
             OverviewAssetsSnapshot.Balance(account: $0, amount: Finance.balance($0, in: ledger, at: now))
         }
-        return OverviewAssetsSnapshot(floorAmount: max(0, ledger.profile.floorAmount ?? 0),
-                                      reserveAmount: max(0, ledger.fixedSavingsTotal(now: now)),
+        let totalSaved = max(0, ledger.fixedSavingsTotal(now: now))
+        let floorAmount = min(totalSaved, max(0, ledger.profile.floorAmount ?? 0))
+        return OverviewAssetsSnapshot(floorAmount: floorAmount,
+                                      reserveAmount: totalSaved - floorAmount,
                                       accounts: balances.filter { $0.account.kind != .investment },
                                       investments: balances.filter { $0.account.kind == .investment })
     }
@@ -199,7 +214,10 @@ public enum OverviewAnalytics {
             guard entry.deletedAt == nil, entry.accountID == account.id || (entry.nature.paired && entry.otherAccountID == account.id) else { return nil }
             let date = entry.postingDate(for: account.id)
             return Posting(entry: entry, date: date, delta: entry.delta(for: account.id), afterAnchor: account.includes(entry, posting: date))
-        }.sorted { $0.date < $1.date }
+        }.sorted {
+            ($0.date, $0.entry.recordedAt ?? $0.date, $0.entry.id.uuidString)
+                < ($1.date, $1.entry.recordedAt ?? $1.date, $1.entry.id.uuidString)
+        }
         // Begin just before the first posting, then move forward once through the index.
         var balance = account.anchorBalance - postings.filter { !$0.afterAnchor }.reduce(0) { $0 + $1.delta }
         var index = 0
@@ -214,7 +232,7 @@ public enum OverviewAnalytics {
             points.append(balance)
             day = nextDay
         }
-        let positive = postings.filter { $0.date >= start && $0.date <= now && $0.delta > 0 }
+        let positive = postings.filter { $0.date >= start && $0.date <= now && $0.delta > 0 && $0.entry.kind != .adjustment }
         let incomes = positive.filter { $0.entry.nature == .income }
         let daily = Dictionary(grouping: incomes.isEmpty ? positive : incomes) { Dates.day($0.date) }
         let highlight = daily.keys.sorted().max { first, second in
@@ -225,7 +243,7 @@ public enum OverviewAnalytics {
                                      highlightIndex: highlight.map { dayCount(from: start, to: $0) },
                                      highlightLabel: highlight.flatMap { date in title.map { monthDay(date) + " " + $0 } },
                                      startLabel: monthDay(start), endLabel: "今天",
-                                     recentEntries: sortedEntries(postings.map(\.entry).filter { $0.date <= now }))
+                                     recentEntries: postings.reversed().filter { $0.date <= now }.map(\.entry))
     }
 
     public static func changePercent(_ amount: Int64, previous: Int64) -> Double? {
@@ -260,20 +278,44 @@ public enum OverviewAnalytics {
         return (window, current, previous)
     }
 
-    private static func saving(in ledger: Ledger, during interval: DateInterval, now: Date) -> Int64 {
-        // A set-aside is a cycle total. Assign it once, to the range containing the cycle start.
+    private static func historicalSavingCycles(in ledger: Ledger, since: Date, now: Date) -> [DateInterval] {
+        let months = Dates.calendar.dateComponents([.month], from: since, to: now).month ?? 0
+        return Finance.pastCycles(ledger, now: now, limit: max(2, months + 3))
+    }
+
+    private static func saving(in ledger: Ledger, during interval: DateInterval,
+                               closedCycles: [DateInterval], now: Date) -> Int64 {
         let start = Finance.cycle(in: ledger, now: now).start
-        let active = contains(interval, start) ? Finance.spendableBreakdown(ledger, now: now).effectiveSaving : 0
-        let closed = ledger.savingHistory.lazy.filter { $0.cycleStart < start && contains(interval, $0.cycleStart) }
-            .reduce(Int64(0)) { $0 + $1.saved }
-        let deposits = ledger.entries.lazy.filter {
-            $0.deletedAt == nil && $0.date <= now && contains(interval, $0.date) && ($0.intoFixedSavings || $0.nature == .investBuy)
-        }.reduce(Int64(0)) { $0 + $1.amount }
+        // Set-aside is a cycle fact. Include each overlapping cycle once, even for a partial range.
+        let active = interval.start <= now && interval.end > start
+            ? Finance.spendableBreakdown(ledger, now: now).effectiveSaving : 0
+        var matched = Set<Date>()
+        var closed: Int64 = 0
+        for cycle in closedCycles where interval.start < cycle.end && cycle.start < interval.end {
+            let history = ledger.savingHistory
+                .filter { abs($0.cycleStart.timeIntervalSince(cycle.start)) <= 36 * 3600 }
+                .min { abs($0.cycleStart.timeIntervalSince(cycle.start)) < abs($1.cycleStart.timeIntervalSince(cycle.start)) }
+            if let history {
+                if matched.insert(history.cycleStart).inserted { closed += history.saved }
+            } else {
+                closed += Finance.closedFormula(ledger, cycleStart: cycle.start).saving
+            }
+        }
+        let accountsByID = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
+        let deposits = ledger.entries.reduce(Int64(0)) { total, entry in
+            guard entry.deletedAt == nil else { return total }
+            let posting = entry.nature == .investBuy ? entry.date
+                : ledger.fixedSavingsPosting(for: entry, accountsByID: accountsByID, now: now)?.date
+            guard let posting, posting <= now, contains(interval, posting) else { return total }
+            return total + entry.amount
+        }
         return active + closed + deposits
     }
 
     private static func anomalyCategory(_ current: [String: Int64], _ previous: [String: Int64]) -> String? {
-        orderedTotals(current).first { (changePercent($0.value, previous: previous[$0.key, default: 0]) ?? 0) > 30 }?.key
+        orderedTotals(current).first {
+            !Classification.isPending($0.key) && (changePercent($0.value, previous: previous[$0.key, default: 0]) ?? 0) > 30
+        }?.key
     }
 
     private static func totals(_ entries: [Spending], by key: (Spending) -> String) -> [String: Int64] {

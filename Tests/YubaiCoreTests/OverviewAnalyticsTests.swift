@@ -84,7 +84,7 @@ final class OverviewAnalyticsTests: XCTestCase {
         let other = try XCTUnwrap(result.slices.first(where: \.isOther))
         XCTAssertEqual(other.category, "其他 4 类")
         XCTAssertEqual(other.categories.count, 4)
-        let drill = OverviewAnalytics.categoryDrill(in: ledger, title: other.category, categories: other.categories, selection: .current, now: now)
+        let drill = OverviewAnalytics.categoryDrill(in: ledger, title: other.category, categories: other.categories, isOther: true, selection: .current, now: now)
         XCTAssertEqual(drill.slices.map(\.category), other.categories)
         XCTAssertEqual(drill.totalCount, 4)
         XCTAssertNil(drill.budget)
@@ -98,7 +98,7 @@ final class OverviewAnalyticsTests: XCTestCase {
             expense(6_000, "购物", account: account, at: "2026-10-12", subcategory: "服饰鞋包"),
             expense(1_000, "购物", account: account, at: "2026-11-17")
         ]
-        let drill = OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], selection: .current, now: now)
+        let drill = OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false, selection: .current, now: now)
         XCTAssertEqual(drill.amount, 13_000)
         XCTAssertEqual(drill.entries.map(\.amount), [1_000, 12_000])
         XCTAssertEqual(drill.slices.first?.changePercent, 100)
@@ -177,4 +177,148 @@ final class OverviewAnalyticsTests: XCTestCase {
         XCTAssertEqual(assets.investments.first?.amount, 4_201_850)
         XCTAssertEqual(assets.investments.first?.updatedAt, now)
     }
+
+    func testLegacyFloorIsAPartitionOfDecodedSavings() throws {
+        var (ledger, _) = sample()
+        ledger.profile.floorAmount = 500_000
+        var json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(ledger)) as? [String: Any])
+        json.removeValue(forKey: "fixedSavings")
+        let legacy = try JSONDecoder().decode(Ledger.self, from: JSONSerialization.data(withJSONObject: json))
+        let assets = OverviewAnalytics.assets(in: legacy, now: now)
+        XCTAssertEqual(assets.liquidCash, 500_000)
+        XCTAssertEqual(assets.floorAmount, 500_000)
+        XCTAssertEqual(assets.reserveAmount, 0)
+
+        ledger.fixedSavings = 125_000
+        XCTAssertEqual(OverviewAnalytics.assets(in: ledger, now: now).floorAmount, 125_000)
+    }
+
+    func testClosedSavingsFallbackAndMixedPartialHistory() {
+        var (ledger, bank) = sample()
+        ledger.savingRule = .fixed(20_000)
+        ledger.entries = ["2026-09-12", "2026-10-12", "2026-11-12"].map {
+            Entry(date: date($0), amount: 100_000, nature: .income, accountID: bank.id, title: "工资", category: "工资奖金")
+        }
+        let withoutHistory = OverviewAnalytics.review(in: ledger, selection: .previous, now: now)
+        XCTAssertEqual(withoutHistory.saved, 20_000)
+
+        ledger.savingHistory = [
+            CycleSaving(cycleStart: date("2026-09-01"), cycleEnd: date("2026-09-30"),
+                        income: 100_000, target: 12_000, saved: 12_000),
+        ]
+        let partial = OverviewAnalytics.review(in: ledger, selection: .custom(start: date("2026-09-15"), end: date("2026-11-15")), now: now)
+        XCTAssertEqual(partial.saved, 52_000, "Each overlapping cycle contributes its set-aside once")
+        let activeOnly = OverviewAnalytics.review(in: ledger, selection: .custom(start: date("2026-11-15"), end: date("2026-11-17")), now: now)
+        XCTAssertEqual(activeOnly.saved, 20_000)
+    }
+
+    func testPreviousUsesRecordedCycleAfterAnchorChange() {
+        var (ledger, bank) = sample()
+        ledger.savingHistory = [
+            CycleSaving(cycleStart: date("2026-09-24 02:00:00"), cycleEnd: date("2026-10-24"),
+                        income: 90_000, target: 18_000, saved: 17_000),
+        ]
+        ledger.entries = [expense(5_000, "购物", account: bank, at: "2026-09-25"),
+                          expense(4_000, "购物", account: bank, at: "2026-10-25")]
+        let previous = OverviewAnalytics.review(in: ledger, selection: .previous, now: now)
+        XCTAssertEqual(previous.window.interval.start, date("2026-09-24 02:00:00"))
+        XCTAssertEqual(previous.window.displayedRange.upperBound, date("2026-10-24"))
+        XCTAssertEqual(previous.saved, 17_000)
+        XCTAssertEqual(previous.spent, 5_000)
+    }
+
+    func testCurrentIncludesNowAndDepositsUseDestinationPosting() {
+        var (ledger, bank) = sample()
+        let reserve = Account(name: "存款", at: date("2026-10-01"))
+        ledger.accounts.append(reserve)
+        var transfer = Entry(date: date("2026-10-31"), amount: 7_000, nature: .transfer, accountID: bank.id, title: "存入")
+        transfer.otherAccountID = reserve.id
+        transfer.otherDate = now
+        transfer.intoFixedSavings = true
+        ledger.entries = [transfer, expense(3_000, "购物", account: bank, at: "2026-11-23 12:00:00"),
+                          expense(1_000, "购物", account: bank, at: "2026-11-23 12:00:01")]
+        let result = OverviewAnalytics.review(in: ledger, selection: .current, now: now)
+        XCTAssertEqual(result.spent, 3_000)
+        XCTAssertEqual(result.saved, 7_000)
+        let drill = OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false, selection: .current, now: now)
+        XCTAssertTrue(drill.entries.allSatisfy { $0.date < drill.window.interval.end })
+        XCTAssertEqual(drill.totalCount, 1)
+    }
+
+    func testSingleMemberOtherKeepsItsCategoryNameAndNoBudget() {
+        var (ledger, bank) = sample()
+        ledger.spendingParts = [SpendingPart(name: "购物", amount: 50_000, categories: ["购物"])]
+        ledger.entries = [expense(5_000, "购物", account: bank, subcategory: "衣服")]
+        let result = OverviewAnalytics.categoryDrill(in: ledger, title: "其他 1 类", categories: ["购物"], isOther: true, selection: .current, now: now)
+        XCTAssertEqual(result.slices.map(\.category), ["购物"])
+        XCTAssertNil(result.budget)
+    }
+
+    func testPendingCategoryNeverBecomesAnAnomaly() {
+        var (ledger, bank) = sample()
+        let pending = Classification.pendingCategory
+        ledger.entries = [expense(50_000, pending, account: bank),
+                          expense(5_000, pending, account: bank, at: "2026-10-12"),
+                          expense(8_000, "购物", account: bank),
+                          expense(4_000, "购物", account: bank, at: "2026-10-12")]
+        XCTAssertEqual(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly?.category, "购物")
+    }
+
+    func testRecentEntriesUseAccountPostingAndHighlightIgnoresAdjustments() {
+        var (ledger, bank) = sample()
+        let source = Account(name: "来源", at: date("2026-10-01"))
+        ledger.accounts.append(source)
+        func transfer(title: String, posting: String, amount: Int64 = 4_000) -> Entry {
+            var row = Entry(date: date("2026-11-01"), amount: amount, nature: .transfer, accountID: source.id, title: title)
+            row.otherAccountID = bank.id
+            row.otherDate = date(posting)
+            return row
+        }
+        ledger.entries = [
+            transfer(title: "稍早到账", posting: "2026-11-19"),
+            transfer(title: "转账到账", posting: "2026-11-20", amount: 5_000),
+            transfer(title: "未到账", posting: "2026-11-24"),
+            Entry(date: date("2026-11-21"), amount: 50_000, nature: .adjustmentIn, accountID: bank.id, title: "调整"),
+        ]
+        let result = OverviewAnalytics.balanceSeries(for: bank, in: ledger, now: now)
+        XCTAssertEqual(result.recentEntries.map(\.title), ["调整", "转账到账", "稍早到账"])
+        XCTAssertEqual(result.highlightLabel, "11.20 转账到账")
+    }
+
+    func testNonCashReconciliationsPreserveCashMismatchAndSettlement() throws {
+        var (ledger, bank) = sample()
+        let credit = Account(name: "信用卡", kind: .credit, balance: -10_000, at: date("2026-10-01"))
+        let receivable = Account(name: "待收", kind: .receivable, balance: 30_000, at: date("2026-10-01"))
+        ledger.accounts += [credit, receivable]
+        ledger.entries = [Entry(date: date("2026-10-05"), amount: 100_000, nature: .income, accountID: bank.id, title: "工资")]
+        ledger.lastReconciledAt = date("2026-09-30")
+        ledger.savingRule = .fixed(20_000)
+        var expected = ledger
+        Savings.closeCycles(&expected, now: now)
+        let october = date("2026-10-20")
+        try Reconciliation.reconcileAccount(&ledger, accountID: credit.id, actualBalance: -40_000, now: october)
+        try Reconciliation.reconcileAccount(&ledger, accountID: receivable.id, actualBalance: 5_000, now: october)
+        XCTAssertEqual(ledger.entries.suffix(2).map(\.source), ["账户校准", "账户校准"])
+        XCTAssertEqual(ledger.lastReconciledAt, date("2026-09-30"))
+        XCTAssertEqual(Reconciliation.mismatch(in: ledger, now: now)?.lastReconciledAt, date("2026-09-30"))
+
+        // A ledger written by the initial overview build can still contain the old source.
+        for index in ledger.entries.indices.dropFirst() { ledger.entries[index].source = "对余额" }
+        Savings.closeCycles(&ledger, now: now)
+        XCTAssertNotNil(expected.savingHistory.last)
+        XCTAssertEqual(ledger.savingHistory, expected.savingHistory)
+    }
+
+    func testCreditReconciliationSupportsEitherSignAndZero() throws {
+        var (ledger, _) = sample()
+        let credit = Account(name: "信用卡", kind: .credit, balance: -10_000, at: date("2026-10-01"))
+        ledger.accounts.append(credit)
+        for (offset, actual, delta) in [(1, Int64(2_000), Int64(12_000)), (2, -2_000, -4_000), (3, 0, 2_000)] {
+            let at = Dates.addDays(offset, to: now)
+            let entry = try Reconciliation.reconcileAccount(&ledger, accountID: credit.id, actualBalance: actual, now: at)
+            XCTAssertEqual(entry?.delta(for: credit.id), delta)
+            XCTAssertEqual(ledger.accounts.last?.anchorBalance, actual)
+        }
+    }
+
 }

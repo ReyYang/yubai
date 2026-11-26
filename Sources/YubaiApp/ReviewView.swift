@@ -19,7 +19,7 @@ struct ReviewView: View {
                 }.lineLimit(1)
                     .padding(.leading, DS.Space.s12).padding(.trailing, OverviewSpec.pillTrailing)
                     .frame(minHeight: DS.Size.chipH).dsPill()
-                    .contentShape(Rectangle())
+                    .frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
             }.dsPressStyle().accessibilityIdentifier("overviewPeriod")
                 .padding(.top, OverviewSpec.periodTop)
 
@@ -39,7 +39,7 @@ struct ReviewView: View {
                     DSDonut.Slice(id: $0.category, name: $0.category, value: Double($0.amount),
                                   amount: OverviewDisplay.money($0.amount, hidden: hidden), isAnomaly: $0.isAnomaly,
                                   delta: hidden ? nil : $0.changePercent.map(OverviewDisplay.percent))
-                }, showsShares: !hidden) { id in
+                }, showsShares: !hidden, hidesAmounts: hidden) { id in
                     if let category = snapshot.slices.first(where: { $0.id == id }) { open(category) }
                 }.accessibilityIdentifier("overviewDonut")
             }
@@ -65,6 +65,7 @@ struct ReviewView: View {
                 Text("攒下").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink2)
                 Text(OverviewDisplay.money(value.saved, hidden: hidden)).dsText(OverviewSpec.saved)
                     .foregroundStyle(DS.Color.accentInk).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                    .accessibilityLabel(hidden ? "金额已隐藏" : OverviewDisplay.money(value.saved, hidden: false))
                     .accessibilityIdentifier("overviewSaved")
                 Text((value.savedDelta < 0 ? "少攒 " : "多攒 ") + OverviewDisplay.money(abs(value.savedDelta), hidden: hidden))
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
@@ -74,7 +75,7 @@ struct ReviewView: View {
     }
 
     private func open(_ slice: OverviewCategorySlice) {
-        store.tabRouteRequest = .whereCategory(title: slice.category, categories: slice.categories, selection: store.overviewPeriod)
+        store.tabRouteRequest = .whereCategory(title: slice.category, categories: slice.categories, isOther: slice.isOther, selection: store.overviewPeriod)
     }
 }
 

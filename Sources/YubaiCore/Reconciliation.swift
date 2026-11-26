@@ -110,7 +110,7 @@ public enum Reconciliation {
                 var entry = Entry(date: now, amount: abs(book - actualBalance),
                                   nature: book > actualBalance ? .adjustmentOut : .adjustmentIn,
                                   accountID: accountID, title: "调整")
-                entry.source = "对余额"
+                entry.source = "账户校准"
                 entry.recordedAt = now
                 next.entries.append(entry)
                 adjustment = entry
@@ -118,7 +118,6 @@ public enum Reconciliation {
             next.accounts[index].anchorBalance = actualBalance
             next.accounts[index].anchorDate = now
             next.accounts[index].reconciled = true
-            next.lastReconciledAt = now
             next.updatedAt = max(next.updatedAt, now)
         case .investment:
             throw YubaiError.invalid("账户信息无效。")

@@ -133,6 +133,7 @@ struct OverviewSheet<Content: View>: View {
     private var reduced: Bool { !animationsEnabled || (reduceMotionOverride ?? systemReduceMotion) }
 
     var body: some View {
+        let _ = OverviewRenderCounts.hit("overviewSheetBody")
         ZStack(alignment: .bottom) {
             EntryScrimView(motion: motion, color: DS.Color.scrim, close: dismiss)
                 .ignoresSafeArea()
@@ -144,7 +145,7 @@ struct OverviewSheet<Content: View>: View {
                         .padding(.horizontal, DS.Space.s20)
                         .accessibilityAddTraits(.isHeader)
                 }.contentShape(Rectangle())
-                    .gesture(DragGesture(minimumDistance: EntrySpec.dragMinimum)
+                    .gesture(DragGesture(minimumDistance: EntrySpec.dragMinimum, coordinateSpace: .global)
                         .onChanged { motion.drag($0) }
                         .onEnded { motion.release($0, reduced: reduced, onClose: close) })
                 ViewThatFits(in: .vertical) {
@@ -154,9 +155,10 @@ struct OverviewSheet<Content: View>: View {
             }
             .background(DS.Color.bg)
             .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
+            .accessibilityElement(children: .contain)
             .accessibilityAddTraits(.isModal)
             .accessibilityAction(.escape, dismiss)
-            .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: close))
+            .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: close, tracksOverview: true))
         }.ignoresSafeArea(edges: .bottom)
     }
 

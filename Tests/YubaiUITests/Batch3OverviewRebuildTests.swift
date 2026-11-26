@@ -61,6 +61,7 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         label("overviewSubcategory_衣服", contains: "+181%")
         openFirstBill()
         tap("overviewBudget"); XCTAssertTrue(element("formulaPage").waitForExistence(timeout: 5))
+        XCTAssertFalse(element("budgetKeypad").exists)
         tap("BackButton")
         tap("overviewSeeAll"); label("entriesSearchTotal", contains: "9 笔")
         XCTAssertTrue(element("entriesSearchCancel").exists)
@@ -129,16 +130,40 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         tap("tab_ledger"); XCTAssertEqual(headline.value as? String, before)
     }
 
+    func testCreditValuationChangesBothSignsAndAcceptsZero() {
+        launch(["-YubaiAssetsFixture"])
+        tap("overviewAccount_招行信用卡")
+        label("overviewAccountBalance", contains: "−3,216.80")
+
+        tap("reconcileAccount"); tap("overviewValuationSign"); keys("20")
+        label("overviewValuationDifference", contains: "+3,236.80")
+        tap("reconcileApply")
+        label("overviewAccountBalance", contains: "20.00")
+        XCTAssertEqual(element("overviewAccountBalance").label, "20.00")
+
+        tap("reconcileAccount"); tap("overviewValuationSign"); keys("20")
+        label("overviewValuationAmount", contains: "−20")
+        tap("reconcileApply")
+        label("overviewAccountBalance", contains: "−20.00")
+
+        tap("reconcileAccount"); keys("0")
+        XCTAssertEqual(element("overviewValuationAmount").label, "0")
+        label("overviewValuationDifference", contains: "+20.00")
+        tap("reconcileApply")
+        XCTAssertTrue(waitForDisappearance(element("reconcileSheet")))
+        XCTAssertEqual(element("overviewAccountBalance").label, "0.00")
+    }
+
     func testDarkHiddenXLKeepsReviewAndNavigationUsable() {
         launch(["-YubaiReviewFixture", "review"], dark: true, hidden: true, xl: true)
         label("overviewSpent", contains: "金额已隐藏")
         XCTAssertTrue(element("addEntry").isHittable)
         XCTAssertTrue(element("tab_ledger").isHittable)
         tap("overviewAnomaly")
-        label("overviewDrillAmount", contains: "••••")
+        label("overviewDrillAmount", contains: "金额已隐藏")
         XCTAssertTrue(element("BackButton").isHittable)
         tap("BackButton")
         tap("overviewSegment_资产")
-        label("overviewLiquidCash", contains: "••••")
+        label("overviewLiquidCash", contains: "金额已隐藏")
     }
 }

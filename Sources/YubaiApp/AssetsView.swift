@@ -21,11 +21,13 @@ struct AssetsView: View {
             Text("流动现金").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink2)
             Text(OverviewDisplay.money(data.liquidCash, hidden: hidden, currency: true)).dsText(DS.Font.nHero)
                 .foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
-                .padding(.top, OverviewSpec.headingGap).accessibilityIdentifier("overviewLiquidCash")
+                .padding(.top, OverviewSpec.headingGap)
+                .accessibilityLabel(hidden ? "金额已隐藏" : OverviewDisplay.money(data.liquidCash, hidden: false, currency: true))
+                .accessibilityIdentifier("overviewLiquidCash")
             DSStackedBar(segments: [
                 .init(id: "floor", value: Double(data.floorAmount), color: DS.Color.accentInk),
                 .init(id: "reserve", value: Double(data.reserveAmount), color: DS.Color.chart3),
-            ], kind: .assets).padding(.top, OverviewSpec.assetsBarTop)
+            ], kind: .assets, hidesAmounts: hidden).padding(.top, OverviewSpec.assetsBarTop)
             HStack(spacing: DS.Space.s12) {
                 cashLink("底线存款", amount: data.floorAmount, total: data.liquidCash, color: DS.Color.accentInk,
                          hidden: hidden, identifier: "overviewFloor") { store.present(.savingsFloor) }

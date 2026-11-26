@@ -389,7 +389,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             }
         }
     }
-    func testCategoryBreakdownAndBillsStayReachableAcrossGalleryModes() {
+    func testCategoryBreakdownAndBillsStayReachableAcrossGalleryModes() throws {
         for mode in galleryModes {
             launch("v47r-soft-lines", large: mode.large, dark: mode.dark, hidden: mode.hidden)
             tap("tab_insights")
@@ -398,6 +398,13 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             let scroll = element("overviewDrillScroll")
             XCTAssertTrue(element("overviewDrillBreakdown").waitForExistence(timeout: 5))
             XCTAssertTrue(revealControl(element("overviewSeeAll"), in: app, deadline: Date().addingTimeInterval(60), searching: scroll))
+            if mode.hidden {
+                XCTAssertEqual(element("overviewDrillAmount").label, "金额已隐藏")
+            }
+            try auditAppText(in: app) { issue in
+                XCTFail("Category drill text must fit: " + issue.detailedDescription)
+                return true
+            }
             tap("overviewSeeAll")
             XCTAssertTrue(element("entriesSearchTotal").waitForExistence(timeout: 5))
         }

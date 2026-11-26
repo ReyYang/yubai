@@ -569,6 +569,8 @@ struct DesignSystemGalleryView: View {
         VStack(spacing: DS.Space.s20) {
             DSKeypad()
             DSKeypad(variant: .digits)
+                .frame(height: OverviewSpec.valuationTrayHeight, alignment: .top)
+                .background(DS.Color.tray)
         }
     }
 

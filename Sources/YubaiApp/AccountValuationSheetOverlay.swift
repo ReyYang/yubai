@@ -57,9 +57,6 @@ struct AccountValuationSheetOverlay: View {
                 HStack(spacing: DS.Space.s12) {
                     box(target.isInvestment ? "上次" : "余白记的", value: book, input: false)
                     box(target.isInvestment ? "现在" : "银行 App 里", value: amount, input: true)
-                        .onTapGesture { replace = true }
-                        .accessibilityAction(named: "全选") { replace = true }
-                        .accessibilityAction(named: Text("切换正负")) { if !target.isInvestment { negative.toggle() } }
                 }.padding(.top, DS.Space.s4)
                 differenceRow.padding(.top, DS.Space.s16)
                 Button(action: save) {
@@ -84,12 +81,41 @@ struct AccountValuationSheetOverlay: View {
 
     private func box(_ label: String, value: Int64, input: Bool) -> some View {
         VStack(alignment: .leading, spacing: OverviewSpec.headingGap) {
-            Text(label).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-            Text(input ? inputText : OverviewDisplay.money(value, hidden: hidden))
+            HStack(spacing: DS.Space.s4) {
+                Text(label).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
+                    .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                if input && showsSignToggle {
+                    Spacer(minLength: .zero)
+                    Button(action: toggleSign) {
+                        Text("+/−").dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.accentInk)
+                            .padding(.horizontal, DS.Space.s8)
+                            .frame(minHeight: DS.Size.chipH)
+                            .dsPill()
+                            .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+                            .contentShape(Rectangle())
+                    }.dsPressStyle()
+                        .disabled(saved)
+                        .accessibilityIdentifier("overviewValuationSign")
+                        .accessibilityLabel("切换正负")
+                        .accessibilityValue(hidden ? "金额已隐藏" : negative ? "负号" : "正号")
+                }
+            }
+            let text = input ? inputText : OverviewDisplay.money(value, hidden: hidden)
+            let amountLabel = Text(text)
                 .dsText(DS.Font.tTitle).monospacedDigit()
                 .foregroundStyle(input ? DS.Color.ink : DS.Color.ink2)
                 .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                .accessibilityLabel(hidden ? "金额已隐藏" : text)
                 .accessibilityIdentifier(input ? "overviewValuationAmount" : "overviewBookAmount")
+            if input {
+                let selectable = amountLabel
+                    .onTapGesture { replace = true }
+                    .accessibilityAction(named: "全选") { replace = true }
+                if target.isInvestment { selectable }
+                else { selectable.accessibilityAction(named: "切换正负", toggleSign) }
+            } else {
+                amountLabel
+            }
         }
         .padding(.horizontal, DS.Space.s12).padding(.vertical, OverviewSpec.valuationBoxVertical)
         .frame(maxWidth: .infinity, minHeight: OverviewSpec.valuationBoxHeight, alignment: .leading)
@@ -102,12 +128,21 @@ struct AccountValuationSheetOverlay: View {
         }
     }
 
+    private var showsSignToggle: Bool {
+        !target.isInvestment && (account.kind == .credit || book < 0 || negative)
+    }
+
+    private func toggleSign() {
+        guard !target.isInvestment, !saved else { return }
+        negative.toggle()
+    }
+
     private var inputText: String {
         if hidden { return OverviewDisplay.money(amount, hidden: true) }
         if replace { return OverviewDisplay.money(amount, hidden: false) }
         let parts = keypad.displayText.split(separator: ".", omittingEmptySubsequences: false)
         let whole = Int64(parts[0]) ?? 0
-        let sign = negative ? "−" : ""
+        let sign = amount < 0 ? "−" : ""
         let integer = whole.formatted(.number.locale(Locale(identifier: "en_US_POSIX")))
         return sign + integer + (parts.count > 1 ? "." + parts[1] : "")
     }
@@ -120,6 +155,7 @@ struct AccountValuationSheetOverlay: View {
                 .dsText(OverviewSpec.difference).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                 .contentTransition(reduced ? .identity : .numericText(value: Double(difference)))
                 .animation(reduced ? nil : DSMotion.standardAnimation, value: difference)
+                .accessibilityLabel(hidden ? "金额已隐藏" : HomeDisplay.signed(difference, hidden: false))
                 .accessibilityIdentifier("overviewValuationDifference")
         }.foregroundStyle(!target.isInvestment && difference != 0 ? DS.Color.warnInk : DS.Color.ink)
     }

@@ -111,7 +111,7 @@ enum OverviewFixture {
         }
 
         var seed = Seed(ledger: ledger)
-        if self == .drill { seed.route = .whereCategory(title: "购物", categories: ["购物"], selection: .current) }
+        if self == .drill { seed.route = .whereCategory(title: "购物", categories: ["购物"], isOther: false, selection: .current) }
         if self == .period { seed.periodSheet = .custom(start: Self.date("2026-10-01"), end: Self.date("2026-11-23")) }
         return seed
     }
@@ -125,7 +125,7 @@ enum OverviewFixture {
         let fund = Account(name: "基金", kind: .investment, balance: 4_123_600, at: Self.date("2026-11-01"))
         ledger.accounts = [bank, alipay, wechat, credit, fund]
         ledger.profile.floorAmount = 5_000_000
-        ledger.fixedSavings = 842_000
+        ledger.fixedSavings = 5_842_000
         ledger.lastReconciledAt = bank.anchorDate
 
         if self != .assets {

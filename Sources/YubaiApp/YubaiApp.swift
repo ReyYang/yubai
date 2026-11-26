@@ -36,7 +36,7 @@ enum TabRoute: Hashable {
     case quickCapture, importHistory, intelligencePrivacy, backup, storage, imports, frequent
     case unsortedGroups(UUID)
     case formula, budget, billDetail(UUID), billDate(Date), todo, settings, categories, savingRule, reserve, saved
-    case weekly(UUID?), whereCategory(title: String, categories: [String], selection: OverviewPeriodSelection), memories
+    case weekly(UUID?), whereCategory(title: String, categories: [String], isOther: Bool, selection: OverviewPeriodSelection), memories
     case entryDetail(UUID)
     case assets, accountDetail(UUID), overviewBills(Set<String>, DateInterval, Set<UUID>)
     case categoryBudget(String), savingWish(UUID), askQuestion(String), askDraft(String), assistantHub
@@ -574,7 +574,12 @@ enum AppSheet: Identifiable {
     var accountValuationTarget: AccountValuationTarget?
     private(set) var accountValuationInitial: Int64?
 
-    var showsOverviewOverlay: Bool { reviewPeriodSheet != nil || accountValuationTarget != nil }
+    var accountBeingValued: Account? {
+        guard let target = accountValuationTarget else { return nil }
+        return accounts.first { $0.id == target.accountID && !$0.archived && ($0.kind == .investment) == target.isInvestment }
+    }
+
+    var showsOverviewOverlay: Bool { reviewPeriodSheet != nil || accountBeingValued != nil }
 
     func applyOverviewPeriod(_ selection: OverviewPeriodSelection) {
         overviewPeriod = selection
@@ -582,7 +587,12 @@ enum AppSheet: Identifiable {
     }
 
     func openAccountValuation(_ target: AccountValuationTarget) {
-        guard accounts.contains(where: { $0.id == target.accountID && !$0.archived }) else { return }
+        guard accounts.contains(where: {
+            $0.id == target.accountID && !$0.archived && ($0.kind == .investment) == target.isInvestment
+        }) else {
+            error = "这个账户已归档或不存在。"
+            return
+        }
         sheetSource = nil
         sheet = nil
         accountValuationInitial = nil
@@ -1127,7 +1137,7 @@ struct RootView: View {
     @Namespace private var motionNamespace
     @State private var tabPaths: [Destination: [TabRoute]] = [:]
     @State private var toastHeight = CGFloat.zero
-    private var hasToast: Bool { !store.locked && (store.unsortedUndo != nil || store.toast != nil) }
+    private var hasToast: Bool { !store.locked && !store.showsOverviewOverlay && (store.unsortedUndo != nil || store.toast != nil) }
     #if os(iOS)
     @State private var keyboardVisible = false
     @State private var tabBarHeight = HomeSpec.tabHeight
@@ -1170,7 +1180,7 @@ struct RootView: View {
         .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
         .overlay(alignment: .bottom) {
-            if !store.locked, store.entrySheet == nil, let notice = store.unsortedUndo {
+            if !store.locked, !store.showsOverviewOverlay, store.entrySheet == nil, let notice = store.unsortedUndo {
                 Toast(text: HomeButler.privacyText(notice.label, hidden: store.preferences.hideAmounts), onUndo: { store.undoUnsorted(notice.id) }, onDismiss: {
                     if store.unsortedUndo?.id == notice.id { store.unsortedUndo = nil }
                 }, messageIdentifier: "unsortedUndoMessage", undoIdentifier: "quickSortUndo")
@@ -1181,7 +1191,7 @@ struct RootView: View {
                     #else
                     .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
                     #endif
-            } else if !store.locked, store.entrySheet == nil, let toast = store.toast {
+            } else if !store.locked, !store.showsOverviewOverlay, store.entrySheet == nil, let toast = store.toast {
                 Toast(text: HomeButler.privacyText(toast, hidden: store.preferences.hideAmounts), onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(store.toastRevision)
                     .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { toastHeight = $0 }
@@ -1274,12 +1284,15 @@ struct RootView: View {
                                              settled: store.overviewFixture == .period, apply: store.applyOverviewPeriod,
                                              close: { store.reviewPeriodSheet = nil })
                 } else if let target = store.accountValuationTarget,
-                          let account = store.accounts.first(where: { $0.id == target.accountID && !$0.archived }) {
+                          let account = store.accountBeingValued {
                     AccountValuationSheetOverlay(target: target, account: account, book: store.balance(account),
                                                   initial: store.accountValuationInitial, close: { store.accountValuationTarget = nil })
                         .id(target)
                 }
             }
+        }
+        .onChange(of: store.accountBeingValued?.id) { _, id in
+            if id == nil { store.accountValuationTarget = nil }
         }
         .overlay { LedgerPrivacyCover() }
         .onOpenURL { url in
@@ -1346,7 +1359,7 @@ struct RootView: View {
     }
     #endif
     @ViewBuilder private var tabBarOverlay: some View {
-        if !tabBarHidden && store.sheet == nil && store.entrySheet == nil && !keyboardVisible {
+        if !tabBarHidden && store.sheet == nil && store.entrySheet == nil && !store.showsOverviewOverlay && !keyboardVisible {
             DSTabBar(selection: Binding(get: {
                 store.destination == .insights ? .overview : .home
             }, set: { selected in
@@ -1444,7 +1457,7 @@ struct RootView: View {
         case .weekly(let id): weeklyDestination(id)
         case .assets, .overviewBills: EmptyView()
         case .accountDetail(let id): AccountDetailView(accountID: id)
-        case let .whereCategory(title, categories, selection): ReviewDrillView(title: title, categories: categories, selection: selection)
+        case let .whereCategory(title, categories, isOther, selection): ReviewDrillView(title: title, categories: categories, isOther: isOther, selection: selection)
         case .memories: MemoryView()
         case .imports: ImportView()
         case .frequent: FrequentEntriesView()
@@ -1462,7 +1475,7 @@ struct RootView: View {
         #if os(macOS)
         ZStack(alignment: .bottom) {
             destination(d).frame(maxWidth: .infinity, maxHeight: .infinity)
-            if d == .ledger && store.sheet == nil && store.entrySheet == nil {
+            if d == .ledger && store.sheet == nil && store.entrySheet == nil && !store.showsOverviewOverlay {
                 HomeEntryPill(title: store.homeHero.isFirstOpen ? "记第一笔" : "记一笔", action: {
                     store.homeEntrySession = true
                     if store.accounts.isEmpty { store.beginFirstEntry() } else { store.requestCaptureSheet(.addEntry) }

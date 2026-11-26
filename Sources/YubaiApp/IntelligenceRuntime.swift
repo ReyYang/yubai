@@ -731,7 +731,12 @@ private struct FeatureCloudTransport: ChatTransport {
     func performCardAction(_ card: ButlerCard) {
         switch card.action ?? .openEvidence {
         case .openEvidence: sheet = .cardEvidence(card.id)
-        case .reconcileAccount(let id): openAccountValuation(.reconcile(id))
+        case .reconcileAccount(let id):
+            guard let account = accounts.first(where: { $0.id == id && !$0.archived }) else {
+                error = "这个账户已归档或不存在。"
+                return
+            }
+            openAccountValuation(account.kind == .investment ? .invest(id) : .reconcile(id))
         case .confirmChangeSet(let id): sheet = .cardProposal(id)
         case .answerQuestion: sheet = .cardQuestion(card.id)
         case .openWish(let id): sheet = .wishlist(id)

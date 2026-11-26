@@ -21,13 +21,14 @@ struct AccountDetailView: View {
                             actions(account).padding(.top, OverviewSpec.totalsTop)
                         }
                         DSBalanceChart(values: series.points, startLabel: series.startLabel, highlightLabel: series.highlightLabel,
-                                       highlightIndex: series.highlightIndex, endLabel: series.endLabel)
+                                       highlightIndex: series.highlightIndex, endLabel: series.endLabel, hidesAmounts: hidden)
                             .padding(.top, DS.Space.s20)
                         recent(series.recentEntries.filter { store.overviewFixture == nil || $0.source != OverviewFixture.chartClearingSource },
                                now: now, hidden: hidden).padding(.top, DS.Space.s16)
                     }.padding(.horizontal, DS.Space.s20).padding(.bottom, DS.Space.s20)
                 }.accessibilityIdentifier("overviewAccountScroll")
             }.background(DS.Color.bg.ignoresSafeArea())
+                .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("accountDetailPage")
                 .dsEdgeSwipeBack()
                 #if os(iOS)
@@ -40,6 +41,7 @@ struct AccountDetailView: View {
         VStack(alignment: .leading, spacing: DS.Space.s4) {
             Text(OverviewDisplay.money(balance, hidden: hidden)).dsText(DS.Font.nHero)
                 .foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                .accessibilityLabel(hidden ? "金额已隐藏" : OverviewDisplay.money(balance, hidden: false))
                 .accessibilityIdentifier("overviewAccountBalance")
             if account.kind != .investment, let date = account.lastReconciledAt {
                 Text(OverviewAnalytics.monthDay(date) + " 核对过")

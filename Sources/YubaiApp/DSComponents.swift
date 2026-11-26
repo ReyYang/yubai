@@ -26,6 +26,7 @@ struct DSListRow: View {
         var swatch: Color? = nil
     }
     var inline: Inline? = nil
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         if let inline {
@@ -73,16 +74,25 @@ struct DSListRow: View {
     }
 
     private func inlineContent(_ presentation: Inline) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
-            if let swatch = presentation.swatch {
-                DSOverviewSwatch(color: swatch).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
+        let stacked = typeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DS.Space.s4))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap))
+        return layout {
+            HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
+                if let swatch = presentation.swatch {
+                    DSOverviewSwatch(color: swatch).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
+                }
+                Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(stacked ? nil : 1)
             }
-            Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
-            Text(presentation.date).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3).fixedSize()
-            Spacer(minLength: .zero)
-            Text(amount).dsText(DS.Font.nSpine).foregroundStyle(amountColor)
-                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).layoutPriority(1)
+            HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
+                Text(presentation.date).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                Spacer(minLength: .zero)
+                Text(amount).dsText(DS.Font.nSpine).foregroundStyle(amountColor)
+                    .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).layoutPriority(1)
+            }
         }
+        .padding(.vertical, stacked ? DS.Space.s4 : .zero)
         .frame(minHeight: DS.Size.rowBill)
         .overlay(alignment: .top) {
             if separator { DS.Color.separator.frame(height: DS.Stroke.hairline) }
@@ -882,13 +892,20 @@ struct DSDonut: View {
     let slices: [Slice]
     var identifierPrefix = "overviewCategory_"
     var showsShares = true
+    var hidesAmounts = false
     var onSelect: (String) -> Void = { _ in }
 
     var body: some View {
-        let sorted = slices.filter { $0.value > 0 }.sorted { $0.value == $1.value ? $0.id < $1.id : $0.value > $1.value }
+        let sorted = slices.filter { $0.value > 0 }.sorted {
+            hidesAmounts || $0.value == $1.value ? $0.id < $1.id : $0.value > $1.value
+        }
         let total = sorted.reduce(0) { $0 + $1.value }
-        let colors = DSChartPalette.colors(anomalies: sorted.map(\.isAnomaly))
-        let ends = sorted.reduce(into: [0.0]) { $0.append(($0.last ?? 0) + $1.value / total) }
+        let colors = hidesAmounts ? Array(repeating: DS.Color.ink3, count: sorted.count)
+            : DSChartPalette.colors(anomalies: sorted.map(\.isAnomaly))
+        let ends = sorted.reduce(into: [0.0]) { boundaries, slice in
+            let share = hidesAmounts ? 1 / Double(sorted.count) : slice.value / total
+            boundaries.append((boundaries.last ?? 0) + share)
+        }
         let gap = Double(OverviewSpec.donutGap / OverviewSpec.donutCenterline) / .pi
 
         VStack(spacing: DS.Space.s8) {
@@ -902,7 +919,7 @@ struct DSDonut: View {
                         .stroke(colors[index], lineWidth: DS.Size.donutStroke)
                         .rotationEffect(.radians(-.pi / 2))
                 }
-                if let largest = sorted.first {
+                if !hidesAmounts, let largest = sorted.first {
                     VStack(spacing: .zero) {
                         Text("最多").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
                         Text(largest.name).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
@@ -916,9 +933,9 @@ struct DSDonut: View {
                 ForEach(Array(sorted.enumerated()), id: \.element.id) { index, slice in
                     Button { onSelect(slice.id) } label: {
                         DSOverviewLegendRow(name: slice.name, amount: slice.amount, color: colors[index],
-                                            share: showsShares ? (slice.value / total).formatted(.percent.precision(.fractionLength(0))) : nil,
-                                            delta: slice.delta, isAnomaly: slice.isAnomaly)
-                        .frame(minHeight: DS.Size.iconTile)
+                                            share: showsShares && !hidesAmounts ? (slice.value / total).formatted(.percent.precision(.fractionLength(0))) : nil,
+                                            delta: hidesAmounts ? nil : slice.delta, isAnomaly: !hidesAmounts && slice.isAnomaly)
+                        .frame(minHeight: DS.Size.tapMin)
                         .contentShape(Rectangle())
                     }.dsPressStyle().accessibilityIdentifier(identifierPrefix + slice.id)
                 }
@@ -935,27 +952,38 @@ struct DSOverviewLegendRow: View {
     let delta: String?
     let isAnomaly: Bool
     var isDrill = false
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         let ink = isAnomaly ? DS.Color.warnInk : DS.Color.ink
-        HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
-            DSOverviewSwatch(color: color).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
-            Text(name).dsText(isDrill ? DS.Font.tBody : DS.Font.tLabel)
-                .fontWeight(isAnomaly ? .semibold : .regular).foregroundStyle(ink).lineLimit(1)
-            if let share {
-                Text(share).dsText(isDrill ? DS.Font.tSub : DS.Font.tCaption)
-                    .monospacedDigit().foregroundStyle(DS.Color.ink3).fixedSize()
+        let stacked = typeSize.isAccessibilitySize
+        let layout = stacked
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: DS.Space.s4))
+            : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap))
+        layout {
+            HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
+                DSOverviewSwatch(color: color).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
+                Text(name).dsText(isDrill ? DS.Font.tBody : DS.Font.tLabel)
+                    .fontWeight(isAnomaly ? .semibold : .regular).foregroundStyle(ink).lineLimit(stacked ? nil : 1)
+                if let share {
+                    Text(share).dsText(isDrill ? DS.Font.tSub : DS.Font.tCaption)
+                        .monospacedDigit().foregroundStyle(DS.Color.ink3).fixedSize()
+                }
             }
-            Spacer(minLength: .zero)
-            if let delta {
-                Text(delta).dsText(DS.Font.tCaption).monospacedDigit()
-                    .fontWeight(isAnomaly || !isDrill ? .semibold : .regular)
-                    .foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink3).fixedSize()
+            HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
+                Spacer(minLength: .zero)
+                if let delta {
+                    Text(delta).dsText(DS.Font.tCaption).monospacedDigit()
+                        .fontWeight(isAnomaly || !isDrill ? .semibold : .regular)
+                        .foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink3).fixedSize()
+                }
+                Text(amount).dsText(OverviewSpec.legendAmount).foregroundStyle(ink)
+                    .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                    .frame(minWidth: OverviewSpec.legendAmountWidth, alignment: .trailing)
             }
-            Text(amount).dsText(OverviewSpec.legendAmount).foregroundStyle(ink)
-                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
-                .frame(minWidth: OverviewSpec.legendAmountWidth, alignment: .trailing)
-        }.accessibilityElement(children: .combine)
+        }
+        .padding(.vertical, stacked ? DS.Space.s4 : .zero)
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -1258,9 +1286,11 @@ struct DSStackedBar: View {
     enum Kind { case drill, assets }
     let segments: [Segment]
     var kind: Kind = .drill
+    var hidesAmounts = false
 
     var body: some View {
-        let positive = segments.filter { $0.value > 0 }
+        let positive = hidesAmounts ? segments.map { Segment(id: $0.id, value: 1, color: DS.Color.ink3) }
+            : segments.filter { $0.value > 0 }
         let total = positive.reduce(0) { $0 + $1.value }
         GeometryReader { geometry in
             let width = max(0, geometry.size.width - CGFloat(max(0, positive.count - 1)) * OverviewSpec.barGap)
@@ -1283,8 +1313,11 @@ struct DSBalanceChart: View {
     let highlightLabel: String?
     let highlightIndex: Int?
     let endLabel: String
+    var hidesAmounts = false
 
     var body: some View {
+        let _ = OverviewRenderCounts.hit("balanceChartBody")
+        let visibleHighlight = hidesAmounts ? nil : highlightLabel
         VStack(spacing: OverviewSpec.headingGap) {
             GeometryReader { geometry in
                 let points = plot(in: geometry.size)
@@ -1297,7 +1330,7 @@ struct DSBalanceChart: View {
                     path.closeSubpath()
                 }.fill(DS.Color.accent.opacity(OverviewSpec.chartAreaOpacity))
                 BalanceChartStroke(line: line)
-                if let index = highlightIndex, points.indices.contains(index) {
+                if !hidesAmounts, let index = highlightIndex, points.indices.contains(index) {
                     Circle().fill(DS.Color.bg)
                         .overlay(Circle().strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus))
                         .frame(width: OverviewSpec.chartHighlightDot, height: OverviewSpec.chartHighlightDot)
@@ -1313,19 +1346,20 @@ struct DSBalanceChart: View {
             HStack {
                 Text(startLabel)
                 Spacer(minLength: DS.Space.s4)
-                if let highlightLabel {
-                    Text(highlightLabel).lineLimit(1)
+                if let visibleHighlight {
+                    Text(visibleHighlight).lineLimit(1)
                     Spacer(minLength: DS.Space.s4)
                 }
                 Text(endLabel)
             }.dsText(OverviewSpec.tiny).foregroundStyle(DS.Color.ink3)
         }.accessibilityElement(children: .ignore)
             .accessibilityLabel("近 30 天余额走势")
-            .accessibilityValue([startLabel, highlightLabel, endLabel].compactMap { $0 }.joined(separator: "，"))
+            .accessibilityValue([startLabel, visibleHighlight, endLabel].compactMap { $0 }.joined(separator: "，"))
             .accessibilityIdentifier("accountBalanceChart")
     }
 
     private func plot(in size: CGSize) -> [CGPoint] {
+        let values = hidesAmounts ? [Int64(0), 0] : values
         guard let minValue = values.min(), let maxValue = values.max() else { return [] }
         let range = Double(maxValue) - Double(minValue)
         let horizontal = max(0, size.width - 2 * OverviewSpec.chartHorizontalInset)

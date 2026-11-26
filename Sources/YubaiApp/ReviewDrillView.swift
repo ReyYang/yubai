@@ -4,13 +4,14 @@ import YubaiCore
 struct ReviewDrillView: View {
     let title: String
     let categories: [String]
+    let isOther: Bool
     let selection: OverviewPeriodSelection
     @Environment(AppStore.self) private var store
 
     var body: some View {
         let _ = OverviewRenderCounts.hit("drillBody")
         let now = store.financialNow
-        let data = OverviewAnalytics.categoryDrill(in: store.current, title: title, categories: categories, selection: selection, now: now)
+        let data = OverviewAnalytics.categoryDrill(in: store.current, title: title, categories: categories, isOther: isOther, selection: selection, now: now)
         let hidden = store.preferences.hideAmounts
         let colors = DSChartPalette.colors(anomalies: data.slices.map(\.isAnomaly))
         VStack(spacing: .zero) {
@@ -23,12 +24,13 @@ struct ReviewDrillView: View {
                     }
                     bills(data, colors: colors, now: now, hidden: hidden).padding(.top, OverviewSpec.drillBillsTop)
                     if let budget = data.budget {
-                        budgetLink(budget, category: categories.first ?? title, hidden: hidden).padding(.top, DS.Space.s4)
+                        budgetLink(budget, hidden: hidden).padding(.top, DS.Space.s4)
                     }
                 }.padding(.horizontal, DS.Space.s20).padding(.bottom, DS.Space.s20)
             }.accessibilityIdentifier("overviewDrillScroll")
         }
         .background(DS.Color.bg.ignoresSafeArea())
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("reviewDrillPage")
         .dsEdgeSwipeBack()
         #if os(iOS)
@@ -40,6 +42,7 @@ struct ReviewDrillView: View {
         VStack(alignment: .leading, spacing: DS.Space.s4) {
             Text(OverviewDisplay.money(data.amount, hidden: hidden)).dsText(DS.Font.nHero)
                 .foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                .accessibilityLabel(hidden ? "金额已隐藏" : OverviewDisplay.money(data.amount, hidden: false))
                 .accessibilityIdentifier("overviewDrillAmount")
             if !hidden, let change = data.changePercent {
                 let difference = data.amount - data.previous
@@ -58,7 +61,7 @@ struct ReviewDrillView: View {
                 .accessibilityAddTraits(.isHeader).padding(.bottom, DS.Space.s8)
             DSStackedBar(segments: rows.enumerated().map { index, row in
                 .init(id: row.id, value: Double(row.amount), color: colors[index])
-            }).padding(.bottom, DS.Space.s4)
+            }, hidesAmounts: hidden).padding(.bottom, DS.Space.s4)
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                 DSOverviewLegendRow(name: row.category, amount: OverviewDisplay.money(row.amount, hidden: hidden), color: colors[index],
                                     share: hidden ? nil : OverviewDisplay.share(row.amount, of: total),
@@ -105,8 +108,8 @@ struct ReviewDrillView: View {
         }.accessibilityElement(children: .contain).accessibilityIdentifier("whereCategoryEntries")
     }
 
-    private func budgetLink(_ budget: HomeBudget, category: String, hidden: Bool) -> some View {
-        Button { store.tabRouteRequest = .categoryBudget(category) } label: {
+    private func budgetLink(_ budget: HomeBudget, hidden: Bool) -> some View {
+        Button { store.tabRouteRequest = .formula } label: {
             HStack(alignment: .firstTextBaseline, spacing: DS.Space.s4) {
                 Text("预算还剩").dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink2)
                 Spacer(minLength: .zero)

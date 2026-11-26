@@ -37,4 +37,5 @@ package.targets.append(.executableTarget(
     exclude: ["Info.plist", "Assets.xcassets", "PrivacyInfo.xcprivacy", "Yubai-iCloud.entitlements",
               "Yubai-macOS.entitlements", "Yubai-macOS-iCloud.entitlements", "Yubai-AppGroup.entitlements", "Yubai-iCloud-AppGroup.entitlements"]
 ))
+package.targets.append(.testTarget(name: "YubaiAppTests", dependencies: ["YubaiApp"]))
 #endif
