@@ -81,11 +81,17 @@ def theme(data):
               f'        static let outline: CGFloat = {data["icon"]["outline"]}',
               '', '        var phosphor: String {', '            switch self {']
     for name, token in glyphs:
-        lines += [f'            case .{camel(name)}: {literal(token["phosphor"])}']
+        lines += [f'            case .{camel(name)}: {literal(token.get("phosphor", ""))}']
     lines += ['            }', '        }', '', '        var pathData: String {', '            switch self {']
     for name, token in glyphs:
         lines += [f'            case .{camel(name)}: {literal(token["d"])}']
-    lines += ['            }', '        }', '    }', '',
+    line_glyphs = [(name, token) for name, token in glyphs if 'line' in token]
+    lines += ['            }', '        }', '',
+              '        /// Canvas line glyphs: stroke only on their own grid. Nil for the filled outline glyphs.',
+              '        var line: (grid: CGFloat, stroke: CGFloat)? {', '            switch self {']
+    for name, token in line_glyphs:
+        lines += [f'            case .{camel(name)}: ({token["line"]["grid"]}, {token["line"]["stroke"]})']
+    lines += ['            default: nil', '            }', '        }', '    }', '',
               '    private static func adaptive(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> SwiftUI.Color {',
               '        #if os(iOS)',
               '        return SwiftUI.Color(uiColor: UIColor(dynamicProvider: { traits in',

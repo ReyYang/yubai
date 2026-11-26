@@ -36,12 +36,14 @@ extension Finance {
         guard ledger.cycleAnchor != .calendarMonth, let plan = anchorPlan(in: ledger, now: now) else {
             return CycleInfo(start: scheduled.start, end: scheduled.end, payday: scheduled.payday,
                              nextPayday: scheduled.payday ? Dates.addDays(1, to: scheduled.end) : nil,
-                             known: ledger.cycleAnchor == .calendarMonth)
+                             known: ledger.cycleAnchor == .calendarMonth || (ledger.cycleAnchor == .payday && ledger.preferences.cycleStartDay != nil))
         }
         guard let threshold = ledger.paydayConfirmSince else {
             return CycleInfo(start: scheduled.start, end: scheduled.end, payday: scheduled.payday,
                              nextPayday: scheduled.payday ? Dates.addDays(1, to: scheduled.end) : nil, known: true)
         }
+        // Confirmed starts are actual arrival days; only the forecast below moves a weekend payday.
+        let base = ledger.preferences.shiftsWeekendPayday ? scheduledCycle(in: ledger, now: now, weekendShift: false) : scheduled
         let today = Dates.day(now)
         var confirmations: [Date: Date] = [:]
         for entry in ledger.entries where entry.deletedAt == nil && entry.nature == .income && entry.planID == plan.id {
@@ -62,15 +64,15 @@ extension Finance {
         // recorded predecessor and an unpaid current occurrence expose that gap.
         if ledger.cycleAnchor == .payday, Payday.isSalaryPlan(plan),
            let previous = periods.last(where: { plan.originalOccurrenceDate(on: $0) < since && !plan.isSkipped(on: $0) }),
-           previous == scheduled.start, confirmations[previous] == nil,
+           previous == base.start, confirmations[previous] == nil,
            confirmations.contains(where: { $0.key < previous && $0.value <= today }),
            !ledger.entries.contains(where: { $0.deletedAt == nil && $0.planID == nil && $0.date <= now &&
                Dates.day($0.date) >= previous && Payday.isSalary($0) }) {
             since = plan.originalOccurrenceDate(on: previous)
         }
         periods += confirmations.keys
-        periods.append(scheduled.start)
-        periods.append(scheduledCycle(in: ledger, now: min(scheduled.start, since).addingTimeInterval(-0.001)).start)
+        periods.append(base.start)
+        periods.append(scheduledCycle(in: ledger, now: min(base.start, since).addingTimeInterval(-0.001), weekendShift: false).start)
         periods = Array(Set(periods)).filter { !plan.isSkipped(on: $0) }.sorted()
         let starts: [(occurrence: Date, date: Date)] = periods.compactMap { day in
             let original = plan.originalOccurrenceDate(on: day)
@@ -78,7 +80,7 @@ extension Finance {
             return actual.map { (original, $0) }
         }.sorted { $0.date == $1.date ? $0.occurrence < $1.occurrence : $0.date < $1.date }
         let current = starts.last { $0.date <= today }
-        let start = current?.date ?? scheduled.start
+        let start = current?.date ?? base.start
         if let nextStart = starts.first(where: { candidate in
             candidate.date > today && (current.map { candidate.occurrence > $0.occurrence } ?? true)
         }) {
@@ -93,8 +95,10 @@ extension Finance {
             let original = plan.originalOccurrenceDate(on: day)
             return confirmations[day] == nil && (current.map { original > $0.occurrence } ?? true)
         }
-        let late = remaining.first { $0 <= today && plan.originalOccurrenceDate(on: $0) >= since }
-        let next = remaining.first { $0 > max(start, today) } ?? Dates.addDays(1, to: scheduled.end)
+        // A weekend payday moved to Friday is due, and ends the cycle, on that Friday.
+        let arrival: (Date) -> Date = ledger.preferences.shiftsWeekendPayday && plan.frequency == .monthly ? CycleStart.shifted : { $0 }
+        let late = remaining.first { arrival($0) <= today && plan.originalOccurrenceDate(on: $0) >= since }
+        let next = remaining.first { arrival($0) > max(start, today) }.map(arrival) ?? Dates.addDays(1, to: base.end)
         return CycleInfo(start: start, end: late == nil ? Dates.addDays(-1, to: next) : today,
                          payday: true, lateSince: late, nextPayday: late == nil ? next : nil, known: true)
     }
@@ -274,8 +278,9 @@ public enum Payday {
             min(threshold, plan.originalOccurrenceDate(on: $0))
         } ?? threshold
         let lastConfirmed = paid.map { plan.originalOccurrenceDate(on: $0) }.max()
-        guard let day = plan.schedule(through: Dates.addDays(1, to: today).addingTimeInterval(-0.001)).map({ Dates.day($0.date) })
-            .first(where: { day in plan.originalOccurrenceDate(on: day) >= since &&
+        let shifts = ledger.preferences.shiftsWeekendPayday && plan.frequency == .monthly
+        guard let day = plan.schedule(through: Dates.addDays(shifts ? 3 : 1, to: today).addingTimeInterval(-0.001)).map({ Dates.day($0.date) })
+            .first(where: { day in (shifts ? CycleStart.shifted(day) : day) <= today && plan.originalOccurrenceDate(on: day) >= since &&
                 (lastConfirmed.map { plan.originalOccurrenceDate(on: day) > $0 } ?? true) &&
                 !plan.isSkipped(on: day) && !paid.contains(day) }) else { return nil }
         return Due(planID: plan.id, occurrence: day, title: plan.title, usual: FixedFlowPayments(in: ledger, now: now).amount(for: plan),

@@ -36,11 +36,11 @@ extension CloudBackend {
 
 public enum LedgerBackup {
     /// Active entries, including scheduled future entries; CRLF and RFC 4180 quoting.
-    public static func entriesCSV(_ ledger: Ledger) -> Data {
+    public static func entriesCSV(_ ledger: Ledger, in range: ClosedRange<Date>? = nil) -> Data {
         func cell(_ text: String) -> String { "\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0.name) })
         var rows = [["日期", "金额", "性质", "用途", "分类", "小项", "账户", "转入账户", "备注", "来源"]]
-        for entry in ledger.entries.filter({ $0.deletedAt == nil }).sorted(by: { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date }) {
+        for entry in exportedEntries(ledger, in: range).sorted(by: { $0.date == $1.date ? $0.id.uuidString < $1.id.uuidString : $0.date < $1.date }) {
             let cents = entry.amount.magnitude
             let fraction = cents % 100
             let amount = "\(cents / 100).\(fraction < 10 ? "0" : "")\(fraction)"

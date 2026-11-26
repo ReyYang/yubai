@@ -170,7 +170,7 @@ public enum Finance {
             return nil
         }.min { $0.date == $1.date ? $0.title < $1.title : $0.date < $1.date }
     }
-    static func scheduledCycle(in ledger: Ledger, now: Date) -> (start: Date, end: Date, payday: Bool) {
+    static func scheduledCycle(in ledger: Ledger, now: Date, weekendShift: Bool = true) -> (start: Date, end: Date, payday: Bool) {
         let month = Dates.calendar.dateInterval(of: .month, for: now)!
         let natural = (start: month.start, end: Dates.addDays(-1, to: month.end), payday: false)
         if ledger.cycleAnchor == .calendarMonth { return natural }
@@ -200,7 +200,20 @@ public enum Finance {
                 previousIndex -= 1
                 previous = Dates.day(plan.scheduledDate(at: previousIndex))
             }
+            if weekendShift, ledger.preferences.shiftsWeekendPayday, plan.frequency == .monthly {
+                // A Saturday or Sunday payday arrives on the Friday before.
+                let nextStart = CycleStart.shifted(next.date)
+                if nextStart <= Dates.day(now) {
+                    let after = CycleStart.shifted(plan.scheduledDate(at: index + 1))
+                    return (nextStart, Dates.addDays(-1, to: after), true)
+                }
+                return (CycleStart.shifted(previous), Dates.addDays(-1, to: nextStart), true)
+            }
             return (previous, Dates.addDays(-1, to: next.date), true)
+        }
+        if ledger.cycleAnchor == .payday, let day = ledger.preferences.cycleStartDay {
+            let cycle = CycleStart.cycle(day: day, weekendShift: ledger.preferences.shiftsWeekendPayday, now: now)
+            return (cycle.start, cycle.end, false)
         }
         return natural
     }

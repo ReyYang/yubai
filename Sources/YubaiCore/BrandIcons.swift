@@ -5,6 +5,8 @@ public struct BrandIcon: Decodable, Equatable, Sendable {
     public var name: String
     public var keywords: [String]
     public var license: String
+    /// The glyph's own fill colour, `#RRGGBB`.
+    public var hex: String?
 }
 
 /// The bundled catalog is the only name/keyword mapping, also used for credits.
