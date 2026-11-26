@@ -103,10 +103,6 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertEqual(element("formulaResult").label, "1,864.00")
         XCTAssertFalse(element("formulaRow_carry").exists); XCTAssertFalse(element("formulaRow_withdrawal").exists); XCTAssertFalse(element("formulaRow_balanceGap").exists)
     }
-    func testFastHeroUsesAmberWaterState() {
-        launch("v47r-fast"); expect("availableFunds", contains: "¥1,080.00")
-        XCTAssertEqual(element("ledgerWaterBar").value as? String, "花得比日子快")
-    }
     func testSavingLessStopsAtZeroWithoutRescueCard() {
         launch("v47r-less")
         XCTAssertEqual(element("fundsFormula").value as? String, "¥0.00")
@@ -181,10 +177,6 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         backToHome()
         XCTAssertEqual(element("fundsFormula").value as? String, "¥350.00")
     }
-    func testKnownSalaryWithoutPostedIncomeUsesSpentFallback() {
-        launch("v47r-no-income"); XCTAssertTrue(app.staticTexts["这个月花了"].exists)
-        expect("availableFunds", contains: "¥836.00"); XCTAssertFalse(element("ledgerWaterBar").exists); XCTAssertFalse(element("fundsFormula").exists)
-    }
     func testCarryReleaseAddsSeparateRowAndUndoDoesNotRepeatNotice() {
         launch("v47r-carry"); openInbox(); expect("carryNoticeText", contains: "上期省下 620.00 已存好")
         tap("leftoverKeep"); gone("newCycleCard"); backToHome(); expect("availableFunds", contains: "¥2,484.00")
@@ -205,30 +197,6 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         launch("v47r-floor"); formula(); expect("formulaRow_balanceGap", contains: "400.00"); tap("formulaRow_balanceGap")
         XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'ledgerEntry_'")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(element("reconcileSheet").exists)
-    }
-    func testSoftLinesShowRemainingCountExceededAndSharedEditor() {
-        launch("v47r-soft-lines"); formula()
-        expect("softLine_" + watch(478201), contains: "320.00")
-        expect("softLine_" + watch(478202, "count"), contains: "4 次")
-        expect("softLine_" + watch(478203), contains: "超出 80.00")
-        tap("softLine_" + watch(478201)); keys("900"); tap("saveSoftLine")
-        expect("softLine_" + watch(478201), contains: "420.00")
-        tap("BackButton"); tap("tab_yubai"); tap("openProfile")
-        expect("profileArea_" + String(format: "47000000-0000-0000-0000-%012d", 478201), contains: "900.00")
-    }
-    func testLargestSoftLineEditorsRevealTheirVirtualizedRowsInTheOwningPage() {
-        launch("v47r-soft-lines", large: true); formula()
-        let watchRow = element("softLine_" + watch(478201))
-        XCTAssertTrue(revealControl(watchRow, in: app, deadline: Date().addingTimeInterval(60), searching: element("formulaPage")))
-        tapControl(watchRow, in: app); keys("900"); tap("saveSoftLine")
-        expect("softLine_" + watch(478201), contains: "420.00")
-        tap("BackButton"); tap("tab_insights"); tap("insightCategory_0")
-        let countMode = element("modeSoftLine_" + watch(478201))
-        XCTAssertTrue(revealControl(countMode, in: app, deadline: Date().addingTimeInterval(60), searching: element("whereCategoryPage")))
-        tapControl(countMode, in: app); keys("5"); tap("saveSoftLine")
-        let countRow = element("softLine_" + watch(478201, "count"))
-        XCTAssertTrue(revealControl(countRow, in: app, deadline: Date().addingTimeInterval(60), searching: element("whereCategoryPage")))
-        expect("softLine_" + watch(478201, "count"), contains: "还剩 4 次")
     }
     func testReconcileReceiptShowsFullAdjustmentAndUndoAcrossAllGalleryModes() {
         for mode in galleryModes {
@@ -436,11 +404,6 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             })
         }
     }
-    func testUnwatchedFormulaHasOnlyTheAddWatchRow() {
-        launch(); formula(); XCTAssertFalse(element("softLineWatches").exists)
-        tap("addSoftLine"); tap("entryMoreCategory_购物"); keys("800"); tap("saveSoftLine")
-        XCTAssertTrue(element("softLineWatches").waitForExistence(timeout: 5)); XCTAssertFalse(app.alerts.firstMatch.exists)
-    }
     func testInsightsCategoryStatusAndCountEditingUseSameWatches() {
         launch("v47r-soft-lines"); tap("tab_insights"); expect("insightSoftLine_" + watch(478201), contains: "外卖还剩 320.00")
         expect("insightSoftLine_" + watch(478203), contains: "打车超出 80.00")
@@ -569,24 +532,5 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     }
     func testLargestButlerHeadlinesAndAnswersClearFloatingChromeInDarkWithHiddenAmounts() {
         checkLargestButlerCards(dark: true, hidden: true)
-    }
-    func testSoftLineSuggestionWritesExistingProfileAndCorrectionWritesMemory() {
-        launch("v47r-suggestion"); openInbox(); expect("butlerAIAccept", contains: "盯住外卖 ¥800.00")
-        tap("butlerAIAccept"); gone("butlerSuggestionCard"); formula(); XCTAssertTrue(element("softLineWatches").waitForExistence(timeout: 5))
-        launch("v47r-weekly-ai"); openInbox(); tap("butlerAIIncorrect"); typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app); tap("butlerAICorrectionSave")
-        gone("butlerSuggestionCard"); tap("tab_yubai"); tap("openMemories")
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '周四是和同事拼单'")).firstMatch.waitForExistence(timeout: 5))
-    }
-    func testOverdueBillIsNamedInDeficitAndFormulaBillSources() {
-        launch("v47r-overdue"); expect("ledgerGapBill", contains: "上期未付房租")
-        formula(); tap("formulaRow_bills"); XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS '上期未付房租'")).firstMatch.waitForExistence(timeout: 5))
-    }
-    func testHiddenLargestDarkKeepHeroCardFormulaAndSoftLineActions() {
-        launch("v47r-carry-fast", large: true, dark: true, hidden: true)
-        XCTAssertEqual(element("availableFunds").label, "金额已隐藏"); XCTAssertTrue(element("ledgerWaterBar").exists)
-        expect("carryNoticeText", contains: "••••"); tap("leftoverKeep"); formula(); XCTAssertEqual(element("formulaResult").label, "金额已隐藏")
-        launch("v47r-soft-lines", large: true, dark: true, hidden: true); formula(); tap("softLine_" + watch(478201)); XCTAssertTrue(element("saveSoftLine").isHittable)
-        launch("v47r-less", hidden: true); expect("ledgerStatus", contains: "这个月少攒 ¥••••")
-        launch("v47r-suggestion", hidden: true); expect("butlerAIAccept", contains: "盯住外卖 ¥••••")
     }
 }

@@ -378,7 +378,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         // The calendar scrim temporarily takes the pill out of the AX tree.
         pillCenter.tap()
         XCTAssertTrue(waitForDisappearance(yesterday))
-        tap("cancelManualSheet")
+        dismissEntrySheet(in: app)
         XCTAssertTrue(element(key).waitForExistence(timeout: 5))
     }
     func testStageACalendarSelectsAPreviousMonthDate() {
@@ -431,7 +431,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             XCTAssertTrue(element("entryPurpose").waitForExistence(timeout: 5))
             XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entryPurpose").count, 1)
             XCTAssertFalse(element("quickRepeatMenu").exists)
-            tap("cancelManualSheet")
+            dismissEntrySheet(in: app)
             XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 5))
             app.terminate()
         }
@@ -502,7 +502,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertFalse(app.staticTexts["工资未到账"].isHittable)
     }
     func testCancellingSalaryCaptureLeavesSalaryPendingAfterRelaunch() {
-        launch("v47-after"); tap("recordSalary"); tap("cancelManualSheet")
+        launch("v47-after"); tap("recordSalary"); dismissEntrySheet(in: app)
         app.terminate(); launchApp(app)
         XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
         XCTAssertTrue(element("recordSalary").exists)

@@ -262,10 +262,15 @@ struct DSHero: View {
                             .accessibilityLabel(amount.contains("•") ? "金额已隐藏" : amount)
                             .accessibilityIdentifier("availableFunds")
                     }.dsFillWidth()
-                    VStack(alignment: .trailing, spacing: 0) {
-                        if !daily.isEmpty { Text("每天 \(daily)").dsText(DS.Font.tLabelStrong).monospacedDigit() }
+                    VStack(alignment: typeSize.isAccessibilitySize ? .leading : .trailing, spacing: 0) {
+                        if !daily.isEmpty {
+                            Text("每天 \(daily)").dsText(DS.Font.tLabelStrong).monospacedDigit()
+                                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                        }
                         Text("还剩 \(remainingDays) 天").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-                    }.foregroundStyle(DS.Color.ink).fixedSize().padding(.bottom, HomeSpec.heroDailyBottom)
+                            .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                    }.foregroundStyle(DS.Color.ink).dynamicTypeSize(...DynamicTypeSize.xLarge)
+                        .fixedSize().padding(.bottom, HomeSpec.heroDailyBottom)
                 }.contentShape(Rectangle())
             }.dsPressStyle().accessibilityLabel("还能花，查看算式").accessibilityValue(amount.contains("•") ? "金额已隐藏" : amount)
                 .accessibilityIdentifier("fundsFormula")
@@ -348,31 +353,34 @@ struct DSTabBar: View {
     var onEntry: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: DS.Space.s20) {
             tab(.home, title: "首页", icon: .tabHome)
-            Spacer(minLength: 0)
             Button(action: onEntry) {
                 HStack(spacing: HomeSpec.gap6) {
                     DSIconView(icon: .add, size: DS.Size.brandTile, color: DS.Color.onAccent)
                     Text("记一笔").dsText(DS.Font.tBody).fontWeight(.semibold)
+                        .minimumScaleFactor(HomeSpec.numberMinimumScale)
                 }.foregroundStyle(DS.Color.onAccent).lineLimit(1)
+                    .padding(.horizontal, DS.Space.s20)
                     .frame(minWidth: HomeSpec.entryWidth, minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
             }.dsPressStyle().accessibilityIdentifier("addEntry")
-            Spacer(minLength: 0)
             tab(.overview, title: "全景", icon: .tabOverview)
-        }.padding(.horizontal, DS.Space.s12).frame(minHeight: HomeSpec.tabHeight)
+        }.dynamicTypeSize(...DynamicTypeSize.xLarge)
+            .padding(.horizontal, DS.Space.s12)
+            .frame(maxWidth: .infinity, minHeight: HomeSpec.tabHeight)
             .background { DS.Color.raised.ignoresSafeArea(edges: .bottom) }
             .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
     }
 
     private func tab(_ tab: Tab, title: String, icon: DS.Icon) -> some View {
         Button { selection = tab } label: {
-            VStack(spacing: 0) {
-                DSIconView(icon: icon, size: HomeSpec.navIcon,
+            VStack(spacing: HomeSpec.tabIconGap) {
+                DSIconView(icon: icon, size: DS.Size.icon,
                            color: selection == tab ? DS.Color.accentInk : DS.Color.ink3)
-                Text(title).dsText(DS.Font.tTab).fontWeight(selection == tab ? .semibold : .regular)
+                Text(title).dsText(DS.Font.tTab).fontWeight(selection == tab ? .semibold : .medium)
+                    .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
             }.foregroundStyle(selection == tab ? DS.Color.accentInk : DS.Color.ink3)
-                .frame(minWidth: HomeSpec.tabWidth, minHeight: DS.Size.ctaH)
+                .frame(width: HomeSpec.tabWidth).frame(minHeight: DS.Size.ctaH)
         }.dsPressStyle().accessibilityAddTraits(selection == tab ? .isSelected : [])
             .accessibilityIdentifier(tab == .home ? "tab_ledger" : "tab_insights")
     }
@@ -545,21 +553,19 @@ struct DSFloatingMenu: View {
     var recategorizationEnabled = true
     var body: some View {
         VStack(spacing: 0) {
-            item("编辑", icon: DS.Icon.edit, action: onEdit).accessibilityIdentifier("entryDetailEdit")
-            item("改分类", icon: DS.Icon.recategorize, action: onRecategorize).accessibilityIdentifier("entryDetailRecategorize")
+            item("编辑", action: onEdit).accessibilityIdentifier("entryDetailEdit")
+            item("改分类", action: onRecategorize).accessibilityIdentifier("entryDetailRecategorize")
                 .disabled(!recategorizationEnabled)
-            item("再记一笔一样的", icon: DS.Icon.duplicate, action: onDuplicate)
-            item("删除", icon: DS.Icon.delete, warning: true, action: onDelete).accessibilityIdentifier("deleteEntryDetail")
+            item("再记一笔一样的", action: onDuplicate)
+            item("删除", warning: true, action: onDelete).accessibilityIdentifier("deleteEntryDetail")
                 .padding(.top, HomeSpec.gap6)
                 .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
         }.padding(.vertical, HomeSpec.gap6).frame(width: DS.Size.menuW)
             .background(DS.Color.raised).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous)).dsShadow(DS.Shadow.float)
     }
-    private func item(_ title: String, icon: DS.Icon, warning: Bool = false, action: @escaping () -> Void) -> some View {
+    private func item(_ title: String, warning: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label { Text(title).dsText(DS.Font.tBody) } icon: {
-                DSIconView(icon: icon, size: DS.Size.brandTile, color: warning ? DS.Color.warnInk : DS.Color.ink)
-            }
+            Text(title).dsText(DS.Font.tBody)
                 .foregroundStyle(warning ? DS.Color.warnInk : DS.Color.ink)
                 .dsFillWidth().frame(minHeight: DS.Size.tapMin).padding(.horizontal, DS.Space.s16)
         }.dsPressStyle()
@@ -674,19 +680,10 @@ struct DSFloatingCard: View {
 struct DSSheet<Content: View>: View {
     let title: String
     @ViewBuilder var content: () -> Content
-    @Environment(\.dismiss) private var dismiss
     var body: some View {
         VStack(spacing: DS.Space.s16) {
-            ZStack {
-                Text(title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
-                HStack {
-                    Button { dismiss() } label: {
-                        DSIconView(icon: .close, size: DS.Size.icon, color: DS.Color.ink3)
-                            .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
-                    }.dsPressStyle().accessibilityLabel("关闭")
-                    Spacer(minLength: 0)
-                }
-            }.frame(minHeight: DS.Size.tapMin)
+            Text(title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
+                .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin)
             content()
         }.padding(DS.Space.s16).dsFillWidth().background(DS.Color.bg)
     }
@@ -719,16 +716,20 @@ extension View {
 struct DSSegmented: View {
     let options: [String]
     @Binding var selection: String
+    var width: CGFloat? = HomeSpec.segmentedWidth
+    var identifierPrefix: String? = nil
     @Namespace private var thumb
+    @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
     @Environment(\.dsAnimationsEnabled) private var enabled
     var body: some View {
+        let reduceMotion = reduceMotionOverride ?? systemReduceMotion
         HStack(spacing: 0) {
             ForEach(options, id: \.self) { option in
                 Button { selection = option } label: {
                     Text(option).dsText(DS.Font.tPill).fontWeight(selection == option ? .semibold : .regular)
-                        .lineLimit(1)
+                        .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                         .foregroundStyle(selection == option ? DS.Color.ink : DS.Color.ink3)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, DS.Size.segmentedInset)
@@ -742,12 +743,14 @@ struct DSSegmented: View {
                             }
                         }.frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
                 }.dsPressStyle().accessibilityAddTraits(selection == option ? .isSelected : [])
+                    .accessibilityIdentifier(identifierPrefix.map { $0 + option } ?? "")
             }
         }.padding(.horizontal, DS.Size.segmentedInset)
             .background {
                 RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous).fill(DS.Color.surface).frame(height: DS.Size.pillH)
             }
-            .animation(enabled ? DSMotion.animation(.segmentedThumb, reduceMotion: reduceMotionOverride ?? systemReduceMotion) : nil, value: selection)
+            .frame(width: typeSize.isAccessibilitySize ? nil : width)
+            .animation(enabled ? (reduceMotion ? nil : DSMotion.snappyAnimation) : nil, value: selection)
             .sensoryFeedback(DSMotion.Haptic.toggle, trigger: selection)
     }
 }

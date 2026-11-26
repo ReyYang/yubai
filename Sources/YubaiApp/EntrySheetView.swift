@@ -190,7 +190,7 @@ struct EntrySheetView: View {
 
     private var form: some View {
         VStack(spacing: .zero) {
-            EntryTopHeaderView(model: model, close: close, drag: drag)
+            EntryTopHeaderView(model: model, drag: drag)
             VStack(spacing: .zero) {
                 EntryAmountBlockView(model: model)
                     .padding(.bottom, EntrySpec.amountBottom)
@@ -248,7 +248,6 @@ private struct EntryGrabber: View {
 
 struct EntryTopHeaderView: View {
     let model: EntrySheetViewModel
-    let close: () -> Void
     let drag: EntryHeaderDrag
     @Environment(\.accessibilityReduceMotion) private var reduced
 
@@ -258,15 +257,11 @@ struct EntryTopHeaderView: View {
                 .contentShape(Rectangle())
                 .gesture(dragGesture)
             HStack(spacing: .zero) {
-                Button(action: close) {
-                    DS.Icon.close.view(size: DS.Size.icon, color: DS.Color.ink3)
-                        .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
-                }
-                .buttonStyle(EntryTactileButtonStyle())
-                .accessibilityLabel("关闭记一笔")
-                .accessibilityHint("保留尚未记下的草稿")
-                .accessibilityIdentifier("cancelManualSheet")
-                .frame(maxWidth: EntrySpec.headerSide, alignment: .leading)
+                Color.clear
+                    .frame(width: EntrySpec.headerSide, height: DS.Size.tapMin)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture)
+                    .accessibilityHidden(true)
                 Spacer(minLength: .zero)
                 tabs
                 Spacer(minLength: .zero)
@@ -1177,7 +1172,12 @@ private extension YubaiCore.Category {
         case "日用", "日用百货": .catDaily
         case "数码", "数码电器": .catDigital
         case "工资", "工资奖金": .acctWallet
-        case "退款": .reimburse
+        case "奖金": .acctBalance
+        case "投资收益": .acctInvest
+        case "礼金赠与": .saveFirst
+        case "兼职劳务": .edit
+        case "二手转卖": .transfer
+        case "退款", "报销": .reimburse
         default: iconForSymbol
         }
     }

@@ -20,9 +20,11 @@ enum HomeSpec {
     static let statusDots: CGFloat = 5 // canvas Home.dc.html: running dots diameter
     static let statusDotOpacities = [1.0, 0.6, 0.3] // canvas Home.dc.html: running dots
     static let searchBorder: CGFloat = 1.5 // canvas Home.dc.html: focused search field
-    static let tabWidth: CGFloat = 72 // canvas Home.dc.html: two side tabs
+    static let tabWidth: CGFloat = 64 // canvas Review.dc.html: centered side tabs
+    static let tabIconGap: CGFloat = 2 // canvas Review.dc.html: tab icon and label gap
     static let entryWidth: CGFloat = 124 // canvas Home.dc.html: central CTA
     static let tabHeight: CGFloat = 62 // canvas Home.dc.html: bottom bar
+    static let segmentedWidth: CGFloat = 200 // canvas Review.dc.html: overview segmented control
     static let numberMinimumScale: CGFloat = 0.65 // canvas Home.dc.html: worst-case numbers stay visible
 
     static let formulaTop: CGFloat = 14 // canvas Budget.dc.html: formula card

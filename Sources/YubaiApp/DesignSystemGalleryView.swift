@@ -176,7 +176,6 @@ struct DesignSystemGalleryView: View {
             }.frame(maxWidth: HomeSpec.galleryContentWidth)
         case .segmented:
             DSSegmented(options: ["支出", "收入"], selection: $selectedSegment)
-                .frame(maxWidth: HomeSpec.galleryContentWidth)
         case .floatingCard:
             VStack(alignment: .trailing, spacing: DS.Space.s20) {
                 DSFloatingCard(name: "换手机", amount: "−6,999.00", impact: "走机动余钱 · 还剩",
@@ -601,7 +600,7 @@ private struct EntryHeaderGallery: View {
         let outline = UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet,
                                              topTrailingRadius: DS.Radius.sheet, style: .continuous)
         VStack(spacing: DS.Space.s20) {
-            EntryTopHeaderView(model: model, close: {}, drag: EntryHeaderDrag(move: { _ in }, end: { _ in }))
+            EntryTopHeaderView(model: model, drag: EntryHeaderDrag(move: { _ in }, end: { _ in }))
             Text(EntrySpec.fixtureLunchAmount).dsText(DS.Font.nEntry).monospacedDigit()
                 .padding(.bottom, DS.Space.s20)
         }

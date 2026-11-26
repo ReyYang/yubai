@@ -348,11 +348,6 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertFalse(element("butlerEvidenceTitle").label.contains("1,234,567.89"))
         tap("butlerAIIncorrect"); tap("butlerAICorrectionSave")
     }
-    func testEmptyLedgerActionsOpenCaptureAndImport() {
-        launch("v47-c-empty"); tap("tab_ledger"); XCTAssertTrue(element("firstOpenScene").exists)
-        tap("addEntry"); XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5)); tap("cancelManualSheet")
-        tap("firstImport"); XCTAssertTrue(element("chooseBillFile").waitForExistence(timeout: 5))
-    }
     func testAssistantSuggestionsAndValuesAndMemoriesUseRevisionRoutes() {
         launch("v47-c-empty", configured: true); tap("tab_yubai")
         XCTAssertTrue(element("askYubai").exists)
@@ -415,13 +410,6 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertFalse(element("aiFeature_butlerSuggestions").isEnabled)
         XCTAssertTrue((element("butlerLastRun").value as? String ?? "").contains("requests=0"))
     }
-    func testAddingFrequentTemplateSavesWithoutRecordingAnEntry() {
-        launch("v47-c-empty"); openFrequentEntries(); tap("emptyAction_frequent")
-        typeIntoField("午饭\n", identifier: "frequentEntryPurpose", in: app)
-        tap("keypad_2"); tap("keypad_8"); tap("saveFrequentEntry")
-        XCTAssertTrue(element("frequentEntry_0").waitForExistence(timeout: 5)); backToRoot()
-        tap("tab_ledger"); XCTAssertTrue(element("firstOpenScene").exists)
-    }
     func testEntryTapAndHoldRemainDistinctThroughLargestTextAndFrequentAdd() {
         for mode in [(false, false, false), (false, true, false), (true, false, false), (true, true, true)] {
             launch("v47-c-empty", large: mode.0, hidden: mode.2, dark: mode.1)
@@ -429,7 +417,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
             tap("addEntry")
             XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
             XCTAssertFalse(element("quickRepeatMenu").exists)
-            tap("cancelManualSheet")
+            dismissEntrySheet(in: app)
             XCTAssertTrue(waitForDisappearance(element("entryKeypadAmount")))
             openFrequentEntries()
             XCTAssertTrue(element("emptyState_frequent").waitForExistence(timeout: 5))

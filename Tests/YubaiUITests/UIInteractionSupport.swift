@@ -213,6 +213,33 @@ class YubaiUITestCase: XCTestCase {
         UIConditionWait.run(timeout: timeout, read: { !target.exists })
     }
 
+    func dismissEntrySheet(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let nature = app.buttons["entryNature_expense"].firstMatch
+        let amount = app.descendants(matching: .any).matching(identifier: "entryKeypadAmount").firstMatch
+        let anchor = nature.waitForExistence(timeout: 3) ? nature : amount
+        guard anchor.waitForExistence(timeout: 5), waitForStableFrame(anchor) else {
+            XCTFail("Entry sheet missing before dismiss", file: file, line: line)
+            return
+        }
+        let window = app.windows.firstMatch
+        let frame = anchor.frame
+        if nature.exists && frame.minY > 140 {
+            window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.frame.midX - window.frame.minX,
+                                     dy: max(20, frame.minY - 60) - window.frame.minY))
+                .tap()
+        } else {
+            let start = window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.frame.midX - window.frame.minX,
+                                     dy: max(20, frame.minY - 6) - window.frame.minY))
+            let end = window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.frame.midX - window.frame.minX,
+                                     dy: min(window.frame.maxY - 20, frame.minY + 460) - window.frame.minY))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTAssertTrue(waitForDisappearance(amount), "Entry sheet did not dismiss", file: file, line: line)
+    }
+
     /// Remember the frame already read by the settling helper. Everything else
     /// is collected on failure, so successful taps incur no diagnostic snapshot.
     func rememberTap(_ target: XCUIElement, in app: XCUIApplication, frame sampledFrame: CGRect? = nil) {
