@@ -66,7 +66,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         openAssistantHub(); tap("openFrequentEntries")
         XCTAssertFalse(element("entryKeypadAmount").exists)
     }
-    private func settings() { backToRoot(); tap("openSettings"); tap("openIntelligencePrivacy"); XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5)) }
+    private func settings() { backToRoot(); tap("openSettings"); tap("openLegacyIntelligencePrivacy"); XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5)) }
     private func backToRoot() {
         let deadline = Date().addingTimeInterval(30)
         for _ in 0..<8 {

@@ -82,6 +82,8 @@ public struct Account: Codable, Identifiable, Equatable, Sendable {
     public var reconciled: Bool; public var archived = false
     public var note = ""; public var creditLimit: Int64 = 0
     public var creditPaymentDay: Int?
+    /// Nil, including an older ledger, means no statement day was set.
+    public var creditStatementDay: Int?
     public init(name: String, kind: AccountKind = .bank, balance: Int64 = 0, at: Date = Dates.now, reconciled: Bool = true) {
         self.name = name; self.kind = kind; self.anchorBalance = balance; self.anchorDate = at; self.reconciled = reconciled
     }
@@ -301,12 +303,14 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var estimatedAmountSince: Date?
     /// Original scheduled day → replacement day. Nil preserves the recurring schedule.
     public var occurrenceDateOverrides: [Date: Date]?
+    /// Brand icon chosen for a subscription; nil matches by title.
+    public var iconSlug: String?
     public init(title: String, amount: Int64, dueDate: Date, frequency: Frequency = .once, inflow: Bool = false, category: String = Classification.pendingCategory, nature: Nature = .expense, intoFixedSavings: Bool = false) {
         self.title = title; self.amount = amount; self.dueDate = dueDate; self.frequency = frequency; self.inflow = inflow; self.category = category; self.nature = nature
         self.intoFixedSavings = nature == .income && inflow && intoFixedSavings
         if frequency == .yearly { yearlyReserveSince = Dates.day(Dates.now) }
     }
-    private enum CodingKeys: String, CodingKey { case currency, yearlyReserveSince, occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, otherAccountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
+    private enum CodingKeys: String, CodingKey { case iconSlug, currency, yearlyReserveSince, occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, otherAccountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -332,6 +336,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         settledOccurrences = try c.decodeIfPresent([Date].self, forKey: .settledOccurrences) ?? []
         estimatedAmountSince = try c.decodeIfPresent(Date.self, forKey: .estimatedAmountSince)
         occurrenceDateOverrides = try c.decodeIfPresent([Date: Date].self, forKey: .occurrenceDateOverrides)
+        iconSlug = (try? c.decodeIfPresent(String.self, forKey: .iconSlug)).flatMap { $0.isEmpty ? nil : $0 }
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -348,6 +353,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         try c.encode(previousOccurrences, forKey: .previousOccurrences); try c.encode(settledOccurrences, forKey: .settledOccurrences)
         try c.encodeIfPresent(estimatedAmountSince, forKey: .estimatedAmountSince)
         if let occurrenceDateOverrides, !occurrenceDateOverrides.isEmpty { try c.encode(occurrenceDateOverrides, forKey: .occurrenceDateOverrides) }
+        try c.encodeIfPresent(iconSlug, forKey: .iconSlug)
     }
     func schedule(through end: Date) -> [(index: Int, date: Date)] {
         guard let overrides = occurrenceDateOverrides, !overrides.isEmpty else { return baseSchedule(through: end) }
@@ -596,10 +602,19 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var butlerSuggestionsEnabled: Bool?
     /// 「云端能看到」 switches; nil means `CloudShareSettings.defaults`. Read through `cloudShareSettings`.
     public var cloudShare: CloudShareSettings?
+    /// Nil, including an older ledger, means off: a weekend payday is not moved.
+    public var paydayWeekendShift: Bool?
+    /// The chosen cycle start day when no salary plan anchors the cycle; 31 means the last day.
+    public var cycleStartDay: Int?
+    /// Nil means `.gentle`.
+    public var assistantTone: AssistantTone?
+    /// Nil means Sunday 21:00.
+    public var weeklyReviewTime: WeeklyReviewTime?
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
         case butlerNotices, billExchangeRates, lastBillCurrency, yearlyBillsSetAside, butlerSuggestionsEnabled, cloudShare
+        case paydayWeekendShift, cycleStartDay, assistantTone, weeklyReviewTime
         case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
         case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
@@ -638,6 +653,10 @@ public struct Preferences: Codable, Equatable, Sendable {
         aiReceiptRecognitionDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiReceiptRecognitionDisabled)
         butlerSuggestionsEnabled = try values.decodeIfPresent(Bool.self, forKey: .butlerSuggestionsEnabled)
         cloudShare = try values.decodeIfPresent(CloudShareSettings.self, forKey: .cloudShare)
+        paydayWeekendShift = try? values.decodeIfPresent(Bool.self, forKey: .paydayWeekendShift)
+        cycleStartDay = (try? values.decodeIfPresent(Int.self, forKey: .cycleStartDay)).flatMap { (1...31).contains($0) ? $0 : nil }
+        assistantTone = try? values.decodeIfPresent(AssistantTone.self, forKey: .assistantTone)
+        weeklyReviewTime = (try? values.decodeIfPresent(WeeklyReviewTime.self, forKey: .weeklyReviewTime)).flatMap { $0.isValid ? $0 : nil }
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -660,6 +679,10 @@ public struct Preferences: Codable, Equatable, Sendable {
         if aiReceiptRecognitionDisabled == true { try c.encode(true, forKey: .aiReceiptRecognitionDisabled) }
         try c.encodeIfPresent(butlerSuggestionsEnabled, forKey: .butlerSuggestionsEnabled)
         try c.encodeIfPresent(cloudShare, forKey: .cloudShare)
+        if paydayWeekendShift == true { try c.encode(true, forKey: .paydayWeekendShift) }
+        try c.encodeIfPresent(cycleStartDay, forKey: .cycleStartDay)
+        try c.encodeIfPresent(assistantTone, forKey: .assistantTone)
+        try c.encodeIfPresent(weeklyReviewTime, forKey: .weeklyReviewTime)
     }
 }
 public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
@@ -1275,7 +1298,7 @@ public struct Ledger: Codable, Equatable, Sendable {
                   category.subcategories.allSatisfy({ !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.count <= 200 && !$0.contains("/") }) else { throw YubaiError.invalid("主项和小项只支持两级。") }
         }
         guard Set(categoryNames).count == categoryNames.count else { throw YubaiError.invalid("分类名称不能重复。") }
-        for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), a.creditPaymentDay.map({ (1...31).contains($0) }) ?? true, dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
+        for a in accounts { guard !a.name.trimmingCharacters(in: .whitespaces).isEmpty, a.anchorBalance >= -Money.limit, a.anchorBalance <= Money.limit, (0...Money.limit).contains(a.creditLimit), a.creditPaymentDay.map({ (1...31).contains($0) }) ?? true, a.creditStatementDay.map({ (1...31).contains($0) }) ?? true, dateValid(a.anchorDate) else { throw YubaiError.invalid("账户信息无效。") } }
         for e in entries {
             guard ids.contains(e.accountID), e.amount > 0, e.amount <= Money.limit, !e.title.isEmpty,
                   dateValid(e.date), e.recordedAt.map(dateValid) ?? true, e.otherDate.map(dateValid) ?? true,

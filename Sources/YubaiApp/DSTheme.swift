@@ -56,6 +56,10 @@ enum DS {
         static let tray: SwiftUI.Color = DS.adaptive(0xE4DAC4, 0x2A251C, lightAlpha: 1, darkAlpha: 1)
         /// 弹窗顶部的拖动条。
         static let grabber: SwiftUI.Color = DS.adaptive(0xD8CFBE, 0x4A4335, lightAlpha: 1, darkAlpha: 1)
+        /// 开关滑块，深浅色都是白色。
+        static let knob: SwiftUI.Color = DS.adaptive(0xFFFFFF, 0xFFFFFF, lightAlpha: 1, darkAlpha: 1)
+        /// 品牌色块上的标志和首字，深浅色都是白色。
+        static let onBrand: SwiftUI.Color = DS.adaptive(0xFFFFFF, 0xFFFFFF, lightAlpha: 1, darkAlpha: 1)
         /// 环图第 1 段（最大的一类）。
         static let chart1: SwiftUI.Color = DS.adaptive(0x476846, 0xCFE0C2, lightAlpha: 1, darkAlpha: 1)
         /// 环图第 2 段。
@@ -103,6 +107,8 @@ enum DS {
             Sample(name: "key-fn", lightHex: "#D6CAAF", darkHex: "#353026", color: keyFn),
             Sample(name: "tray", lightHex: "#E4DAC4", darkHex: "#2A251C", color: tray),
             Sample(name: "grabber", lightHex: "#D8CFBE", darkHex: "#4A4335", color: grabber),
+            Sample(name: "knob", lightHex: "#FFFFFF", darkHex: "#FFFFFF", color: knob),
+            Sample(name: "on-brand", lightHex: "#FFFFFF", darkHex: "#FFFFFF", color: onBrand),
             Sample(name: "chart-1", lightHex: "#476846", darkHex: "#CFE0C2", color: chart1),
             Sample(name: "chart-2", lightHex: "#8FAE88", darkHex: "#86A884", color: chart2),
             Sample(name: "chart-3", lightHex: "#A9BE9C", darkHex: "#5E7A5B", color: chart3),
@@ -285,6 +291,12 @@ enum DS {
         static let brandTile: CGFloat = 18
         /// 更多菜单的宽度。
         static let menuW: CGFloat = 208
+        /// 开关轨道宽。
+        static let switchW: CGFloat = 48
+        /// 开关轨道高。
+        static let switchH: CGFloat = 30
+        /// 开关滑块直径。
+        static let switchKnob: CGFloat = 26
     }
 
     enum Shape {
@@ -362,6 +374,14 @@ enum DS {
         case done = "done"
         case backspace = "backspace"
         case settings = "settings"
+        case bolt = "bolt"
+        case bell = "bell"
+        case half = "half"
+        case inbox = "inbox"
+        case clock = "clock"
+        case disk = "disk"
+        case lock = "lock"
+        case arrowOut = "arrow-out"
 
         var id: String { rawValue }
         static let grid: CGFloat = 256
@@ -415,6 +435,14 @@ enum DS {
             case .done: "check"
             case .backspace: "backspace"
             case .settings: "gear-six"
+            case .bolt: ""
+            case .bell: ""
+            case .half: ""
+            case .inbox: ""
+            case .clock: ""
+            case .disk: ""
+            case .lock: ""
+            case .arrowOut: ""
             }
         }
 
@@ -466,6 +494,29 @@ enum DS {
             case .done: "m229.66 77.66l-128 128a8 8 0 0 1-11.32 0l-56-56a8 8 0 0 1 11.32-11.32L96 188.69L218.34 66.34a8 8 0 0 1 11.32 11.32"
             case .backspace: "M216 40H68.53a16.08 16.08 0 0 0-13.72 7.77L9.14 123.88a8 8 0 0 0 0 8.24l45.67 76.11A16.08 16.08 0 0 0 68.53 216H216a16 16 0 0 0 16-16V56a16 16 0 0 0-16-16M61.67 204.12l6.86-4.12ZM216 200H68.53l-43.2-72l43.2-72H216Zm-109.66-53.66L124.69 128l-18.35-18.34a8 8 0 0 1 11.32-11.32L136 116.69l18.34-18.35a8 8 0 0 1 11.32 11.32L147.31 128l18.35 18.34a8 8 0 0 1-11.32 11.32L136 139.31l-18.34 18.35a8 8 0 0 1-11.32-11.32"
             case .settings: "M128 80a48 48 0 1 0 48 48a48.05 48.05 0 0 0-48-48m0 80a32 32 0 1 1 32-32a32 32 0 0 1-32 32m109.94-52.79a8 8 0 0 0-3.89-5.4l-29.83-17l-.12-33.62a8 8 0 0 0-2.83-6.08a111.9 111.9 0 0 0-36.72-20.67a8 8 0 0 0-6.46.59L128 41.85L97.88 25a8 8 0 0 0-6.47-.6a112.1 112.1 0 0 0-36.68 20.75a8 8 0 0 0-2.83 6.07l-.15 33.65l-29.83 17a8 8 0 0 0-3.89 5.4a106.5 106.5 0 0 0 0 41.56a8 8 0 0 0 3.89 5.4l29.83 17l.12 33.62a8 8 0 0 0 2.83 6.08a111.9 111.9 0 0 0 36.72 20.67a8 8 0 0 0 6.46-.59L128 214.15L158.12 231a7.9 7.9 0 0 0 3.9 1a8.1 8.1 0 0 0 2.57-.42a112.1 112.1 0 0 0 36.68-20.73a8 8 0 0 0 2.83-6.07l.15-33.65l29.83-17a8 8 0 0 0 3.89-5.4a106.5 106.5 0 0 0-.03-41.52m-15 34.91l-28.57 16.25a8 8 0 0 0-3 3c-.58 1-1.19 2.06-1.81 3.06a7.94 7.94 0 0 0-1.22 4.21l-.15 32.25a95.9 95.9 0 0 1-25.37 14.3L134 199.13a8 8 0 0 0-3.91-1h-3.83a8.1 8.1 0 0 0-4.1 1l-28.84 16.1A96 96 0 0 1 67.88 201l-.11-32.2a8 8 0 0 0-1.22-4.22c-.62-1-1.23-2-1.8-3.06a8.1 8.1 0 0 0-3-3.06l-28.6-16.29a90.5 90.5 0 0 1 0-28.26l28.52-16.28a8 8 0 0 0 3-3c.58-1 1.19-2.06 1.81-3.06a7.94 7.94 0 0 0 1.22-4.21l.15-32.25a95.9 95.9 0 0 1 25.37-14.3L122 56.87a8 8 0 0 0 4.1 1h3.64a8.1 8.1 0 0 0 4.1-1l28.84-16.1A96 96 0 0 1 188.12 55l.11 32.2a8 8 0 0 0 1.22 4.22c.62 1 1.23 2 1.8 3.06a8.1 8.1 0 0 0 3 3.06l28.6 16.29a90.5 90.5 0 0 1 .05 28.29Z"
+            case .bolt: "M13 3 5 13.5h6L10 21l8-10.5h-6Z"
+            case .bell: "M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15Z M10 20.5a2 2 0 0 0 4 0"
+            case .half: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M12 3v18"
+            case .inbox: "M12 3v11 M7.5 9.5 12 14l4.5-4.5 M5 14v6h14v-6"
+            case .clock: "M4.5 12a7.5 7.5 0 1 0 2.2-5.3 M4 4v4h4 M12 8.5V12l2.5 2"
+            case .disk: "M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3Z M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6 M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"
+            case .lock: "M6 11h12v10H6Z M8.5 11V8a3.5 3.5 0 0 1 7 0v3 M12 15v2"
+            case .arrowOut: "M7 17 17 7 M9 7h8v8"
+            }
+        }
+
+        /// Canvas line glyphs: stroke only on their own grid. Nil for the filled outline glyphs.
+        var line: (grid: CGFloat, stroke: CGFloat)? {
+            switch self {
+            case .bolt: (24, 1.6)
+            case .bell: (24, 1.6)
+            case .half: (24, 1.6)
+            case .inbox: (24, 1.6)
+            case .clock: (24, 1.6)
+            case .disk: (24, 1.6)
+            case .lock: (24, 1.6)
+            case .arrowOut: (24, 1.6)
+            default: nil
             }
         }
     }

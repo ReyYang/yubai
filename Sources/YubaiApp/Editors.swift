@@ -1,112 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-struct AccountEditor: View {
-    @Environment(AppStore.self) private var store; @Environment(\.dismiss) private var dismiss
-    var account: Account?
-    var isPushed = false
-    @State private var name = ""; @State private var kind = AccountKind.bank; @State private var amount = ""
-    @State private var at = Dates.now; @State private var verified = true; @State private var note = ""; @State private var limit = ""
-    @State private var loaded = false; @State private var reconcileNow = false
-    @State private var creditPaymentDay = 0
-    @State private var confirmingDiscard = false
-    @State private var initialSignature = ""
-    var body: some View {
-        Form {
-            accountSection
-            balanceSection
-            noteSection
-        }.editorForm().manualSheetNavigation()
-            .safeAreaInset(edge: .top) {
-                ManualSheetHeader(title: account == nil ? "添加账户" : "对一下余额", enabled: validationError == nil,
-                                  cancelTitle: isPushed ? "返回" : "取消", actionIdentifier: "saveAccount", cancel: cancel, action: save).padding(.horizontal, YubaiSpace.space20)
-            }
-            .entryDiscardGuard(dirty: loaded && signature != initialSignature, amount: (try? Money.parse(amount, allowNegative: true)) ?? 0, confirming: $confirmingDiscard)
-            .onAppear {
-                guard !loaded else { return }; loaded = true
-                if let a = account { name = a.name; kind = a.kind; amount = Money.input(a.kind == .credit ? max(0, -store.balance(a)) : store.balance(a)); verified = a.reconciled; note = a.note; limit = a.creditLimit == 0 ? "" : Money.input(a.creditLimit) }
-                creditPaymentDay = account?.creditPaymentDay ?? 0
-                initialSignature = signature
-            }
-    }
-    private var cleanName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var nameError: String? {
-        if cleanName.isEmpty { return "填写账户名称" }
-        return store.accounts.contains { $0.name == cleanName && $0.id != account?.id } ? "已有同名账户" : nil
-    }
-    private var balanceError: String? { (try? Money.parse(amount, allowNegative: kind != .credit)) == nil ? "填写有效金额" : nil }
-    private var limitError: String? { !limit.isEmpty && (try? Money.parse(limit)) == nil ? "填写有效金额" : nil }
-    private var validationError: String? { nameError ?? balanceError ?? limitError }
-    private var signature: String { "\(name)|\(kind)|\(amount)|\(at)|\(verified)|\(note)|\(limit)|\(reconcileNow)|\(creditPaymentDay)" }
-    private func cancel() { if signature != initialSignature { confirmingDiscard = true } else { dismiss() } }
-    func save() {
-        do {
-            let clean = name.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !clean.isEmpty else { throw YubaiError.invalid("请给账户起一个名称。") }
-            guard !store.accounts.contains(where: { $0.name == clean && $0.id != account?.id }) else { throw YubaiError.invalid("已有同名账户，请使用容易区分的名称。") }
-            let cents = try Money.parse(amount, allowNegative: kind != .credit)
-            var a = account ?? Account(name: clean); a.name = clean; a.kind = kind; a.note = note
-            if account == nil || reconcileNow { a.anchorBalance = kind == .credit ? -cents : cents; a.anchorDate = at; a.reconciled = verified }
-            a.creditLimit = limit.isEmpty ? 0 : try Money.parse(limit)
-            a.creditPaymentDay = kind == .credit && creditPaymentDay > 0 ? creditPaymentDay : nil
-            if store.update("保存账户", { ledger in
-                if let i = ledger.accounts.firstIndex(where: { $0.id == a.id }) { ledger.accounts[i] = a }
-                else { ledger.accounts.append(a) }
-                if account != nil && reconcileNow && verified {
-                    for i in ledger.cards.indices where ledger.cards[i].action == .reconcileAccount(a.id) {
-                        ledger.cards[i].dismissedAt = Dates.now
-                    }
-                }
-            }) { dismiss() }
-        } catch { store.error = error.localizedDescription }
-    }
-
-    private var availableKinds: [AccountKind] {
-        guard let account, ![AccountKind.bank, .cash].contains(account.kind) else { return [.bank, .cash] }
-        return [.bank, .cash, account.kind]
-    }
-    private var accountSection: some View {
-        Section("账户") {
-            CardTextFieldRow(title: "名称", text: $name, identifier: "accountName", autofocus: true)
-            if !name.isEmpty { InlineFieldError(message: nameError) }
-            SuggestionChips(values: ["微信零钱", "支付宝", "招行储蓄卡"], selected: name) { name = $0 }
-            Picker("账户类型", selection: $kind) { ForEach(availableKinds) { Text($0.label).tag($0) } }.disabled(account != nil)
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var balanceSection: some View {
-        Section(kind == .credit ? "欠款" : kind == .investment ? "当前市值" : "对一下余额") {
-            if account != nil { Toggle("本次重新核对真实余额", isOn: $reconcileNow).tint(YubaiColor.toggleOn) }
-            MoneyInputRow(title: kind == .credit ? "当前待还款" : "余额", text: $amount, identifier: "accountBalance", allowNegative: kind != .credit)
-                .disabled(account != nil && !reconcileNow)
-                .accessibilityHint(kind == .credit ? "填写实际欠款，单位元，填写正数" : "填写此刻的真实余额，单位元")
-            if !amount.isEmpty { InlineFieldError(message: balanceError) }
-            if account == nil || reconcileNow {
-                EntryFormRow(title: "上次对账") { EntryDateChip(date: $at, allowsFuture: false); EntryDateChip(date: $at, time: true, allowsFuture: false) }
-                Toggle("已与真实账户核对", isOn: $verified).tint(YubaiColor.toggleOn)
-                if let a = account, let entered = try? Money.parse(amount, allowNegative: kind != .credit) {
-                    let actual = kind == .credit ? -entered : entered
-                    LabeledContent("与账本计算余额的差额", value: Money.text(actual - store.balance(a, at: at), currency: false))
-                }
-            }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-    private var noteSection: some View {
-        Section {
-            DisclosureGroup("更多") {
-                if kind == .credit {
-                    MoneyInputRow(title: "信用额度", text: $limit, identifier: "accountCreditLimit")
-                    Picker("还款日", selection: $creditPaymentDay) {
-                        Text("未指定").tag(0)
-                        ForEach(1...31, id: \.self) { Text("每月 \($0) 号").tag($0) }
-                    }.accessibilityIdentifier("accountCreditPaymentDay")
-                }
-                InlineFieldError(message: limitError)
-                CardTextFieldRow(title: "备注", text: $note, identifier: "accountNote")
-            }
-        }.listRowBackground(YubaiColor.card).listRowSeparatorTint(YubaiColor.separator)
-    }
-}
-
 struct AccountsView: View {
     @Environment(AppStore.self) private var store
     private var handAccounts: [Account] { store.accounts.filter { !$0.archived && ($0.kind == .cash || $0.kind == .bank) } }
@@ -114,7 +8,7 @@ struct AccountsView: View {
     var body: some View {
         let hand = handAccounts, other = otherAccounts
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            if store.accounts.isEmpty { EmptyState("creditcard", "还没有账户", action: "添加账户", actionIdentifier: "addAccount", onAction: { store.sheet = .account(nil) }) }
+            if store.accounts.isEmpty { EmptyState("creditcard", "还没有账户", action: "添加账户", actionIdentifier: "addAccount", onAction: { store.settingsSheet = .accountAdd(nil, onboarding: false) }) }
             if !hand.isEmpty { totalBlock(hand) }
             if !hand.isEmpty { accountGroup(hand, heading: nil) }
             if !other.isEmpty { accountGroup(other, heading: "不算在手上的") }
@@ -123,7 +17,7 @@ struct AccountsView: View {
             .navigationTitle("手上的钱").yubaiNavigation().manualSheetHeader("手上的钱", cancelTitle: "关闭", showsAction: false)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { store.sheetSource = nil; store.sheet = .account(nil) } label: {
+                    Button { store.settingsSheet = .accountAdd(nil, onboarding: false) } label: {
                         Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
                     }.buttonStyle(TextLinkStyle()).accessibilityLabel("添加账户").accessibilityIdentifier("addAccountToolbar")
                 }
@@ -169,7 +63,7 @@ struct AccountsView: View {
                         .buttonStyle(SecondaryButtonStyle(compact: true)).accessibilityIdentifier("reconcileAll")
                 }
                 if !store.accounts.isEmpty {
-                    NavigationLink { AccountEditor(account: nil, isPushed: true) } label: { Text("加一个账户") }
+                    Button { store.settingsSheet = .accountAdd(nil, onboarding: false) } label: { Text("加一个账户") }
                         .buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true)).accessibilityIdentifier("addAccount")
                 }
             }
@@ -220,7 +114,7 @@ struct AccountsView: View {
         }.navigationTitle(a.name).yubaiNavigation().accessibilityIdentifier("accountDetailPage")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    HeaderIconButton(action: { store.sheet = .account(a) }) { size in Image(systemName: "pencil").font(.system(size: size)) }
+                    HeaderIconButton(action: { store.tabRouteRequest = .accountEdit(a.id) }) { size in Image(systemName: "pencil").font(.system(size: size)) }
                         .accessibilityLabel("编辑账户").accessibilityIdentifier("editAccount")
                 }
             }

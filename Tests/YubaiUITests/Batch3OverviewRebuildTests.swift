@@ -111,6 +111,7 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         XCTAssertFalse(element("keypad_+").exists)
         XCTAssertFalse(element("saveQuickEntry").exists)
         keys("32056.40")
+        label("overviewValuationAmount", contains: "32,056.40")
         label("overviewValuationDifference", contains: "−123.60")
         tap("reconcileApply")
         label("overviewAccountBalance", contains: "32,056.40")
@@ -135,25 +136,23 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         tap("tab_ledger"); XCTAssertEqual(headline.value as? String, before)
     }
 
-    func testCreditValuationChangesBothSignsAndAcceptsZero() {
+    func testCreditValuationTypesAmountOwedAndAcceptsZero() {
         launch(["-YubaiAssetsFixture"])
         tap("overviewAccount_招行信用卡")
         label("overviewAccountBalance", contains: "−3,216.80")
 
-        tap("reconcileAccount"); tap("overviewValuationSign"); keys("20")
-        label("overviewValuationDifference", contains: "+3,236.80")
+        tap("reconcileAccount")
+        XCTAssertFalse(element("overviewValuationSign").exists)
+        label("overviewBookAmount", contains: "3,216.80")
+        keys("3300")
+        label("overviewValuationAmount", contains: "3,300")
+        label("overviewValuationDifference", contains: "−83.20")
         tap("reconcileApply")
-        label("overviewAccountBalance", contains: "20.00")
-        XCTAssertEqual(element("overviewAccountBalance").label, "20.00")
-
-        tap("reconcileAccount"); tap("overviewValuationSign"); keys("20")
-        label("overviewValuationAmount", contains: "−20")
-        tap("reconcileApply")
-        label("overviewAccountBalance", contains: "−20.00")
+        label("overviewAccountBalance", contains: "−3,300.00")
 
         tap("reconcileAccount"); keys("0")
         XCTAssertEqual(element("overviewValuationAmount").label, "0")
-        label("overviewValuationDifference", contains: "+20.00")
+        label("overviewValuationDifference", contains: "+3,300.00")
         tap("reconcileApply")
         XCTAssertTrue(waitForDisappearance(element("reconcileSheet")))
         XCTAssertEqual(element("overviewAccountBalance").label, "0.00")

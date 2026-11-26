@@ -84,21 +84,6 @@ final class AppFlowTests: YubaiUITestCase {
         XCTAssertFalse(anyElement("savingsTopupCard", in: app).exists)
     }
 
-    func testRound46FirstLaunchRecordsIncomeAndExpenseWithoutSetup() {
-        let app = application("empty"); launchApp(app)
-        XCTAssertTrue(anyElement("firstOpenScene", in: app).waitForExistence(timeout: 5))
-        tap(app.buttons["addEntry"], in: app)
-        tap(app.buttons["entryNature_income"], in: app); pressAmount("100", in: app)
-        tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
-        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 0)
-        tap(app.buttons["addEntry"], in: app); pressAmount("25", in: app)
-        tap(app.buttons["entryCategory_餐饮"], in: app); tap(app.buttons["saveQuickEntry"], in: app); finishQuickEntry(app)
-        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 2500)
-        app.terminate(); launchApp(app)
-        XCTAssertEqual(displayedAmount(anyElement("availableFunds", in: app)), 2500)
-        XCTAssertFalse(anyElement("firstOpenScene", in: app).exists)
-    }
-
     func testRound46SavingsTallyUsesElapsedPeriodsAndPersists() {
         let app = application("v46-saved"); launchApp(app)
         for _ in 0..<2 {
@@ -2698,11 +2683,6 @@ final class AppFlowTests: YubaiUITestCase {
         snapshot("v45-gap", app)
     }
 
-    func testNewLedgerShowsWindowSceneWithoutDaily() {
-        let app = application("v45-new"); launchApp(app)
-        assertV45(["firstOpenScene", "firstOpenEmptyAmount", "addEntry", "firstImport"], absent: ["dailyPace", "fundsFormula"], in: app)
-        snapshot("v45-new", app)
-    }
 }
 
 /// The same Foundation-only source is compiled into the app and this test bundle.

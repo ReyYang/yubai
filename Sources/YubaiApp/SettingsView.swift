@@ -3,60 +3,219 @@ import UniformTypeIdentifiers
 import LocalAuthentication
 import YubaiCore
 
+/// 设置: five groups of rows, values live from the ledger.
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @State private var storageSize: String?
+    @State private var unlockName = "面容 ID 解锁"
+    @State private var cloudAI = false
+
     var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.space8, identifier: "settingsScroll") {
-            group("账本") {
-                TabNavigationLink(.budget) { BudgetDetailView(startsEditing: true) } label: { SettingsRow(title: "预算", detail: "\(HomeBudgets(in: store.current, now: store.financialNow).ordered.count) 项") }.accessibilityIdentifier("openSpendingParts")
-                EntryFormDivider()
-                TabNavigationLink(.categories) { CategoriesView() } label: { SettingsRow(title: "分类") }.accessibilityIdentifier("openCategories")
+        let _ = SettingsRenderCounts.hit("settingsBody")
+        let ledger = store.current, now = store.financialNow
+        let hidden = store.preferences.hideAmounts
+        VStack(spacing: .zero) {
+            OverviewNavigationBar(title: "设置")
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: SettingsSpec.groupGap) {
+                        DSSettingsCard {
+                            link(.cycle, "周期起始日", SettingsDisplay.cycleDay(CycleStart.day(in: ledger, now: now)), brand: true, first: true, id: "settingsCycle") { store.settingsSheet = .cycle }
+                            link(.saveFirst, "先攒", SettingsDisplay.money(SettingsSummary.savingTarget(in: ledger, now: now), hidden: hidden), brand: true, id: "settingsSaving") { store.settingsSheet = .saving }
+                            link(.floor, "底线存款", store.profile.floorAmount.map { SettingsDisplay.money($0, hidden: hidden) } ?? "未设", brand: true, id: "settingsFloor") { store.settingsSheet = .floor }
+                        }
+                        DSSettingsCard {
+                            link(.subscription, "固定订阅", "每月 " + SettingsDisplay.money(SettingsSummary.monthlyFixed(in: ledger, now: now).total, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
+                            link(.catAll, "分类", "\(ledger.orderedCategories(income: false).count) 个", id: "openCategories") { store.tabRouteRequest = .categorySettings }
+                            link(.acctBalance, "币种", SettingsDisplay.currencies(store.preferences), id: "settingsCurrency") { store.tabRouteRequest = .currency }
+                            link(.bolt, "快速记账", "Apple Pay", id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
+                        }
+                        DSSettingsCard {
+                            link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
+                            link(.memory, "余白记得的", "\(store.settingsSummary.memoryCount) 条", id: "openMemories") { store.tabRouteRequest = .memories }
+                            link(.bell, "通知", "\(SettingsDisplay.noticeCount(store.preferences)) 项", id: "openNoticeSettings") { store.tabRouteRequest = .notices }
+                        }
+                        DSSettingsCard {
+                            DSSettingsRow(icon: .lock, name: unlockName, accessory: .toggle(Binding(get: { store.preferences.lockEnabled }, set: setLock)), separator: false)
+                                .accessibilityIdentifier("settingsLock")
+                            if SettingsDisplay.iCloudAvailable {
+                                DSSettingsRow(icon: .cloud, name: "iCloud 同步", accessory: .toggle(Binding(get: { store.ledgerLocation == .iCloud }, set: { on in
+                                    Task { await store.switchLedgerLocation(to: on ? .iCloud : .local) }
+                                })))
+                                .accessibilityIdentifier("settingsICloud")
+                            }
+                            link(.half, "外观", SettingsDisplay.appearance(store.preferences.appearance), id: "settingsAppearance") { store.settingsSheet = .appearance }
+                        }
+                        DSSettingsCard {
+                            link(.clock, "备份与恢复", store.preferences.lastBackupAt.map(SettingsDisplay.monthDay) ?? "未备份", first: true, id: "openBackup") { store.tabRouteRequest = .backup }
+                            link(.inbox, "导入记录", store.imports.filter { $0.undoneAt == nil }.map(\.importedAt).max().map(SettingsDisplay.monthDay) ?? "", id: "openImportHistory") { store.tabRouteRequest = .importHistory }
+                            link(.export, "导出账单", "CSV", id: "settingsExport") { store.settingsSheet = .export }
+                            link(.disk, "存储空间", storageSize ?? "", id: "openStorage") { store.tabRouteRequest = .storage }
+                        }
+                        #if DEBUG && targetEnvironment(simulator)
+                        // UI tests only: pages whose settings rows are gone stay testable without a URL round trip.
+                        if UITestSupport.script != nil {
+                            DSSettingsCard {
+                                link(.memory, "余白", "", first: true, id: "openAssistantHub") { store.tabRouteRequest = .assistantHub }
+                                link(.ai, "智能与隐私", "", id: "openLegacyIntelligencePrivacy") { store.tabRouteRequest = .intelligencePrivacy }
+                                link(.catAll, "预算", "", id: "openSpendingParts") { store.tabRouteRequest = .budget }
+                            }
+                        }
+                        #endif
+                        Text("余白 " + SettingsDisplay.version).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                            .frame(maxWidth: .infinity).id("settingsEnd")
+                    }
+                    .padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s4).padding(.bottom, DS.Space.s28)
+                }
+                .scrollIndicators(.hidden)
+                .accessibilityIdentifier("settingsScroll")
+                .onAppear { if store.settingsFixture == .mainEnd { proxy.scrollTo("settingsEnd", anchor: .bottom) } }
             }
-            group("记账") {
-                TabNavigationLink(.quickCapture) { QuickCaptureSettingsView() } label: { SettingsRow(title: "快速记账", detail: "Apple Pay 后自动记") }.accessibilityIdentifier("openQuickCapture")
-                EntryFormDivider()
-                TabNavigationLink(.importHistory) { ImportHistoryView() } label: { SettingsRow(title: "导入记录", detail: lastImport) }.accessibilityIdentifier("openImportHistory")
-            }
-            group("余白") {
-                TabNavigationLink(.assistantHub) { YubaiTabView(asDestination: true) } label: {
-                    SettingsRow(title: "余白")
-                }.accessibilityIdentifier("openAssistantHub")
-                EntryFormDivider()
-                TabNavigationLink(.intelligencePrivacy) { IntelligencePrivacyView() } label: {
-                    SettingsRow(title: "智能与隐私", detail: IntelligenceRuntime.isConfigured ? "DeepSeek · 已配好" : "未配好")
-                }.accessibilityIdentifier("openIntelligencePrivacy")
-                EntryFormDivider()
-                NavigationLink { NoticeSettingsView() } label: { SettingsRow(title: "通知") }.accessibilityIdentifier("openNoticeSettings")
-            }
-            group("数据") {
-                TabNavigationLink(.backup) { BackupView() } label: { SettingsRow(title: "备份与恢复", detail: backupDetail) }.accessibilityIdentifier("openBackup")
-                EntryFormDivider()
-                TabNavigationLink(.storage) { StorageView() } label: { SettingsRow(title: "存储空间", detail: storageSize) }.accessibilityIdentifier("openStorage")
-                EntryFormDivider()
-                NavigationLink { DeviceSettingsView() } label: { SettingsRow(title: "设备与界面") }.accessibilityIdentifier("openDeviceSettings")
-            }
-        }.buttonStyle(PressButtonStyle()).amountPrivacy(store.preferences.hideAmounts)
-            .modifier(SettingsStorageSizeTask(storageSize: $storageSize)).navigationTitle("设置").yubaiNavigation()
+        }
+        .background(DS.Color.bg.ignoresSafeArea())
+        .dsEdgeSwipeBack()
+        .modifier(SettingsStorageSizeTask(storageSize: $storageSize))
+        .task(id: [store.preferences.cloudAIEnabled, IntelligenceRuntime.cloud.hasKeychainKey]) { cloudAI = await SettingsDisplay.cloudAIAvailable(store) }
+        .onAppear { unlockName = SettingsDisplay.unlockName() }
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
     }
-    private func group<Rows: View>(_ title: String, @ViewBuilder rows: () -> Rows) -> some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-            SectionHeading(title: title).padding(.horizontal, YubaiSpace.insetCard)
-            Card(style: .list) { VStack(spacing: YubaiSpace.none, content: rows) }
+
+    private func link(_ icon: DS.Icon, _ name: String, _ value: String, brand: Bool = false, first: Bool = false,
+                      id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            DSSettingsRow(icon: icon, name: name, tint: brand ? DS.Color.accentInk : DS.Color.ink2, accessory: .link(value), separator: !first)
+        }.dsPressStyle().accessibilityIdentifier(id)
+    }
+
+    private func setLock(_ enabled: Bool) {
+        guard enabled else { store.update("关闭账本锁") { $0.preferences.lockEnabled = false }; return }
+        let context = LAContext(); var failure: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &failure) else { store.error = "这台设备没有设置密码。"; return }
+        Task {
+            do {
+                if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "确认你可以解锁余白账本") {
+                    store.update("开启账本锁") { $0.preferences.lockEnabled = true }
+                }
+            } catch { store.error = "没有验证，账本锁没开。" }
         }
     }
-    private var lastImport: String? {
-        store.imports.filter { $0.undoneAt == nil }.map(\.importedAt).max().map { "上次 " + FixedFlowPresentation.monthDay($0) }
-    }
-    private var backupDetail: String { store.preferences.lastBackupAt.map(FixedFlowPresentation.monthDay) ?? "还没备份" }
 }
 
+/// Formatting for settings values. Calculations live in YubaiCore.
+@MainActor enum SettingsDisplay {
+    static var iCloudAvailable: Bool {
+        #if YUBAI_ICLOUD
+        true
+        #else
+        false
+        #endif
+    }
+
+    static var version: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+    }
+
+    static func money(_ cents: Int64, hidden: Bool) -> String { OverviewDisplay.money(cents, hidden: hidden) }
+
+    static func cycleDay(_ day: Int) -> String { day == CycleStart.lastDay ? "每月最后一天" : "每月 \(day) 日" }
+
+    static func monthDay(_ date: Date) -> String {
+        let parts = Dates.calendar.dateComponents([.month, .day], from: date)
+        return "\(parts.month ?? 0)." + String(format: "%02d", parts.day ?? 0)
+    }
+
+    static func range(_ start: Date, _ end: Date) -> String { monthDay(start) + " – " + monthDay(end) }
+
+    static func appearance(_ value: String) -> String {
+        switch value {
+        case "light": "浅色"
+        case "dark": "深色"
+        default: "跟随系统"
+        }
+    }
+
+    static func currencies(_ preferences: Preferences) -> String {
+        let foreign = preferences.lastBillCurrency ?? (preferences.billExchangeRates ?? []).first?.currency
+        return ([BillCurrency.cny] + [foreign].compactMap { $0 }.filter { $0 != .cny }).map(\.rawValue).joined(separator: " · ")
+    }
+
+    static func noticeCount(_ preferences: Preferences) -> Int {
+        let notices = preferences.butlerNotices ?? ButlerNoticePreferences()
+        return [notices.immediate, notices.ordinary, notices.home, preferences.weeklyLetterPush].filter { $0 }.count
+    }
+
+    static func reviewTime(_ time: WeeklyReviewTime) -> String {
+        "周" + ["一", "二", "三", "四", "五", "六", "日"][max(0, min(6, time.weekday - 1))] + " " + String(format: "%02d:%02d", time.hour, time.minute)
+    }
+
+    static func symbol(_ currency: BillCurrency) -> String {
+        switch currency {
+        case .cny: "¥"
+        case .jpy: "円"
+        case .usd: "$"
+        default: currency.symbol
+        }
+    }
+
+    static func categoryIcon(_ name: String) -> DS.Icon {
+        switch name {
+        case "吃饭", "餐饮": .catFood
+        case "咖啡": .catCoffee
+        case "交通": .catTransport
+        case "买菜", "买菜做饭": .catGrocery
+        case "购物": .catShopping
+        case "居住": .catHousing
+        case "娱乐": .catFun
+        case "日用": .catDaily
+        case "数码", "数码与电子产品": .catDigital
+        default: .catOther
+        }
+    }
+
+    static func storage(_ bytes: Int64) -> String {
+        let megabytes = Double(max(0, bytes)) / 1_000_000
+        return megabytes >= 1000 ? StorageSize.text(bytes) : String(format: "%.0f MB", megabytes)
+    }
+
+    static func unlockName() -> String {
+        let context = LAContext()
+        _ = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil)
+        switch context.biometryType {
+        case .faceID: return "面容 ID 解锁"
+        case .touchID: return "触控 ID 解锁"
+        default: return "密码解锁"
+        }
+    }
+
+    /// The cloud model state, read through the router; no request is sent.
+    static func cloudAIAvailable(_ store: AppStore) async -> Bool {
+        let preferences = store.preferences
+        if let fixture = store.settingsFixture {
+            let router = ModelRouter.configured(preferences: preferences, feature: .answers,
+                                                keyStore: APIKeyStore(storage: FixtureKeyStorage(key: fixture.apiKey)), environment: [:])
+            return await router.availability() == .available
+        }
+        return await Task.detached(priority: .utility) {
+            await ModelRouter.configured(preferences: preferences, feature: .answers).availability() == .available
+        }.value
+    }
+}
+
+/// An in-memory key for fixtures; never touches the Keychain.
+struct FixtureKeyStorage: APIKeyStorage {
+    let key: String?
+    func read() throws -> String? { key }
+    func write(_ key: String) throws {}
+    func delete() throws {}
+}
 struct NoticeSettingsView: View {
     var body: some View {
         Page {
             ButlerNoticeSettings()
             Card(style: .list) { WeeklyLetterReminder().accessibilityIdentifier("openSettingsWeekly") }
-        }.navigationTitle("通知").yubaiNavigation()
+        }.navigationTitle("通知").yubaiNavigation().accessibilityIdentifier("noticeSettingsPage")
     }
 }
 
@@ -66,7 +225,8 @@ private struct SettingsStorageSizeTask: ViewModifier {
     func body(content: Content) -> some View {
         content.task(id: store.current.updatedAt) {
             let repository = store.localRepository
-            do { storageSize = StorageSize.text(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
+            if let fixture = store.settingsFixture { storageSize = SettingsDisplay.storage(fixture.storageBytes); return }
+            do { storageSize = SettingsDisplay.storage(try await Task.detached(priority: .utility) { try repository.storageUsage() }.value.totalBytes) }
             catch { storageSize = nil }
         }
     }
@@ -155,33 +315,6 @@ struct IntelligencePrivacyView: View {
         SettingsRow(title: title, detail: detail, chevron: chevron)
     }
 
-}
-
-struct DeviceSettingsView: View {
-    @Environment(AppStore.self) private var store
-    var body: some View {
-        Page {
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    Toggle("使用设备解锁保护账本", isOn: Binding(get: { store.preferences.lockEnabled }, set: enableLock)).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.headerHeight)
-                    separator
-                    Picker("外观", selection: Binding(get: { store.preferences.appearance }, set: { value in
-                        store.update("保存外观") { $0.preferences.appearance = value }
-                    })) { Text("跟随系统").tag("system"); Text("浅色").tag("light"); Text("深色").tag("dark") }.frame(minHeight: YubaiSize.rowSingle)
-                }
-            }
-        }.navigationTitle("设备与界面").yubaiNavigation().accessibilityIdentifier("deviceSettingsPage")
-    }
-    private var separator: some View { EntryFormDivider() }
-    private func enableLock(_ enabled: Bool) {
-        guard enabled else { store.update("关闭账本锁") { $0.preferences.lockEnabled = false }; return }
-        let context = LAContext(); var failure: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &failure) else { store.error = "请先为设备设置密码，再开启账本锁。"; return }
-        Task {
-            do { if try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "确认你可以解锁余白账本") { store.update("开启账本锁") { $0.preferences.lockEnabled = true } } }
-            catch { store.error = "验证未完成，账本锁尚未开启。" }
-        }
-    }
 }
 
 extension UTType { static let yubaiBackup = UTType(exportedAs: "app.yubai.backup", conformingTo: .data) }

@@ -763,6 +763,8 @@ struct DSSegmented: View {
     @Binding var selection: String
     var width: CGFloat? = HomeSpec.segmentedWidth
     var identifierPrefix: String? = nil
+    /// The small 30 pt control inside a settings row.
+    var compact = false
     @Namespace private var thumb
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
@@ -770,29 +772,31 @@ struct DSSegmented: View {
     @Environment(\.dsAnimationsEnabled) private var enabled
     var body: some View {
         let reduceMotion = reduceMotionOverride ?? systemReduceMotion
+        let inset = compact ? SettingsSpec.toneInset : DS.Size.segmentedInset
+        let height = compact ? SettingsSpec.toneHeight : DS.Size.pillH
         HStack(spacing: 0) {
             ForEach(options, id: \.self) { option in
                 Button { selection = option } label: {
-                    Text(option).dsText(DS.Font.tPill).fontWeight(selection == option ? .semibold : .regular)
+                    Text(option).dsText(compact ? DS.Font.tSub : DS.Font.tPill).fontWeight(selection == option ? .semibold : .regular)
                         .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                         .foregroundStyle(selection == option ? DS.Color.ink : DS.Color.ink3)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, DS.Size.segmentedInset)
-                        .frame(minHeight: DS.Size.pillH)
+                        .padding(.vertical, inset)
+                        .frame(minHeight: height)
                         .background {
                             if selection == option {
                                 RoundedRectangle(cornerRadius: DS.Radius.s - DS.Size.segmentedInset, style: .continuous)
                                     .fill(DS.Color.selected).dsShadow(DS.Shadow.near)
                                     .matchedGeometryEffect(id: "thumb", in: thumb)
-                                    .padding(.vertical, DS.Size.segmentedInset)
+                                    .padding(.vertical, inset)
                             }
                         }.frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
                 }.dsPressStyle().accessibilityAddTraits(selection == option ? .isSelected : [])
                     .accessibilityIdentifier(identifierPrefix.map { $0 + option } ?? "")
             }
-        }.padding(.horizontal, DS.Size.segmentedInset)
+        }.padding(.horizontal, inset)
             .background {
-                RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous).fill(DS.Color.surface).frame(height: DS.Size.pillH)
+                RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous).fill(DS.Color.surface).frame(height: height)
             }
             .frame(width: typeSize.isAccessibilitySize ? nil : width)
             .animation(enabled ? (reduceMotion ? nil : DSMotion.snappyAnimation) : nil, value: selection)
@@ -1010,7 +1014,7 @@ struct DSSubCalendar: View {
     var onSelect: (Int) -> Void = { _ in }
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s4), count: DSLayout.weekdays), spacing: DS.Space.s4) {
-            ForEach(0..<max(0, leadingEmptyDays), id: \.self) { _ in Color.clear.frame(height: DS.Size.tapMin) }
+            ForEach(-max(0, leadingEmptyDays)..<0, id: \.self) { _ in Color.clear.frame(height: DS.Size.tapMin) }
             ForEach(days) { day in
                 Button { onSelect(day.number) } label: {
                     VStack(spacing: DS.Size.segmentedInset) {
@@ -1029,13 +1033,37 @@ struct DSSubCalendar: View {
     }
 }
 
+/// Self-drawn switch. VoiceOver reads it as a native switch.
 struct DSSwitch: View {
     let title: String
     @Binding var isOn: Bool
+    var showsTitle = true
+    @Environment(\.isEnabled) private var enabled
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.dsAnimationsEnabled) private var animationsEnabled
     var body: some View {
-        Toggle(title, isOn: $isOn).toggleStyle(.switch).tint(DS.Color.accent)
-            .dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).frame(minHeight: DS.Size.tapMin)
-            .sensoryFeedback(DSMotion.Haptic.toggle, trigger: isOn)
+        HStack(spacing: DS.Space.s12) {
+            if showsTitle {
+                Text(title).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2)
+                Spacer(minLength: .zero)
+            }
+            Button { isOn.toggle() } label: {
+                Capsule(style: .continuous).fill(isOn ? DS.Color.accent : DS.Color.track)
+                    .frame(width: DS.Size.switchW, height: DS.Size.switchH)
+                    .overlay(alignment: isOn ? .trailing : .leading) {
+                        Circle().fill(DS.Color.knob).frame(width: DS.Size.switchKnob, height: DS.Size.switchKnob)
+                            .dsShadow(DS.Shadow.near).padding(.horizontal, SettingsSpec.knobInset)
+                    }
+                    .frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
+            }
+            .dsPressStyle()
+            .opacity(enabled ? 1 : SettingsSpec.disabledOpacity)
+            .animation(animationsEnabled && !(reduceMotionOverride ?? systemReduceMotion) ? DSMotion.snappyAnimation : nil, value: isOn)
+        }
+        .frame(minHeight: DS.Size.tapMin)
+        .sensoryFeedback(DSMotion.Haptic.toggle, trigger: isOn)
+        .accessibilityRepresentation { Toggle(title, isOn: $isOn) }
     }
 }
 
@@ -1143,7 +1171,7 @@ struct DSCalendarPopover: View {
                     Text($0).dsText(DS.Font.tTag).fontWeight(.regular)
                         .foregroundStyle(DS.Color.ink3).frame(minHeight: DS.Space.s20)
                 }
-                ForEach(0..<(calendar.component(.weekday, from: month) - 1), id: \.self) { _ in
+                ForEach((1 - calendar.component(.weekday, from: month))..<0, id: \.self) { _ in
                     Color.clear.frame(height: EntrySpec.calendarDay).accessibilityHidden(true)
                 }
                 ForEach(calendar.range(of: .day, in: .month, for: month) ?? (1..<1), id: \.self) { day in
@@ -1402,6 +1430,8 @@ struct DSPeriodOptionGroup: View {
 
     let options: [Option]
     let selection: String
+    var rowHeight = OverviewSpec.optionHeight
+    var identifierPrefix = "overviewPeriod_"
     var onSelect: (String) -> Void = { _ in }
 
     var body: some View {
@@ -1425,14 +1455,14 @@ struct DSPeriodOptionGroup: View {
                             }
                         }.frame(width: DS.Size.icon, height: DS.Size.icon).accessibilityHidden(true)
                     }.foregroundStyle(DS.Color.ink)
-                        .frame(minHeight: OverviewSpec.optionHeight)
+                        .frame(minHeight: rowHeight)
                         .contentShape(Rectangle())
                         .overlay(alignment: .top) {
                             if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) }
                         }
                 }.dsPressStyle()
                     .accessibilityAddTraits(selected ? .isSelected : [])
-                    .accessibilityIdentifier("overviewPeriod_" + option.id)
+                    .accessibilityIdentifier(identifierPrefix + option.id)
             }
         }.padding(.horizontal, DS.Space.s16)
             .background(DS.Color.raised)

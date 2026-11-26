@@ -44,6 +44,7 @@ struct DesignSystemGalleryView: View {
         case tabBar = "TabBar", alertCard = "AlertCard", floatingCard = "FloatingCard", segmented = "Segmented"
         case effectLine = "EffectLine", keypad = "Keypad", icon = "Icon", categoryPanel = "CategoryPanel"
         case balanceChart = "BalanceChart", stackedBar = "StackedBar", donut = "Donut", periodOption = "PeriodOption"
+        case brandTile = "BrandTile", settingsRow = "SettingsRow", shareChips = "ShareChips", typeGrid = "TypeGrid", dayGrid = "DayGrid"
     }
     let section: Section?
     var isolatedComponent: IsolatedComponent?
@@ -129,6 +130,9 @@ struct DesignSystemGalleryView: View {
         case .periodOption: periodSpecimen
         case .icon: iconSpecimens
         case .categoryPanel: EntryCategoryGallery()
+        case .brandTile, .settingsRow, .shareChips, .typeGrid, .dayGrid:
+            SettingsGallerySpecimen(component: component.rawValue).frame(maxWidth: HomeSpec.galleryWidth, alignment: .leading)
+                .environment(\.dsAnimationsEnabled, false)
         case .hero, .dayBars, .budgetRow, .listRow, .tabBar, .alertCard, .floatingCard, .segmented:
             homeSpecimen(component).frame(maxWidth: HomeSpec.galleryWidth, alignment: .leading)
                 .environment(\.dsAnimationsEnabled, false)

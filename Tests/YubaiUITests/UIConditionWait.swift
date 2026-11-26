@@ -122,6 +122,9 @@ enum UIBambooWait {
                 return false
             }
             guard let surface else {
+                // Rebuilt pages draw flat `bg`; with no paper on screen there is no
+                // surface to wait for once every raster has finished without failure.
+                if let value = observed, value.isReady, !value.hasFailure { accepted = true; return true }
                 unreadableReads += 1
                 unreadableReason = "packet decoded; bambooSurface missing; " + (sample.2 ?? "paper selection diagnostics missing")
                 return false

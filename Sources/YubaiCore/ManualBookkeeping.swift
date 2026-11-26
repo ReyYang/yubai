@@ -27,6 +27,19 @@ public struct EntryKeypad: Equatable, Sendable {
         return (first + rest).trimmingCharacters(in: .whitespaces)
     }
     public mutating func reset() { expression = "0" }
+    /// The typed amount with thousands separators, keeping a trailing "." or partial decimals as typed.
+    public var groupedText: String { Self.grouped(displayText) }
+    public static func grouped(_ text: String) -> String {
+        var body = Substring(text), sign = ""
+        if body.first == "-" || body.first == "−" { sign = "−"; body = body.dropFirst() }
+        let parts = body.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        var whole = ""
+        for (index, digit) in parts[0].reversed().enumerated() {
+            if index > 0 && index % 3 == 0 { whole.append(",") }
+            whole.append(digit)
+        }
+        return sign + String(whole.reversed()) + (parts.count > 1 ? "." + parts[1] : "")
+    }
     @discardableResult public mutating func resolve() -> Int64? {
         guard let amount else { return nil }
         expression = Money.input(amount); return amount

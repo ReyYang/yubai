@@ -28,7 +28,6 @@ struct AccountValuationSheetOverlay: View {
     @Environment(\.dsAnimationsEnabled) private var animationsEnabled
     @State private var motion: EntrySheetMotion
     @State private var keypad: EntryKeypad
-    @State private var negative: Bool
     @State private var replace: Bool
     @State private var saved = false
 
@@ -39,13 +38,18 @@ struct AccountValuationSheetOverlay: View {
         self.close = close
         let amount = initial ?? book
         _motion = State(initialValue: EntrySheetMotion(settled: initial != nil))
-        _keypad = State(initialValue: EntryKeypad(amount: abs(amount)))
-        _negative = State(initialValue: amount < 0 || (amount == 0 && account.kind == .credit))
+        // A credit card is typed as the amount owed and stored negative.
+        let typed = account.kind == .credit && !target.isInvestment ? max(0, -amount) : max(0, amount)
+        var keypad = EntryKeypad()
+        // A fixture's value arrives as if typed, so the box shows 32,056.40 rather than 32,056.4.
+        if initial != nil { for key in Money.editableText(typed) { keypad.press(String(key)) } } else { keypad = EntryKeypad(amount: typed) }
+        _keypad = State(initialValue: keypad)
         _replace = State(initialValue: initial == nil)
     }
 
     private var reduced: Bool { !animationsEnabled || (reduceMotionOverride ?? systemReduceMotion) }
-    private var amount: Int64 { (keypad.amount ?? 0) * (negative ? -1 : 1) }
+    private var owes: Bool { !target.isInvestment && account.kind == .credit }
+    private var amount: Int64 { (keypad.amount ?? 0) * (owes ? -1 : 1) }
     private var difference: Int64 { amount - book }
     private var canSave: Bool { !saved && difference != 0 && keypad.amount != nil }
     private var hidden: Bool { store.preferences.hideAmounts }
@@ -81,26 +85,9 @@ struct AccountValuationSheetOverlay: View {
 
     private func box(_ label: String, value: Int64, input: Bool) -> some View {
         VStack(alignment: .leading, spacing: OverviewSpec.headingGap) {
-            HStack(spacing: DS.Space.s4) {
-                Text(label).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-                    .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
-                if input && showsSignToggle {
-                    Spacer(minLength: .zero)
-                    Button(action: toggleSign) {
-                        Text("+/−").dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.accentInk)
-                            .padding(.horizontal, DS.Space.s8)
-                            .frame(minHeight: DS.Size.chipH)
-                            .dsPill()
-                            .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
-                            .contentShape(Rectangle())
-                    }.dsPressStyle()
-                        .disabled(saved)
-                        .accessibilityIdentifier("overviewValuationSign")
-                        .accessibilityLabel("切换正负")
-                        .accessibilityValue(hidden ? "金额已隐藏" : negative ? "负号" : "正号")
-                }
-            }
-            let text = input ? inputText : OverviewDisplay.money(value, hidden: hidden)
+            Text(label).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
+                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+            let text = input ? inputText : OverviewDisplay.money(owes ? -value : value, hidden: hidden)
             let amountLabel = Text(text)
                 .dsText(DS.Font.tTitle).monospacedDigit()
                 .foregroundStyle(input ? DS.Color.ink : DS.Color.ink2)
@@ -108,11 +95,9 @@ struct AccountValuationSheetOverlay: View {
                 .accessibilityLabel(hidden ? "金额已隐藏" : text)
                 .accessibilityIdentifier(input ? "overviewValuationAmount" : "overviewBookAmount")
             if input {
-                let selectable = amountLabel
+                amountLabel
                     .onTapGesture { replace = true }
                     .accessibilityAction(named: "全选") { replace = true }
-                if target.isInvestment { selectable }
-                else { selectable.accessibilityAction(named: "切换正负", toggleSign) }
             } else {
                 amountLabel
             }
@@ -128,23 +113,10 @@ struct AccountValuationSheetOverlay: View {
         }
     }
 
-    private var showsSignToggle: Bool {
-        !target.isInvestment && (account.kind == .credit || book < 0 || negative)
-    }
-
-    private func toggleSign() {
-        guard !target.isInvestment, !saved else { return }
-        negative.toggle()
-    }
-
     private var inputText: String {
         if hidden { return OverviewDisplay.money(amount, hidden: true) }
-        if replace { return OverviewDisplay.money(amount, hidden: false) }
-        let parts = keypad.displayText.split(separator: ".", omittingEmptySubsequences: false)
-        let whole = Int64(parts[0]) ?? 0
-        let sign = amount < 0 ? "−" : ""
-        let integer = whole.formatted(.number.locale(Locale(identifier: "en_US_POSIX")))
-        return sign + integer + (parts.count > 1 ? "." + parts[1] : "")
+        if replace { return OverviewDisplay.money(keypad.amount ?? 0, hidden: false) }
+        return keypad.groupedText
     }
 
     private var differenceRow: some View {

@@ -6,7 +6,9 @@ final class SVGPathParserTests: XCTestCase {
     private struct DesignTokensDocument: Decodable {
         struct IconSection: Decodable {
             struct Glyph: Decodable {
-                let phosphor: String
+                struct Line: Decodable { let grid: Double; let stroke: Double }
+                let phosphor: String?
+                let line: Line?
                 let d: String
             }
             let grid: Double
@@ -30,16 +32,20 @@ final class SVGPathParserTests: XCTestCase {
         let tokens = try loadDesignTokens()
         XCTAssertEqual(tokens.icon.grid, 256)
         XCTAssertEqual(tokens.icon.outline, 6)
-        XCTAssertEqual(tokens.icon.glyphs.count, 46)
+        XCTAssertEqual(tokens.icon.glyphs.count, 54)
+        XCTAssertEqual(tokens.icon.glyphs.values.filter { $0.line != nil }.count, 8)
 
         for (name, glyph) in tokens.icon.glyphs {
+            // Phosphor glyphs fill a 256 grid; canvas line glyphs stroke their own grid.
+            XCTAssertTrue((glyph.phosphor != nil) != (glyph.line != nil), "\(name) needs exactly one source")
+            let grid = glyph.line?.grid ?? 256
             let commands = try SVGPathParser.parse(glyph.d)
             XCTAssertFalse(commands.isEmpty, "Empty commands for \(name)")
             let bounds = try XCTUnwrap(SVGPathParser.boundingBox(of: commands), "Missing bounds for \(name)")
             XCTAssertGreaterThanOrEqual(bounds.minX, -0.05, "\(name) minX=\(bounds.minX)")
             XCTAssertGreaterThanOrEqual(bounds.minY, -0.05, "\(name) minY=\(bounds.minY)")
-            XCTAssertLessThanOrEqual(bounds.maxX, 256.05, "\(name) maxX=\(bounds.maxX)")
-            XCTAssertLessThanOrEqual(bounds.maxY, 256.05, "\(name) maxY=\(bounds.maxY)")
+            XCTAssertLessThanOrEqual(bounds.maxX, grid + 0.05, "\(name) maxX=\(bounds.maxX)")
+            XCTAssertLessThanOrEqual(bounds.maxY, grid + 0.05, "\(name) maxY=\(bounds.maxY)")
             XCTAssertGreaterThan(bounds.maxX - bounds.minX, 1, "\(name) degenerate width")
             XCTAssertGreaterThan(bounds.maxY - bounds.minY, 1, "\(name) degenerate height")
         }

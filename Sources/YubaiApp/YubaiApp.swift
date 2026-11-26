@@ -42,6 +42,7 @@ enum TabRoute: Hashable {
     case categoryBudget(String), savingWish(UUID), askQuestion(String), askDraft(String), assistantHub
     case yearlyBills, saving, cycleBills
     case butlerEvidence(UUID), butlerEvidenceEntries(UUID)
+    case recurring, categorySettings, aiSettings, currency, notices, accountEdit(UUID)
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -66,7 +67,7 @@ struct TabNavigationLink<Content: View, Label: View>: View {
 }
 
 enum AppSheet: Identifiable {
-    case account(Account?), imports, accounts, backup, history, syncVersions, addEntry, addPlan, intelligencePrivacy
+    case imports, accounts, backup, history, syncVersions, addEntry, addPlan, intelligencePrivacy
     case editEntry(UUID), editPlan(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
     case ask(String), wishlist(UUID?)
     case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letter(UUID), savingsFloor
@@ -88,7 +89,19 @@ enum AppSheet: Identifiable {
 @MainActor @Observable final class AppStore {
     static let shared = AppStore()
     let overviewFixture: OverviewFixture?
-    var isDesignFixture: Bool { HomeFixture.current != nil || overviewFixture != nil }
+    let settingsFixture = SettingsFixture.current
+    var isDesignFixture: Bool { HomeFixture.current != nil || overviewFixture != nil || settingsFixture != nil }
+    var settingsSheet: SettingsSheet?
+    var subscriptionDraft = SubscriptionDraft()
+    var onboarding = OnboardingDraft()
+    var fixtureRoutes: [TabRoute] = []
+    /// A new ledger: nothing recorded and no account yet.
+    var needsOnboarding: Bool {
+        if case .onboard = settingsFixture { return true }
+        // Settled ledgers stop at the first check and never observe entries.
+        guard !preferences.onboardingComplete, accounts.isEmpty else { return false }
+        return current.entries.isEmpty
+    }
     var tabRouteRequest: TabRoute?
     private(set) var ledger = Ledger() {
         didSet {
@@ -260,7 +273,7 @@ enum AppSheet: Identifiable {
         return fundsValue()
     }
     private func fundsValue() -> Funds {
-        let now = overviewFixture?.now ?? HomeFixture.current?.now ?? Dates.now; let zone = TimeZone.current
+        let now = overviewFixture?.now ?? settingsFixture?.now ?? HomeFixture.current?.now ?? Dates.now; let zone = TimeZone.current
         if let cached = cachedFunds, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
         let ledger = derivedSource; var expires = Dates.addDays(1, to: Dates.day(now))
         for entry in ledger.entries where entry.deletedAt == nil {
@@ -579,7 +592,7 @@ enum AppSheet: Identifiable {
         return accounts.first { $0.id == target.accountID && !$0.archived && ($0.kind == .investment) == target.isInvestment }
     }
 
-    var showsOverviewOverlay: Bool { reviewPeriodSheet != nil || accountBeingValued != nil }
+    var showsOverviewOverlay: Bool { reviewPeriodSheet != nil || accountBeingValued != nil || settingsSheet != nil }
 
     func applyOverviewPeriod(_ selection: OverviewPeriodSelection) {
         overviewPeriod = selection
@@ -655,6 +668,17 @@ enum AppSheet: Identifiable {
             reviewPeriodSheet = seed.periodSheet
             accountValuationTarget = seed.valuation
             accountValuationInitial = seed.valuationAmount
+            loadingLedger = false
+            invalidateDerived()
+            return
+        }
+        if let settingsFixture {
+            let seed = settingsFixture.makeSeed()
+            ledger = seed.ledger
+            fixtureRoutes = seed.route
+            settingsSheet = seed.sheet
+            subscriptionDraft = seed.draft
+            if let draft = seed.onboarding { onboarding = draft }
             loadingLedger = false
             invalidateDerived()
             return
@@ -1156,6 +1180,7 @@ struct RootView: View {
                 if store.loadingLedger { ProgressView() }
                 else if store.locked { lockedView }
                 else if let failure = store.loadFailure { recoveryView(failure) }
+                else if store.needsOnboarding { OnboardView().transition(.opacity) }
                 else { mainContentWithInboxLifecycle }
             }
             .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.showsOverviewOverlay) && !store.locked)
@@ -1171,6 +1196,10 @@ struct RootView: View {
                 .environment(\.yubaiSheetSurface, true).environment(\.yubaiZoomNamespace, motionNamespace)
                 .yubaiZoomDestination(store.sheetSource ?? sheet.motionSource)
                 .appErrors().presentationDragIndicator(.visible).yubaiSheetBackground()
+                .overlay {
+                    // A settings sheet asked for from inside a system sheet shows above it.
+                    if let sheet = store.settingsSheet { SettingsSheetHost(sheet: sheet).id(sheet).environment(store) }
+                }
                 .overlay { LedgerPrivacyCover() }
                 #if os(macOS)
                 .frame(minWidth: YubaiSize.sheetMinimumWidth, idealWidth: YubaiSize.sheetIdealWidth, minHeight: YubaiSize.sheetMinimumHeight, idealHeight: YubaiSize.sheetIdealHeight)
@@ -1230,7 +1259,7 @@ struct RootView: View {
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
-                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.toast = nil; store.locked = true
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.toast = nil; store.locked = true
             }
         }
         .task(id: phase == .active && !store.locked) {
@@ -1288,6 +1317,8 @@ struct RootView: View {
                     AccountValuationSheetOverlay(target: target, account: account, book: store.balance(account),
                                                   initial: store.accountValuationInitial, close: { store.accountValuationTarget = nil })
                         .id(target)
+                } else if store.sheet == nil, let sheet = store.settingsSheet {
+                    SettingsSheetHost(sheet: sheet).id(sheet)
                 }
             }
         }
@@ -1303,7 +1334,9 @@ struct RootView: View {
             else if let url = store.importedURL { store.sheet = url.pathExtension.lowercased() == "yubaibackup" ? .backup : .imports } } }
     }
     private var mainContentWithInboxLifecycle: some View {
-        mainContent.onChange(of: store.inboxItems.isEmpty, initial: true) { _, empty in
+        mainContent.onAppear {
+            if !store.fixtureRoutes.isEmpty { tabPaths[.ledger] = store.fixtureRoutes; store.fixtureRoutes = [] }
+        }.onChange(of: store.inboxItems.isEmpty, initial: true) { _, empty in
             if empty, store.tabRouteRequest == nil, tabPaths[store.destination]?.last == .todo {
                 tabPaths[store.destination]?.removeLast()
             }
@@ -1461,6 +1494,12 @@ struct RootView: View {
         case .cycleBills: CycleBillsView()
         case .todo: TodoView()
         case .settings: SettingsView()
+        case .recurring: RecurringView()
+        case .categorySettings: CategorySettingsView()
+        case .aiSettings: AISettingsView()
+        case .currency: CurrencyView()
+        case .notices: NoticeSettingsView()
+        case .accountEdit(let id): AccountEditView(accountID: id)
         case .categories: CategoriesView()
         case .savingRule: SavingsView()
         case .reserve: ReserveView()
@@ -1513,7 +1552,6 @@ struct RootView: View {
         case .screenshotReview(let data): ScreenshotCaptureView(imageData: data)
         case .addPlan: FixedFlowEditor()
         case .editPlan(let id): FixedFlowEditor(planID: id)
-        case .account(let account): AccountEditor(account: account)
         case .imports: ImportView()
         case .accounts: AccountsView()
         case .ask(let text): AskYubaiView(initialText: text)

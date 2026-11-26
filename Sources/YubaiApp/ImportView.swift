@@ -148,7 +148,7 @@ struct ImportView: View {
             guard !selection.isEmpty else { return }
             enqueue(selection.enumerated().map { ImportQueueFile(input: .photo($0.element), name: "截图 \($0.offset + 1)") }); photos = []
         }
-        .sheet(isPresented: $showAccount) { NavigationStack { AccountEditor(account: nil) }.environment(store).appErrors().yubaiSheetBackground().frame(minWidth: YubaiSize.compactWindowMinimum, minHeight: YubaiSize.editorIdealHeight) }
+        .onChange(of: showAccount) { _, show in if show { showAccount = false; store.settingsSheet = .accountAdd(nil, onboarding: false) } }
         .sheet(item: $receiptCapture, onDismiss: prepareQueue) { selection in
             NavigationStack { ScreenshotCaptureView(imageData: selection.data) }.environment(store).appErrors().yubaiSheetBackground()
         }
