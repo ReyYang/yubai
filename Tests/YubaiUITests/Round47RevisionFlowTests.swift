@@ -5,9 +5,6 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     override func setUpWithError() throws { continueAfterFailure = false }
     override func tearDownWithError() throws { app.terminate(); try super.tearDownWithError() }
     private func element(_ id: String) -> XCUIElement { control(id, in: app) }
-    private func watch(_ number: Int, _ mode: String = "amount") -> String {
-        String(format: "47000000-0000-0000-0000-%012d", number) + ":" + mode
-    }
     private func launch(_ script: String = "v47-spend", large: Bool = false, dark: Bool = false, hidden: Bool = false) {
         app.terminate()
         app.launchArguments = ["--test-ledger", UUID().uuidString, "-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
@@ -91,8 +88,9 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     }
     private func formula() { tap("fundsFormula"); XCTAssertTrue(element("formulaResult").waitForExistence(timeout: 5)) }
     private func reconcile(_ actual: String) {
-        tap("reconcileField_招行储蓄卡"); keys(actual)
-        tap("reconcileField_招行储蓄卡Done")
+        XCTAssertTrue(element("keypad_1").waitForExistence(timeout: 5))
+        keys(actual)
+        XCTAssertTrue(element("reconcileApply").isEnabled)
     }
     func testNormalHeroAndFormulaShareExactAmount() {
         launch()
@@ -256,7 +254,8 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)), transitionWaitReport)
             XCTAssertEqual(app.state, .runningForeground)
             XCTAssertFalse(XCUIScreen.main.screenshot().pngRepresentation.isEmpty)
-            tap("reconcileApply"); gone("reconcileByHand")
+            XCTAssertFalse(apply.isEnabled)
+            reconcile("10000"); tap("reconcileApply"); gone("reconcileSheet")
             XCTAssertEqual(app.state, .runningForeground)
         }
     }
@@ -390,48 +389,40 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
             }
         }
     }
-    func testCategoryPlaceFactsWrapWithoutClippingAcrossAllGalleryModes() {
+    func testCategoryBreakdownAndBillsStayReachableAcrossGalleryModes() {
         for mode in galleryModes {
             launch("v47r-soft-lines", large: mode.large, dark: mode.dark, hidden: mode.hidden)
-            tap("tab_insights"); tap("insightCategory_0")
-            let places = element("whereCategoryPlaces")
-            XCTAssertTrue(revealControl(places, in: app, deadline: Date().addingTimeInterval(60), searching: element("whereCategoryPage")))
-            XCTAssertNoThrow(try auditAppText(in: app) { issue in
-                if let target = issue.element, target.label.contains("外卖") && target.label.contains("次") {
-                    XCTFail("Place and count must wrap or stack: " + issue.detailedDescription)
-                }
-                return true
-            })
+            tap("tab_insights")
+            let category = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "overviewCategory_")).firstMatch
+            tapControl(category, in: app)
+            let scroll = element("overviewDrillScroll")
+            XCTAssertTrue(element("overviewDrillBreakdown").waitForExistence(timeout: 5))
+            XCTAssertTrue(revealControl(element("overviewSeeAll"), in: app, deadline: Date().addingTimeInterval(60), searching: scroll))
+            tap("overviewSeeAll")
+            XCTAssertTrue(element("entriesSearchTotal").waitForExistence(timeout: 5))
         }
-    }
-    func testInsightsCategoryStatusAndCountEditingUseSameWatches() {
-        launch("v47r-soft-lines"); tap("tab_insights"); expect("insightSoftLine_" + watch(478201), contains: "外卖还剩 320.00")
-        expect("insightSoftLine_" + watch(478203), contains: "打车超出 80.00")
-        tap("insightCategory_0"); tap("modeSoftLine_" + watch(478201)); keys("5"); tap("saveSoftLine")
-        expect("softLine_" + watch(478201, "count"), contains: "还剩 4 次")
-        tap("removeSoftLine_" + watch(478201, "count")); gone("softLine_" + watch(478201, "count"))
-        tap("undoLastChange"); XCTAssertTrue(element("softLine_" + watch(478201, "count")).exists)
-    }
-    func testCategoryCanWatchWholeCategoryInOneAmountSheet() {
-        launch(); tap("tab_insights"); tap("insightCategory_0"); tap("addSoftLine"); keys("1200"); tap("saveSoftLine")
-        XCTAssertTrue(element("softLineWatches").waitForExistence(timeout: 5))
     }
     func testMismatchReconciliationRemovesCardAndUpdatesRealDate() {
         launch("v47r-mismatch"); openInbox(); expect("mismatchText", contains: "账面比卡里多 412.00")
-        tap("openReconcile"); reconcile("10174"); XCTAssertFalse(element("reconcileSpendableAfter").exists)
-        tap("reconcileApply"); gone("balanceMismatchCard"); tap("tab_yubai"); expect("openAccounts", contains: "上次 11月20日")
+        tap("openReconcile"); reconcile("10174"); expect("overviewValuationDifference", contains: "−412.00")
+        tap("reconcileApply"); gone("reconcileSheet"); gone("balanceMismatchCard")
+        backToHome(); tap("tab_insights"); tap("overviewSegment_资产"); tap("overviewAccount_招行储蓄卡")
+        expect("overviewAccountReconciled", contains: "11.20 核对过")
         app.terminate(); launchApp(app); gone("balanceMismatchCard")
     }
+
     func testCoveredReconciliationCreatesAdjustmentWithoutChangingHeadline() {
         launch("v47r-reconcile-covered"); tap("tab_yubai"); tap("openAccounts"); tap("reconcileAll")
-        reconcile("11762"); expect("reconcileApply", contains: "记成调整 −412.00")
-        XCTAssertFalse(element("reconcileSpendableAfter").exists); tap("reconcileApply"); backToHome()
-        expect("availableFunds", contains: "¥1,864.00")
+        reconcile("11762"); expect("overviewValuationDifference", contains: "−412.00")
+        tap("reconcileApply"); gone("reconcileSheet")
+        expect("toastMessage", contains: "已记调整 −412.00")
+        backToHome(); expect("availableFunds", contains: "¥1,864.00")
     }
+
     func testFloorPreviewIsConditionalAndReplacesCurrentGap() {
         launch("v47r-reconcile-floor"); tap("tab_yubai"); tap("openAccounts"); tap("reconcileAll")
-        reconcile("9774"); expect("reconcileSpendableAfter", contains: "1,464.00"); expect("reconcileApply", contains: "−2,400.00")
-        tap("reconcileApply"); backToHome()
+        reconcile("9774"); expect("overviewValuationDifference", contains: "−2,400.00")
+        tap("reconcileApply"); gone("reconcileSheet"); backToHome()
         XCTAssertEqual(element("fundsFormula").value as? String, "¥1,464.00")
         formula(); expect("formulaRow_balanceGap", contains: "400.00")
         XCTAssertEqual(element("formulaResult").label, "1,464.00")

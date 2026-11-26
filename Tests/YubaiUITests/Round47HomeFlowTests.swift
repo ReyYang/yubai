@@ -298,10 +298,13 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "11.10", "12.09")).firstMatch.exists)
     }
     func testSelectedInsightsReturnsToItsPeriodControl() {
-        launch(large: true); tap("tab_insights")
-        XCTAssertTrue(revealControl(element("cashMonthCard"), in: app, deadline: Date().addingTimeInterval(60)))
+        launch("v47r-soft-lines", large: true); tap("tab_insights")
+        let period = element("overviewPeriod")
+        XCTAssertTrue(period.waitForExistence(timeout: 5))
+        let top = period.frame
+        element("overviewScroll").swipeUp()
         tap("tab_insights")
-        wait { self.element("insightsPeriod_这一期").isHittable }
+        wait { period.isHittable && abs(period.frame.minY - top.minY) < 2 }
         XCTAssertTrue(element("addEntry").exists)
     }
     func testOldestEntryIsHittableAndFullyAbovePillAtBothTextSizes() {
@@ -407,12 +410,17 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         }
     }
     func testInsightsRangesAndCategoryDrillDown() {
-        launch(); tap("tab_insights")
-        XCTAssertTrue(element("insightsAmount_收入").waitForExistence(timeout: 5))
-        let current = element("insightsAmount_支出").label
-        tap("insightsPeriod_上一期"); wait { self.element("insightsAmount_支出").label != current }
-        tap("insightsPeriod_今年"); XCTAssertTrue(element("insightsPeriod_今年").isSelected)
-        tap("insightsPeriod_这一期"); tap("insightCategory_0")
+        launch("v47r-soft-lines"); tap("tab_insights")
+        let spent = element("overviewSpent")
+        XCTAssertTrue(spent.waitForExistence(timeout: 5))
+        let current = spent.label
+        tap("overviewPeriod"); tap("overviewPeriod_previous")
+        wait { spent.label != current }
+        tap("overviewPeriod"); tap("overviewPeriod_custom"); tap("overviewQuick_thisYear"); tap("overviewPeriodApply")
+        wait { self.element("overviewPeriod").label.contains("自定义") }
+        tap("overviewPeriod"); tap("overviewPeriod_current")
+        let category = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "overviewCategory_")).firstMatch
+        tapControl(category, in: app)
         XCTAssertTrue(element("whereCategoryEntries").waitForExistence(timeout: 5))
         XCTAssertFalse(element("addEntry").exists)
     }
@@ -422,7 +430,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         reveal("ledgerEntry_" + id(479999))
         XCTAssertTrue(element("ledgerEntry_" + id(479999)).isHittable)
         XCTAssertFalse(element("entriesScroll").label.contains("1,234,567.89"))
-        tap("tab_insights"); XCTAssertEqual(element("insightsAmount_收入").label, "金额已隐藏")
+        tap("tab_insights"); XCTAssertEqual(element("overviewSpent").label, "金额已隐藏")
     }
     func testImmediatePillTapOpensOneEntrySheetAtBothTextSizes() {
         for large in [false, true] {
