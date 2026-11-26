@@ -401,7 +401,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(waitForDisappearance(element("openSettings")))
         tap("tab_ledger"); tap("openSettings")
         XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
-        tap("openSettings"); tap("openAssistantHub")
+        tap("openAssistantHub")
         for entry in ["openAccounts", "openMemories"] {
             tap(entry)
             XCTAssertFalse(element("mainNavigation").exists)
