@@ -247,26 +247,13 @@ struct AskCheckbox: View {
                 .strokeBorder(checked ? DS.Color.accent : DS.Color.separator, lineWidth: DS.Stroke.focus))
             .overlay {
                 if checked {
-                    AskCheckMark().stroke(DS.Color.onAccent, style: StrokeStyle(lineWidth: AskSpec.check * AskSpec.checkStroke / 24, lineCap: .round, lineJoin: .round))
-                        .frame(width: AskSpec.check, height: AskSpec.check)
+                    DSIconView(icon: .done, size: AskSpec.check, color: DS.Color.onAccent)
                         .transition(reduced ? .opacity : .scale.combined(with: .opacity))
                 }
             }
             .frame(width: AskSpec.checkbox, height: AskSpec.checkbox)
             .animation(reduced ? nil : DSMotion.snappyAnimation, value: checked)
             .sensoryFeedback(DSMotion.Haptic.toggle, trigger: checked)
-    }
-}
-
-/// canvas Ask.dc.html check: M5 12.5l4.5 4.5L19 7.5 on a 24 grid.
-private struct AskCheckMark: Shape {
-    func path(in rect: CGRect) -> Path {
-        let s = rect.width / 24
-        var path = Path()
-        path.move(to: CGPoint(x: 5 * s, y: 12.5 * s))
-        path.addLine(to: CGPoint(x: 9.5 * s, y: 17 * s))
-        path.addLine(to: CGPoint(x: 19 * s, y: 7.5 * s))
-        return path
     }
 }
 
@@ -289,10 +276,7 @@ struct AskComposer: View {
                     .opacity(attachEnabled ? 1 : DSInteraction.reducedPressOpacity)
             }.dsPressStyle().disabled(!attachEnabled).accessibilityLabel("附图").accessibilityIdentifier("askAttach")
             HStack(spacing: .zero) {
-                TextField("", text: $text, prompt: Text("问余白").foregroundStyle(DS.Color.ink3), axis: .horizontal)
-                    .textFieldStyle(.plain).dsText(DS.Font.tLabel).tint(DS.Color.accent).foregroundStyle(DS.Color.ink)
-                    .focused(focus).submitLabel(.send).onSubmit(onSend)
-                    .accessibilityLabel("问余白").accessibilityIdentifier("askInput")
+                DSAskField(text: $text, focus: focus, onSubmit: onSend)
                 Button(action: onMic) {
                     DSIconView(icon: .voice, size: DS.Size.brandTile, color: recording ? DS.Color.accent : DS.Color.ink2)
                         .frame(width: AskSpec.micBox, height: DS.Size.askH).contentShape(Rectangle())

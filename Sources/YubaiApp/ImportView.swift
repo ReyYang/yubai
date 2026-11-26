@@ -134,6 +134,7 @@ struct ImportView: View {
         }
         .yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.label).paperBackground()
         .amountPrivacy(store.preferences.hideAmounts).navigationTitle(resultTitle).yubaiNavigation()
+        .accessibilityIdentifier("importPage")
         // The page owns every action: previewActions (跳过这份 / 导入 N 笔) and
         // ImportResultPage (整批撤销). The header keeps only title and dismiss.
         .manualSheetHeader(resultTitle, cancelTitle: result != nil ? "关闭" : "取消", showsAction: false)

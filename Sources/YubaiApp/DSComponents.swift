@@ -473,6 +473,20 @@ struct DSHomeSearchField: View {
     }
 }
 
+/// 问余白's field: Return sends.
+struct DSAskField: View {
+    @Binding var text: String
+    var focus: FocusState<Bool>.Binding
+    var onSubmit: () -> Void
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text("问余白").foregroundStyle(DS.Color.ink3))
+            .textFieldStyle(.plain).dsText(DS.Font.tLabel).tint(DS.Color.accent)
+            .foregroundStyle(DS.Color.ink).focused(focus).submitLabel(.send).onSubmit(onSubmit)
+            .accessibilityLabel("问余白").accessibilityIdentifier("askInput")
+    }
+}
+
 struct DSEntryPills: View {
     enum Exception: String, CaseIterable { case none = "", reserve = "走机动余钱", reimburse = "待报销", split = "待 AA" }
     let account: String

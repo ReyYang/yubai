@@ -515,7 +515,12 @@ enum UITestSupport {
         if script == "import" {
             ledger.entries = [Entry(date: now.addingTimeInterval(-60), amount: 1600, accountID: account.id, title: "原有午饭", category: "餐饮")]
         } else {
-            ledger.entries = [Entry(date: now, amount: 3200, accountID: account.id, title: "合成咖啡", category: "餐饮")]
+            // Two lunches at one price make a 常用 row.
+            ledger.entries = [1, 2].map { days in
+                var entry = Entry(date: Dates.addDays(-days, to: now), amount: 2500, accountID: account.id, title: "午饭", category: "餐饮")
+                entry.recordedAt = entry.date
+                return entry
+            }
         }
         try repository.save(ledger, reason: "合成测试夹具")
     }

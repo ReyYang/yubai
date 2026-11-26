@@ -43,9 +43,9 @@ struct QuickRepeatMenu: View {
         .task(id: store.ledgerRevision) {
             guard QuickRepeatMenu.fixtureItems == nil else { return }
             let ledger = store.current, now = Dates.now
-            let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now) }.value
+            let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now, limit: HomeSpec.oftenRows) }.value
             guard !Task.isCancelled else { return }
-            items = value.prefix(HomeSpec.oftenRows).map { Item(id: $0.id, purpose: $0.purpose, amount: $0.amount, entry: $0) }
+            items = value.map { Item(id: $0.id, purpose: $0.purpose, amount: $0.amount, entry: $0) }
         }
     }
 

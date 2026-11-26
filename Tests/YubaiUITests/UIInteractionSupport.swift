@@ -1,24 +1,5 @@
 import XCTest
 
-/// Gallery and flow callers use the same typed, element-specific review policy.
-/// A combined/unknown category must never fall through to a clipping allowance.
-extension GalleryTextReview {
-    static func warning(stop: String, issue: XCUIAccessibilityAuditIssue) -> String? {
-        guard let target = issue.element else { return nil }
-        let category: Category
-        switch issue.auditType {
-        case .textClipped: category = .textClipped
-        case .dynamicType: category = .dynamicType
-        default: category = .other
-        }
-        let kind: Kind = target.elementType == .button ? .button : target.elementType == .staticText ? .text : .other
-        return warning(stop: stop, identifier: target.identifier, label: target.label, kind: kind,
-                       category: category, selected: target.isSelected,
-                       elementDescription: "identifier=\(target.identifier) label=\(target.label) frame=\(target.frame)",
-                       auditText: issue.detailedDescription)
-    }
-}
-
 /// One coherent inventory for both gallery and flow audits. System keyboard
 /// controls never get a live per-control query (which itself can trigger AX).
 struct UIAppContentAuditScope {

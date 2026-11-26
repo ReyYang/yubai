@@ -41,7 +41,6 @@ enum AskSpec {
     static let checkbox: CGFloat = 22 // canvas Ask.dc.html: batch checkbox
     static let checkboxRadius: CGFloat = 7 // canvas Ask.dc.html: batch checkbox
     static let check: CGFloat = 13 // canvas Ask.dc.html: check mark
-    static let checkStroke: CGFloat = 3 // canvas Ask.dc.html: check mark stroke on a 24 grid
     static let flagHeight: CGFloat = 18 // canvas Ask.dc.html: 可能重复 flag
     static let flagInset: CGFloat = 6 // canvas Ask.dc.html: flag padding and name gap
     static let barTop: CGFloat = 8 // canvas Ask.dc.html: offline budget bar

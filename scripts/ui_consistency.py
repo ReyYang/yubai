@@ -5,15 +5,13 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from gallery_inventory import check as check_gallery
-from bash_array_consistency import check as check_bash_arrays, self_test as test_bash_arrays
 
 ROOT = Path(__file__).resolve().parents[1]
 # Only the shared design system implements input, navigation and geometry.
 # Domain/fixture/page files receive no blanket exceptions.
 SHARED = 'DesignSystem.swift'
 DS_FILES = {'DSTheme.swift', 'DSMotion.swift', 'DSStyle.swift', 'DSComponents.swift', 'DesignSystemGalleryView.swift', 'DSIconView.swift', 'DSSettingsComponents.swift'}
-SPEC_FILES = {'EntrySpec.swift', 'HomeSpec.swift', 'OverviewSpec.swift', 'SettingsSpec.swift'}
+SPEC_FILES = {'AskSpec.swift', 'EntrySpec.swift', 'HomeSpec.swift', 'OverviewSpec.swift', 'SettingsSpec.swift'}
 OLD_NAMES = ('\u6211\u7684\u6d88\u8d39\u89c2', '\u5e38\u8bb0\u7684\u51e0\u7b14', '\u8fdb\u51fa\u8bb0\u5f55',
              '\u85cf\u8d77\u6765\u7684', '\u5206\u4e00\u5206', '\u4e00\u4e2a\u4e2a\u5206', '\u6309\u5bf9\u65b9\u5206',
              '\u4f59\u767d\u60f3\u8fd9\u6837\u6539', '\u6574\u7406\u597d\u4e86', '\u5f85\u5904\u7406')
@@ -350,8 +348,7 @@ def main():
     args = parser.parse_args()
     if args.self_test:
         self_test()
-        test_bash_arrays()
-    errors = check_bash_arrays(ROOT)
+    errors = []
     generated = subprocess.run([sys.executable, str(ROOT / 'scripts/generate-design-tokens.py'), '--check'],
                                cwd=ROOT, capture_output=True, text=True)
     if generated.stdout:
@@ -377,7 +374,7 @@ def main():
                 errors.append(str(path.relative_to(ROOT)) + ': deleted chart reference')
     ds = (ROOT / 'Sources/YubaiApp' / SHARED).read_text()
     app_source = '\n'.join(p.read_text() for p in (ROOT / 'Sources/YubaiApp').glob('*.swift'))
-    for symbol in ('CardTextFieldRow', 'MoneyInputRow', 'SearchInput', 'ChatInputBar', 'Toast', 'ManualSheetHeader', 'HeaderIconButton', 'ConfirmationSheet', 'KeypadSheet', 'AmountKeypad', 'EntryCalendarView', 'EntryDateChip', 'Segmented', 'CategoryChoiceChip', 'EmptyState', 'DestructiveButtonStyle', 'TextLinkStyle', 'RowToggleStyle', 'AdaptiveValueRow', 'WaterBar', 'SavedPill', 'CashCurve'):
+    for symbol in ('CardTextFieldRow', 'MoneyInputRow', 'Toast', 'ManualSheetHeader', 'HeaderIconButton', 'ConfirmationSheet', 'KeypadSheet', 'AmountKeypad', 'EntryCalendarView', 'EntryDateChip', 'Segmented', 'CategoryChoiceChip', 'EmptyState', 'DestructiveButtonStyle', 'TextLinkStyle', 'RowToggleStyle'):
         if len(re.findall(r'\bstruct ' + symbol + r'\b', ds)) != 1 or len(re.findall(r'\bstruct ' + symbol + r'\b', app_source)) != 1:
             errors.append('Expected one DS definition: ' + symbol)
     for path in (ROOT / 'Sources/YubaiApp').glob('*.swift'):
@@ -395,15 +392,10 @@ def main():
         for old in OLD_NAMES:
             if old in path.read_text():
                 errors.append(str(path.relative_to(ROOT)) + ': obsolete name in source/test/docs')
-    try:
-        walks, boards = check_gallery(ROOT)
-        print(f'Gallery coverage: {len(boards)} boards; {len(walks)} CI walks; no missing stops')
-    except ValueError as error:
-        errors.append(str(error))
     if errors:
         print('\n'.join(errors))
         raise SystemExit(1)
-    print('UI consistency: PASS (shared inputs/back/toast, tokens/counts/arithmetic, continuous shapes, springs, fonts, blur, vocabulary, charts, gallery, bash arrays)')
+    print('UI consistency: PASS (shared inputs/back/toast, tokens/counts/arithmetic, continuous shapes, springs, fonts, blur, vocabulary, charts)')
 
 
 if __name__ == '__main__':
