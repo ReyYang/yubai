@@ -3,7 +3,7 @@ import YubaiCore
 
 /// Canvas data for the settings, account and first-open boards. Debug launch arguments only.
 enum SettingsFixture: Equatable {
-    case main, mainEnd, cycle, recurring, categories, ai, aiKey
+    case main, mainEnd, cycle, recurring, categories, ai, aiKey, hub
     case accountAdd, accountEdit, saving, floor, subAdd, subIcon, currency, export
     case onboard(Int)
 
@@ -19,6 +19,7 @@ enum SettingsFixture: Equatable {
         case "categories": return .categories
         case "ai": return .ai
         case "ai-key": return .aiKey
+        case "hub": return .hub
         default: break
         }
         switch value("-YubaiSettingsMoreFixture") {
@@ -41,6 +42,7 @@ enum SettingsFixture: Equatable {
     /// A fake key: no request is ever sent from a fixture.
     var apiKey: String? { "sk-test-0000-fixture-3f2a" }
     var storageBytes: Int64 { 126_000_000 }
+    var calendarMonth: Date? { self == .recurring ? Dates.parse("2026-12-01") : nil }
     var openCategory: String? { self == .categories ? "购物" : nil }
     var iconSelection: String? { self == .subIcon ? "apple" : nil }
     var savingInput: Int64? { self == .saving ? 500_000 : nil }
@@ -107,7 +109,7 @@ enum SettingsFixture: Equatable {
             ("iCloud+", 2_100, 12, credit.id, "icloud"), ("网易云音乐", 1_500, 12, alipay.id, "netease-cloud-music"),
         ]
         for (title, amount, day, account, slug) in subscriptions {
-            var plan = Plan(title: title, amount: amount, dueDate: Payday.nominalDate(day: day, inMonthOf: Self.date("2026-12-01")), frequency: .monthly, category: "日用")
+            var plan = Plan(title: title, amount: amount, dueDate: Payday.nominalDate(day: day, inMonthOf: Self.date("2026-10-01")), frequency: .monthly, category: "日用")
             plan.monthlyDay = day; plan.accountID = account; plan.iconSlug = slug
             ledger.plans.append(plan)
         }
@@ -157,6 +159,7 @@ enum SettingsFixture: Equatable {
             seed.route = [.settings, .recurring]; seed.sheet = .subIcon
             seed.draft = SubscriptionDraft(name: "Apple One", amount: 6_800, day: 12, yearly: false, slug: nil)
         case .currency: seed.route = [.settings, .currency]
+        case .hub: seed.route = [.assistantHub]
         case .export: seed.route = [.settings]; seed.sheet = .export
         case .onboard: break
         }

@@ -69,7 +69,6 @@ enum SettingsSpec {
     static let keyPrefix = 3 // SPEC §5: shown key start
     static let keySuffix = 4 // SPEC §5: shown key end
     static let keyBullets = 16 // canvas Settings.dc.html: masked key bullets
-    static let hiddenFieldOpacity = 0.02 // SPEC §5: the secure field under the masked key stays focusable
 
     // Amount sheets
     static let amountVertical: CGFloat = 14 // canvas SettingsMore.dc.html: amount box padding

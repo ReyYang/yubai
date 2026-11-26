@@ -857,7 +857,7 @@ private struct NavigationBackPaper: UIViewControllerRepresentable {
         controller.dark = scheme == .dark
         controller.applySurface()
     }
-    final class Controller: UIViewController {
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
         var dark = false
         /// DS `back` at 22 pt, drawn like DSIconView: filled outline plus its 6/256 stroke.
         static func backGlyph(color: UIColor) -> UIImage {
@@ -917,6 +917,29 @@ private struct NavigationBackPaper: UIViewControllerRepresentable {
                 bar.standardAppearance = appearance; bar.scrollEdgeAppearance = appearance; bar.compactAppearance = appearance
             }
             previous.backBarButtonItem = back
+            // iOS 26 wraps the system back item in a glass circle even with hidesSharedBackground,
+            // so pushed old pages carry their own plain DS back item instead.
+            if let current = bar.topItem, current !== previous {
+                let button = UIButton(type: .system)
+                button.setImage(glyph, for: .normal)
+                button.frame = CGRect(x: 0, y: 0, width: DS.Size.tapMin, height: DS.Size.tapMin)
+                button.contentHorizontalAlignment = .leading
+                button.accessibilityLabel = "返回"
+                button.accessibilityIdentifier = "BackButton"
+                button.addAction(UIAction { [weak self] _ in self?.navigationController?.popViewController(animated: true) }, for: .primaryActionTriggered)
+                let item = UIBarButtonItem(customView: button)
+                if #available(iOS 26, *) { item.hidesSharedBackground = true }
+                current.hidesBackButton = true
+                current.leftBarButtonItem = item
+                // A custom leading item turns off edge-swipe back; keep it for every pushed page.
+                navigationController?.interactivePopGestureRecognizer?.delegate = self
+                navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+            }
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let navigationController else { return false }
+            return navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
         }
     }
 }

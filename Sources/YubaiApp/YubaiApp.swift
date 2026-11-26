@@ -273,7 +273,7 @@ enum AppSheet: Identifiable {
         return fundsValue()
     }
     private func fundsValue() -> Funds {
-        let now = overviewFixture?.now ?? HomeFixture.current?.now ?? Dates.now; let zone = TimeZone.current
+        let now = overviewFixture?.now ?? settingsFixture?.now ?? HomeFixture.current?.now ?? Dates.now; let zone = TimeZone.current
         if let cached = cachedFunds, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
         let ledger = derivedSource; var expires = Dates.addDays(1, to: Dates.day(now))
         for entry in ledger.entries where entry.deletedAt == nil {

@@ -14,7 +14,7 @@ struct RecurringView: View {
         let hidden = store.preferences.hideAmounts
         let total = SettingsSummary.monthlyFixed(in: ledger, now: now)
         let subscriptions = SettingsSummary.subscriptions(in: ledger, now: now)
-        let shown = month ?? Dates.calendar.dateInterval(of: .month, for: now)!.start
+        let shown = month ?? store.settingsFixture?.calendarMonth ?? Dates.calendar.dateInterval(of: .month, for: now)!.start
         VStack(spacing: .zero) {
             OverviewNavigationBar(title: "固定订阅", add: {
                 store.subscriptionDraft = SubscriptionDraft(day: Dates.calendar.component(.day, from: now))
@@ -105,7 +105,7 @@ struct SubscriptionCalendar: View {
         VStack(spacing: .zero) {
             HStack(spacing: .zero) {
                 arrow(.back, label: "上个月") { step(-1) }
-                Text("\(calendar.component(.year, from: month)) 年 \(calendar.component(.month, from: month)) 月")
+                Text(String(calendar.component(.year, from: month)) + " 年 \(calendar.component(.month, from: month)) 月")
                     .dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink).frame(maxWidth: .infinity)
                     .contentTransition(.numericText()).accessibilityAddTraits(.isHeader)
                 arrow(.chevron, label: "下个月") { step(1) }
@@ -114,7 +114,8 @@ struct SubscriptionCalendar: View {
                 ForEach(["一", "二", "三", "四", "五", "六", "日"], id: \.self) { Text($0).frame(maxWidth: .infinity) }
             }.dsText(OverviewSpec.tiny).foregroundStyle(DS.Color.ink3).frame(height: SettingsSpec.weekdayRow)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: .zero), count: DSLayout.weekdays), spacing: SettingsSpec.calendarRowGap) {
-                ForEach(0..<leading, id: \.self) { _ in Color.clear.frame(height: SettingsSpec.calendarCell) }
+                // Blank IDs are negative so they never collide with day numbers in the lazy grid.
+                ForEach(-leading..<0, id: \.self) { _ in Color.clear.frame(height: SettingsSpec.calendarCell) }
                 ForEach(1...count, id: \.self) { day in
                     let date = Dates.addDays(day - 1, to: interval.start)
                     cell(day, marks: marks[day] ?? [], inCycle: date >= Dates.day(cycle.start) && date <= Dates.day(cycle.end))

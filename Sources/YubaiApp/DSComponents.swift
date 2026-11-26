@@ -1014,7 +1014,7 @@ struct DSSubCalendar: View {
     var onSelect: (Int) -> Void = { _ in }
     var body: some View {
         LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s4), count: DSLayout.weekdays), spacing: DS.Space.s4) {
-            ForEach(0..<max(0, leadingEmptyDays), id: \.self) { _ in Color.clear.frame(height: DS.Size.tapMin) }
+            ForEach(-max(0, leadingEmptyDays)..<0, id: \.self) { _ in Color.clear.frame(height: DS.Size.tapMin) }
             ForEach(days) { day in
                 Button { onSelect(day.number) } label: {
                     VStack(spacing: DS.Size.segmentedInset) {
@@ -1171,7 +1171,7 @@ struct DSCalendarPopover: View {
                     Text($0).dsText(DS.Font.tTag).fontWeight(.regular)
                         .foregroundStyle(DS.Color.ink3).frame(minHeight: DS.Space.s20)
                 }
-                ForEach(0..<(calendar.component(.weekday, from: month) - 1), id: \.self) { _ in
+                ForEach((1 - calendar.component(.weekday, from: month))..<0, id: \.self) { _ in
                     Color.clear.frame(height: EntrySpec.calendarDay).accessibilityHidden(true)
                 }
                 ForEach(calendar.range(of: .day, in: .month, for: month) ?? (1..<1), id: \.self) { day in

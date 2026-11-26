@@ -731,7 +731,7 @@ struct APIKeySheet: View {
                     Text(masked).dsText(SettingsSpec.key).foregroundStyle(key.isEmpty ? DS.Color.ink3 : DS.Color.ink).lineLimit(1)
                         .accessibilityHidden(true)
                     DSInlineTextField(title: "DeepSeek 密钥", text: $key, autoFocus: false, secure: true, embedded: true)
-                        .opacity(SettingsSpec.hiddenFieldOpacity)
+                        .colorMultiply(.clear)
                         .accessibilityIdentifier("apiKeyField")
                 }
                 .padding(.horizontal, SettingsSpec.cardInset).frame(minHeight: SettingsSpec.row)
