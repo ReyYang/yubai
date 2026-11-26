@@ -36,6 +36,7 @@ enum DSLayout {
     static let categoryRow = 5
     static let heroBudgets = 3
     static let weekdays = 7
+    static let dayGridRows = 4
 }
 
 struct DSPressStyle: ButtonStyle {

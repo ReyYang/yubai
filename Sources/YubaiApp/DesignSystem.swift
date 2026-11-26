@@ -272,11 +272,6 @@ enum YubaiSize {
     static let receiptRowHeight: CGFloat = 32
     static let receiptUndoWidth: CGFloat = 76
     static let receiptLineDash: CGFloat = 5
-    static let firstOpenMinimum: CGFloat = 480
-    static let firstOpenBrand: CGFloat = 78
-    /// Brand seal under the vertical 余白: about half a brand glyph wide.
-    static let firstOpenSeal: CGFloat = 40
-    static let firstOpenSealGlyph: CGFloat = 26
     static let firstOpenRule: CGFloat = 170
     static let pageFadeTop: CGFloat = 24
     static let pageFadeBottom: CGFloat = 40
@@ -401,7 +396,6 @@ extension View {
 
 @MainActor enum YubaiMotion {
     static let durationFirstLight = 1.4
-    static let windowSwayPhase = 9.0
     static let durationReceiptPrint = 0.32
     // Amount keypad: immediate color/edge feedback, no scale/opacity; release
     // releases with the snappy spring. Prepared system haptics fire at touch-down:
@@ -865,6 +859,26 @@ private struct NavigationBackPaper: UIViewControllerRepresentable {
     }
     final class Controller: UIViewController {
         var dark = false
+        /// DS `back` at 22 pt, drawn like DSIconView: filled outline plus its 6/256 stroke.
+        static func backGlyph(color: UIColor) -> UIImage {
+            let size = HomeSpec.navIcon, scale = size / DS.Icon.grid
+            var path = Path()
+            for command in (try? SVGPathParser.parse(DS.Icon.back.pathData)) ?? [] {
+                switch command {
+                case .moveTo(let p): path.move(to: CGPoint(x: p.x, y: p.y))
+                case .lineTo(let p): path.addLine(to: CGPoint(x: p.x, y: p.y))
+                case .cubicTo(let c1, let c2, let e): path.addCurve(to: CGPoint(x: e.x, y: e.y), control1: CGPoint(x: c1.x, y: c1.y), control2: CGPoint(x: c2.x, y: c2.y))
+                case .quadTo(let c, let e): path.addQuadCurve(to: CGPoint(x: e.x, y: e.y), control: CGPoint(x: c.x, y: c.y))
+                case .close: path.closeSubpath()
+                }
+            }
+            let bezier = UIBezierPath(cgPath: path.applying(CGAffineTransform(scaleX: scale, y: scale)).cgPath)
+            bezier.lineWidth = size * DS.Icon.outline / DS.Icon.grid
+            bezier.lineCapStyle = .round; bezier.lineJoinStyle = .round
+            return UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { _ in
+                color.setFill(); color.setStroke(); bezier.fill(); bezier.stroke()
+            }.withRenderingMode(.alwaysOriginal)
+        }
         override func loadView() {
             view = UIView(); view.backgroundColor = .clear
             view.isUserInteractionEnabled = false; view.accessibilityElementsHidden = true
@@ -888,28 +902,20 @@ private struct NavigationBackPaper: UIViewControllerRepresentable {
             // UIKit exposes the native item as BackButton on iOS 26.
             // All UI tests use this same native identifier.
             back.accessibilityIdentifier = "BackButton"
+            // The DS back glyph alone: no circle, no shadow, no shared glass background.
+            // Native item keeps edge-swipe back, root awareness and the BackButton identifier.
+            if #available(iOS 26, *) { back.hidesSharedBackground = true }
+            let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
+            let glyph = Self.backGlyph(color: UIColor(DS.Color.ink).resolvedColor(with: traits))
             if let bar = navigationController?.navigationBar {
                 let appearance = UINavigationBarAppearance()
+                appearance.setBackIndicatorImage(glyph, transitionMaskImage: glyph)
                 appearance.configureWithOpaqueBackground()
                 appearance.backgroundColor = UIColor(YubaiColor.canvas)
                 appearance.shadowColor = .clear
                 appearance.titleTextAttributes = [.font: UIFontMetrics(forTextStyle: .headline).scaledFont(for: .systemFont(ofSize: 16, weight: .bold)), .foregroundColor: UIColor(YubaiColor.label)]
                 bar.standardAppearance = appearance; bar.scrollEdgeAppearance = appearance; bar.compactAppearance = appearance
             }
-            // This customization only affects the back button, including on pushed sheet pages.
-            if #available(iOS 26, *) { back.hidesSharedBackground = true }
-            let traits = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
-            let token = YubaiShadow.control
-            let image = UIGraphicsImageRenderer(size: CGSize(width: 52, height: 48)).image { renderer in
-                let context = renderer.cgContext
-                context.setShadow(offset: CGSize(width: token.x, height: token.y), blur: token.radius,
-                                  color: UIColor(token.color).resolvedColor(with: traits).cgColor)
-                UIColor(YubaiColor.raised).resolvedColor(with: traits).setFill()
-                UIBezierPath(roundedRect: CGRect(x: 6, y: 4, width: 40, height: 40), cornerRadius: 20).fill()
-            }.resizableImage(withCapInsets: UIEdgeInsets(top: 24, left: 26, bottom: 24, right: 26), resizingMode: .stretch)
-                .withAlignmentRectInsets(UIEdgeInsets(top: 4, left: 6, bottom: 8, right: 6)).withRenderingMode(.alwaysOriginal)
-            back.setBackButtonBackgroundImage(image, for: .normal, barMetrics: .default)
-            back.setBackButtonBackgroundImage(image, for: .normal, barMetrics: .compact)
             previous.backBarButtonItem = back
         }
     }
@@ -4528,78 +4534,6 @@ extension YubaiFont {
 // MARK: - Round 47 home paper and window
 
 /// Existing bamboo silhouette, shared by the first wall and the daily receipt.
-struct BrandBambooShadow: View {
-    var opacity = 0.11
-    var body: some View {
-        Image("BambooShadow").renderingMode(.template).resizable().scaledToFit()
-            .foregroundStyle(YubaiColor.bambooShadow).blur(radius: 5).opacity(opacity) // ds-allow-blur: decorative bamboo silhouette penumbra; material would blur the backdrop instead of the silhouette
-            .allowsHitTesting(false).accessibilityHidden(true)
-    }
-}
-
-struct FirstWindowWall: View {
-    @Environment(\.yubaiReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        GeometryReader { geometry in
-            let size = geometry.size
-            ZStack {
-                LinearGradient(colors: [YubaiColor.card, YubaiColor.keypadTray], startPoint: .topLeading, endPoint: .bottomTrailing)
-                window(size)
-                if reduceMotion { bamboo(size, angle: 0) }
-                else {
-                    PhaseAnimator(DSMotion.Loop.shimmer.phases) { phase in
-                        bamboo(size, angle: phase * 2)
-                    } animation: { _ in DSMotion.Loop.shimmer.animation.delay(YubaiMotion.windowSwayPhase) }
-                }
-            }.frame(width: size.width, height: size.height).clipped()
-        }.ignoresSafeArea().allowsHitTesting(false).accessibilityHidden(true)
-    }
-    private func bamboo(_ size: CGSize, angle: Double) -> some View {
-        ZStack {
-            BrandBambooShadow(opacity: scheme == .dark ? 0.14 : 0.20)
-                .frame(width: size.width * 1.02, height: size.height * 0.54)
-                .rotationEffect(.degrees(8 + angle), anchor: .bottomLeading)
-                .position(x: size.width * 0.27, y: size.height * 0.49)
-            BrandBambooShadow(opacity: 0.13)
-                .frame(width: size.width * 0.60, height: size.height * 0.35)
-                .scaleEffect(x: -1, y: 1).rotationEffect(.degrees(-18 - angle))
-                .position(x: size.width * 0.70, y: size.height * 0.27)
-        }
-    }
-    private func window(_ size: CGSize) -> some View {
-        let pane = Path { p in
-            p.move(to: CGPoint(x: -30, y: size.height * 0.24))
-            p.addLine(to: CGPoint(x: size.width * 0.77, y: size.height * 0.15))
-            p.addLine(to: CGPoint(x: size.width * 0.77, y: size.height * 0.72))
-            p.addLine(to: CGPoint(x: -30, y: size.height * 0.81)); p.closeSubpath()
-        }
-        return pane.fill(YubaiColor.windowLight.opacity(scheme == .dark ? 0.10 : 0.92))
-            .overlay {
-                Path { p in
-                    for y in [0.43, 0.62] {
-                        p.move(to: CGPoint(x: -30, y: size.height * y))
-                        p.addLine(to: CGPoint(x: size.width * 0.80, y: size.height * (y - 0.09)))
-                    }
-                    p.move(to: CGPoint(x: size.width * 0.35, y: size.height * 0.16))
-                    p.addLine(to: CGPoint(x: size.width * 0.35, y: size.height * 0.79))
-                }.stroke(YubaiColor.keypadTray.opacity(0.9), lineWidth: 9).clipShape(pane)
-            }.blur(radius: 1.4) // ds-allow-blur: decorative sunlight edge feathering; a material would replace transmitted light with a frosted pane
-            // Sunlight has no ruled edge: feather the pane's right, top and
-            // bottom borders (x 0.77, y 0.15–0.24, y 0.72–0.81) to zero alpha
-            // inside the polygon so no straight cut crosses the page.
-            .mask {
-                LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.45),
-                                       .init(color: .clear, location: 0.75)], startPoint: .leading, endPoint: .trailing)
-            }
-            .mask {
-                LinearGradient(stops: [.init(color: .clear, location: 0.24), .init(color: .black, location: 0.38),
-                                       .init(color: .black, location: 0.54), .init(color: .clear, location: 0.73)],
-                               startPoint: .top, endPoint: .bottom)
-            }
-    }
-}
-
 struct ReceiptTornEdge: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path(); p.move(to: .zero); p.addLine(to: CGPoint(x: rect.maxX, y: 0))

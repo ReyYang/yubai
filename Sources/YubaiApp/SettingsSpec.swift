@@ -8,6 +8,7 @@ enum SettingsSpec {
     static let groupGap: CGFloat = 22 // canvas Settings.dc.html: gap between cards and above the version
     static let cardInset: CGFloat = 14 // canvas Settings.dc.html: card leading inset, weekend row, key field
     static let chevron: CGFloat = 14 // canvas Settings.dc.html: row chevron
+    static let knobInset: CGFloat = 2 // canvas Settings.dc.html: switch knob inset
     static let previewBar: CGFloat = 10 // canvas Settings.dc.html: cycle preview, SettingsMore.dc.html: split bar, Onboard.dc.html: progress
     static let barRadius: CGFloat = 5 // canvas SettingsMore.dc.html: split bar outer radius
     static let labelsTop: CGFloat = 6 // canvas SettingsMore.dc.html: split labels, Onboard.dc.html: progress labels
@@ -68,6 +69,7 @@ enum SettingsSpec {
     static let keyPrefix = 3 // SPEC §5: shown key start
     static let keySuffix = 4 // SPEC §5: shown key end
     static let keyBullets = 16 // canvas Settings.dc.html: masked key bullets
+    static let hiddenFieldOpacity = 0.02 // SPEC §5: the secure field under the masked key stays focusable
 
     // Amount sheets
     static let amountVertical: CGFloat = 14 // canvas SettingsMore.dc.html: amount box padding

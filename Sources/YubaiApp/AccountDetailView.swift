@@ -13,7 +13,7 @@ struct AccountDetailView: View {
             let series = OverviewAnalytics.balanceSeries(for: account, in: store.current, now: now)
             let balance = store.balance(account, at: now)
             VStack(spacing: .zero) {
-                OverviewNavigationBar(title: account.name) { store.present(.account(account)) }
+                OverviewNavigationBar(title: account.name) { store.tabRouteRequest = .accountEdit(account.id) }
                 ScrollView {
                     VStack(alignment: .leading, spacing: .zero) {
                         header(account, balance: balance, hidden: hidden)

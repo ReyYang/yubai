@@ -86,6 +86,9 @@ final class SettingsCoreTests: XCTestCase {
         XCTAssertEqual(total.count, 3)
         XCTAssertEqual(total.total, 30_000 + 1_000 + 14_400)
         XCTAssertEqual(SettingsSummary.subscriptions(in: ledger, now: now).map(\.plan.title), ["Claude", "超级猩猩", "域名"])
+        let december = DateInterval(start: d("2026-12-01"), end: d("2027-01-01"))
+        XCTAssertEqual(SettingsSummary.occurrences(of: gym, in: december), [d("2026-12-15")])
+        XCTAssertEqual(SettingsSummary.occurrences(of: yearly, in: december), [])
     }
 
     func testFloorChipsAreThreeAndSixMonthsOfAverageSpend() {

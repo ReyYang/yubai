@@ -12,16 +12,7 @@ struct LedgerTabView: View {
         _mountedRevision = State(initialValue: navigationRevision)
     }
     var body: some View {
-        let isFirstOpen = store.homeHero.isFirstOpen
-        Group {
-            if isFirstOpen {
-                VStack(spacing: .zero) {
-                    HomeTopBar { store.tabRouteRequest = .settings }
-                    FirstOpenView()
-                }.transition(.opacity)
-            }
-            else { HomeView(request: request).transition(.opacity) }
-        }.animation(DSMotion.reduceMotionAnimation, value: isFirstOpen)
+        HomeView(request: request)
             .navigationTitle("账本").yubaiNavigation().amountPrivacy(store.preferences.hideAmounts)
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)

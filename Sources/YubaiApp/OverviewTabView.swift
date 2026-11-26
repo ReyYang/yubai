@@ -77,11 +77,14 @@ enum OverviewDisplay {
 struct OverviewNavigationBar: View {
     let title: String
     var edit: (() -> Void)? = nil
+    var add: (() -> Void)? = nil
+    var addLabel = "添加"
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         ZStack {
             Text(title).dsText(DS.Font.tTitle).lineLimit(1)
+                .frame(minHeight: DS.Size.tapMin)
                 .padding(.horizontal, OverviewSpec.accountNavWing)
                 .accessibilityAddTraits(.isHeader)
             HStack {
@@ -91,6 +94,12 @@ struct OverviewNavigationBar: View {
                         .contentShape(Rectangle())
                 }.dsPressStyle().accessibilityLabel("返回").accessibilityIdentifier("BackButton")
                 Spacer(minLength: .zero)
+                if let add {
+                    Button(action: add) {
+                        DSIconView(icon: .add, size: DS.Size.icon, color: DS.Color.accentInk)
+                            .frame(width: DS.Size.tapMin, height: DS.Size.tapMin).contentShape(Rectangle())
+                    }.dsPressStyle().accessibilityLabel(addLabel).accessibilityIdentifier("navAdd")
+                }
                 if let edit {
                     Button(action: edit) {
                         Text("编辑").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)

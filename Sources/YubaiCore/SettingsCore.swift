@@ -90,6 +90,16 @@ public enum SettingsSummary {
             .sorted { $0.due == $1.due ? $0.plan.title < $1.plan.title : $0.due < $1.due }
     }
 
+    /// The plan's scheduled days inside `interval` (skipped days left out).
+    public static func occurrences(of plan: Plan, in interval: DateInterval) -> [Date] {
+        var days: [Date] = []
+        var boundary = interval.start.addingTimeInterval(-1)
+        while let next = plan.nextScheduledDate(after: boundary), next < interval.end, days.count < 62 {
+            days.append(Dates.day(next)); boundary = next
+        }
+        return days
+    }
+
     /// One month's share of a plan in CNY: yearly /12, quarterly /3, foreign currency at the saved rate.
     public static func monthlyShare(of plan: Plan, in ledger: Ledger, now: Date) -> Int64? {
         let amount: Int64

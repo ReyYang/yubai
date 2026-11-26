@@ -61,7 +61,7 @@ struct AssetsView: View {
                 Text("账户").dsText(DS.Font.tBody).fontWeight(.semibold).foregroundStyle(DS.Color.ink)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: .zero)
-                Button { store.present(.account(nil)) } label: {
+                Button { store.settingsSheet = .accountAdd(nil, onboarding: false) } label: {
                     DSIconView(icon: .add, size: DS.Size.icon, color: DS.Color.accentInk)
                         .frame(width: DS.Size.tapMin, height: DS.Size.tapMin).contentShape(Rectangle())
                 }.dsPressStyle().accessibilityLabel("添加账户").accessibilityIdentifier("overviewAddAccount")
