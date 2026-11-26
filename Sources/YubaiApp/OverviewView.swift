@@ -16,7 +16,6 @@ extension Funds {
 struct SavingsView: View {
     @Environment(AppStore.self) private var store
     @State private var editing: SavingsAmountField?
-    @State private var addingPayday = false
     private var hide: Bool { store.preferences.hideAmounts }
     private var fixed: Int64 { store.funds.fixedSavingsTotal }
     private var sharing: Bool { if case .share = store.current.savingRule { true } else { false } }
@@ -48,7 +47,6 @@ struct SavingsView: View {
                     }
                 }.environment(store).yubaiSheetBackground().presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $addingPayday) { PaydaySetupSheet().environment(store).yubaiSheetBackground() }
     }
 
     // MARK: 每月存
@@ -132,7 +130,7 @@ struct SavingsView: View {
             if payday {
                 var monthly = store.current
                 monthly.plans.removeAll { $0.frequency != .monthly }
-                if Finance.nextPayday(in: monthly, now: Dates.now) == nil { addingPayday = true; return }
+                if Finance.nextPayday(in: monthly, now: Dates.now) == nil { store.settingsSheet = .cycle; return }
             }
             store.update("存钱") { $0.cycleAnchor = payday ? .payday : .calendarMonth }
         }), identifier: { $0 ? "savingCycleAnchor_payday" : "savingCycleAnchor_month" }).accessibilityIdentifier("savingCycleAnchor")

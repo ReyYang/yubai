@@ -38,6 +38,14 @@ struct QuickEntryPrefill {
     }
 }
 extension AppStore {
+    /// 记一笔 on a ledger with no account yet: prepare the default account first.
+    func beginFirstEntry() {
+        homeEntrySession = destination == .ledger
+        guard update("开始记账", recordUndo: false, entryMotion: false, showToast: false, {
+            FirstUse.prepareForEntry(&$0, now: Dates.now)
+        }) else { return }
+        openEntrySheet()
+    }
     func requestCaptureSheet(_ next: AppSheet) {
         if loadingLedger || locked { pendingQuickSheet = next }
         else {
@@ -82,20 +90,6 @@ extension AppStore {
 }
 
 #if os(iOS)
-enum CaptureImageSource {
-    @MainActor static func recentOrClipboard() async -> Data? {
-        if let image = UIPasteboard.general.image, let bytes = image.pngData() { return bytes }
-        let permission = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard permission == .authorized || permission == .limited else { return nil }
-        let options = PHFetchOptions(); options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]; options.fetchLimit = 1
-        options.predicate = NSPredicate(format: "(mediaSubtype & %d) != 0", PHAssetMediaSubtype.photoScreenshot.rawValue)
-        guard let asset = PHAsset.fetchAssets(with: .image, options: options).firstObject else { return nil }
-        return await withCheckedContinuation { continuation in
-            let request = PHImageRequestOptions(); request.isNetworkAccessAllowed = false; request.deliveryMode = .highQualityFormat
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: request) { bytes, _, _, _ in continuation.resume(returning: bytes) }
-        }
-    }
-}
 #endif
 
 struct ScreenshotCaptureView: View {

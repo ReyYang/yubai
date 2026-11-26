@@ -1,55 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-struct BillRateLabel: View {
-    @Environment(AppStore.self) private var store
-    let currency: BillCurrency
-    var body: some View {
-        let rate = FixedFlows.exchangeRate(for: currency, in: store.current, now: store.financialNow)
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: YubaiSpace.space8) { labels(rate) }
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) { labels(rate) }
-        }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-    }
-    @ViewBuilder private func labels(_ rate: ManualExchangeRate?) -> some View {
-        Text(rate?.equation ?? "填写汇率").fixedSize(horizontal: false, vertical: true)
-        if let rate {
-            Spacer(minLength: YubaiSpace.none)
-            Text(Dates.calendar.isDate(rate.updatedAt, inSameDayAs: store.financialNow) ? "今天 " + rate.updatedAt.formatted(.dateTime.hour().minute()) + " 更新" : Dates.text(rate.updatedAt, time: true) + " 更新")
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
-struct BillRateEditor: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    let currency: BillCurrency
-    @State private var value = ""
-    private var rate: ManualExchangeRate? {
-        guard let decimal = Decimal(string: value, locale: Locale(identifier: "en_US_POSIX")),
-              value.range(of: #"^\d{1,6}(\.\d{1,6})?$"#, options: .regularExpression) != nil else { return nil }
-        let rate = ManualExchangeRate(currency: currency, cnyPerUnit: decimal, updatedAt: store.financialNow)
-        return rate.isValid ? rate : nil
-    }
-    var body: some View {
-        EntryForm(title: "汇率", actionTitle: "保存", enabled: rate != nil, scrollIdentifier: "billRateEditor", cancel: { dismiss() }, save: save) {
-            Card(style: .list) {
-                CardTextFieldRow(title: "1 " + currency.unit + " =", text: $value, identifier: "billRateValue", numeric: true, autofocus: true)
-            }
-            if rate == nil && !value.isEmpty { InlineFieldError(message: "填写有效汇率。") }
-        }.onAppear { value = FixedFlows.exchangeRate(for: currency, in: store.current, now: store.financialNow)?.valueText ?? "" }
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            .presentationDetents([.medium, .large])
-            #endif
-    }
-    private func save() {
-        guard let rate else { return }
-        if store.update("汇率", entryMotion: false, { try FixedFlows.setRate(rate, in: &$0) }) { dismiss() }
-    }
-}
-
 struct FixedFlowEditor: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss

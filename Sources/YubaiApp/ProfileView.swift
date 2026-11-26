@@ -2,7 +2,7 @@ import SwiftUI
 import YubaiCore
 
 private enum ProfileSheet: Identifiable {
-    case area(ProfileArea, ProfileStance), principle(String?), conversation
+    case area(ProfileArea, ProfileStance), principle(String?)
     var id: String { String(describing: self) }
 }
 
@@ -39,7 +39,6 @@ struct ProfileView: View {
                     switch item {
                     case .area(let area, let stance): ProfileAreaEditor(area: area, stance: stance)
                     case .principle(let old): ProfilePrincipleEditor(original: old)
-                    case .conversation: ProfileConversationView()
                     }
                 }.environment(store).tint(YubaiColor.brandInk).appErrors().yubaiSheetBackground()
                     #if os(macOS)
@@ -63,14 +62,8 @@ struct ProfileView: View {
         }.hidesListDisclosure().buttonStyle(PressButtonStyle()).accessibilityIdentifier("openMemories").accessibilityLabel("余白记得的，" + count)
     }
     @ViewBuilder private var chat: some View {
-        if canChat {
-            Button { sheet = .conversation } label: { chatRow }
-                .buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileChatEntry")
-        } else {
-            NavigationLink { IntelligencePrivacyView() } label: { chatRow }
-                .hidesListDisclosure().buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileChatEntry")
-                .accessibilityHint("打开智能与隐私，配置密钥、开启云端智能或选择模型")
-        }
+        Button { store.openAsk() } label: { chatRow }
+            .buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileChatEntry")
     }
     private var chatRow: some View {
         Card(style: .list, background: canChat ? YubaiColor.brandTint : YubaiColor.amberTint) {

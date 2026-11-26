@@ -54,9 +54,6 @@ struct ImportResultPage: View {
             }
         }.accessibilityIdentifier("importResultPage")
             .task(id: "\(batchID)-\(store.ledgerRevision)") { await refresh() }
-            #if DEBUG && targetEnvironment(simulator)
-            .uiTestAccessibilityValue(UITestSupport.secondBatchState(in: store.current))
-            #endif
     }
 
     @ViewBuilder private var counts: some View {

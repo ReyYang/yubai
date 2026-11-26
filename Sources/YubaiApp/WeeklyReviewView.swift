@@ -185,3 +185,13 @@ private struct WeeklyReviewSnapshot: Sendable {
         )
     }
 }
+enum NowFormat {
+    static func monthDay(_ date: Date) -> String {
+        Dates.monthDay(date)
+    }
+    static func range(_ from: Date, _ to: Date) -> String {
+        let a = Dates.calendar.dateComponents([.month, .day], from: from), b = Dates.calendar.dateComponents([.month, .day], from: to)
+        let tail = a.month == b.month ? "\(b.day ?? 1)日" : monthDay(to)
+        return monthDay(from) + " – " + tail
+    }
+}

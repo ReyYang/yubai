@@ -87,35 +87,3 @@ private struct MemoryEditor: View {
         guard current == note else { throw YubaiError.invalid("这条记忆已更新，请返回后重新打开。") }
     }
 }
-
-struct RememberedRows: View {
-    @Environment(AppStore.self) private var store
-    let notes: [MemoryNote]
-    @State private var undone = Set<UUID>()
-    private var visible: [MemoryNote] {
-        notes.filter { note in
-            guard !undone.contains(note.id), var current = store.current.memories.first(where: { $0.id == note.id }) else { return false }
-            current.lastUsedAt = note.lastUsedAt
-            return current == note
-        }
-    }
-    var body: some View {
-        ForEach(visible) { note in
-            VStack(spacing: YubaiSpace.space8) {
-                Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true)
-                HStack(spacing: YubaiSpace.space8) {
-                    Image(systemName: "checkmark").accessibilityHidden(true)
-                    Text("已记下：" + note.text).frame(maxWidth: .infinity, alignment: .leading)
-                    Button("撤销") {
-                        if store.update("撤销记忆", { ledger in
-                            guard var current = ledger.memories.first(where: { $0.id == note.id }) else { throw YubaiError.invalid("这条记忆已删掉。") }
-                            current.lastUsedAt = note.lastUsedAt
-                            guard current == note else { throw YubaiError.invalid("这条记忆后来已更新，请在余白记得的里查看。") }
-                            Memory.undo(noteID: note.id, in: &ledger)
-                        }) { undone.insert(note.id) }
-                    }.buttonStyle(SmallActionStyle()).accessibilityLabel("撤销记忆：" + note.text)
-                }.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            }.padding(.top, YubaiSpace.space4)
-        }
-    }
-}

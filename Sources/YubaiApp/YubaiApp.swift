@@ -527,7 +527,6 @@ enum AppSheet: Identifiable {
         destination = .ledger; ledgerPreset = nil
         overviewSegment = .review; overviewPeriod = .current; overviewCustomRange = nil
         reviewPeriodSheet = nil; accountValuationTarget = nil; accountValuationInitial = nil
-        homeReceipt = nil
         billCardID = nil
         entrySheet = nil; retainedEntryDraft = nil; lastEntryType = .expense; lastEntryAccountID = nil
         unsortedUndo = nil; unsortedUndoRestoration = nil
@@ -557,8 +556,6 @@ enum AppSheet: Identifiable {
     @ObservationIgnored var lastEntryAccountID: UUID?
     var toastRevision = 0
     var toast: String? { didSet { if toast != nil { toastRevision &+= 1 } } }
-    var homeReceipt: ButlerReceipt?
-    var butlerFocusID: String?
     var pendingButlerTaskID: String?
     var unsortedUndo: UnsortedUndoNotice?
     var unsortedUndoRestoration: UnsortedUndoRestoration?
@@ -1283,9 +1280,6 @@ struct RootView: View {
             if !store.locked, store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }
             if !store.locked, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             await store.configureSync(); store.runCycleMaintenance()
-            #if DEBUG && targetEnvironment(simulator)
-            await UITestSupport.stageGalleryVersions(store)
-            #endif
         }
         .modifier(RootBackgroundTasks())
         .overlay(alignment: .top) {

@@ -22,36 +22,6 @@ enum SavingCardVisibility {
 }
 
 /// The same destination carries context from every invitation to revisit.
-struct ProfileChatEntry: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.surfacePresentations) private var presentations
-    var title = "和余白聊聊"
-    var context: ProfileColdStart.OpeningContext? = nil
-    var prominent = false
-    private var configured: Bool { IntelligenceRuntime.isConfigured }
-    private var enabled: Bool { configured && store.preferences.isAIEnabled(for: .answers) && IntelligenceRuntime.cloud.unavailableModel == nil }
-    var body: some View {
-        Button {
-            presentations.presentSheet {
-                NavigationStack { ProfileConversationView(openingContext: context) }.environment(store).appErrors().yubaiSheetBackground()
-                    #if os(macOS)
-                    .frame(minWidth: YubaiSize.sheetMinimumWidth, minHeight: YubaiSize.sheetMinimumHeight)
-                    #endif
-            }
-        } label: {
-            HStack(spacing: YubaiSpace.gapGroup) {
-                if prominent { AssistantMark(size: YubaiFont.row.size).accessibilityHidden(true) }
-                Text(title).yubaiFont(prominent ? YubaiFont.rowTitle : YubaiFont.row)
-                Spacer(minLength: YubaiSpace.none)
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption)
-            }.foregroundStyle(prominent ? YubaiColor.brandTintStrong : YubaiColor.brandInk)
-                .padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: prominent ? YubaiSize.rowDouble : YubaiSize.rowSingle)
-                .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous), background: prominent ? YubaiColor.brandTint : nil)
-        }.buttonStyle(PressButtonStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.5)
-            .accessibilityIdentifier("profileChatEntry")
-    }
-}
-
 struct SavingsHeader: View {
     @Environment(AppStore.self) private var store
     var body: some View {
@@ -165,7 +135,6 @@ struct WishRegretEntry: View {
                         AmountLabel(cents: wish.amount, hide: store.preferences.hideAmounts)
                         Text("· 有点后悔").yubaiFont(YubaiFont.callout)
                     }
-                    ProfileChatEntry(title: "写进消费观", context: .wishRegret(wish.title + " · " + (wish.followUpAnswer ?? "有点后悔")))
                     Button("收起") { dismissed = true }.buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
                 }
             }
