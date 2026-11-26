@@ -32,8 +32,8 @@ final class SVGPathParserTests: XCTestCase {
         let tokens = try loadDesignTokens()
         XCTAssertEqual(tokens.icon.grid, 256)
         XCTAssertEqual(tokens.icon.outline, 6)
-        XCTAssertEqual(tokens.icon.glyphs.count, 54)
-        XCTAssertEqual(tokens.icon.glyphs.values.filter { $0.line != nil }.count, 8)
+        XCTAssertEqual(tokens.icon.glyphs.count, 58)
+        XCTAssertEqual(tokens.icon.glyphs.values.filter { $0.line != nil }.count, 12)
 
         for (name, glyph) in tokens.icon.glyphs {
             // Phosphor glyphs fill a 256 grid; canvas line glyphs stroke their own grid.

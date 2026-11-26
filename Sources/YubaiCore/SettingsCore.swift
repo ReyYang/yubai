@@ -1,6 +1,6 @@
 import Foundation
 
-/// How the assistant speaks. Stored now; prompts read it in a later batch.
+/// How the assistant speaks. `AskYubai.prompt(now:tone:)` reads it.
 public enum AssistantTone: String, Codable, CaseIterable, Sendable { case gentle, direct }
 
 /// When the weekly review is sent. `weekday` is 1 (Monday) … 7 (Sunday).
@@ -11,6 +11,18 @@ public struct WeeklyReviewTime: Codable, Equatable, Sendable {
     public init(weekday: Int, hour: Int, minute: Int) { self.weekday = weekday; self.hour = hour; self.minute = minute }
     public static let standard = WeeklyReviewTime(weekday: 7, hour: 21, minute: 0)
     public var isValid: Bool { (1...7).contains(weekday) && (0...23).contains(hour) && (0...59).contains(minute) }
+
+    /// The repeating trigger. Foundation counts Sunday as 1, this type counts Monday as 1.
+    public var dateComponents: DateComponents {
+        var value = DateComponents()
+        value.weekday = weekday % 7 + 1; value.hour = hour; value.minute = minute
+        return value
+    }
+
+    /// The first moment strictly after `date` that matches this weekday and time.
+    public func nextFire(after date: Date, calendar: Calendar = Dates.calendar) -> Date? {
+        calendar.nextDate(after: date, matching: dateComponents, matchingPolicy: .nextTime)
+    }
 }
 
 extension Preferences {
@@ -293,5 +305,16 @@ public enum Onboarding {
         next.updatedAt = max(next.updatedAt, now)
         try next.validate()
         ledger = next
+    }
+}
+
+/// 心愿与回顾: the three counts the settings rows show.
+public enum WishesHub {
+    public static func wishCount(in ledger: Ledger) -> Int { ledger.wishlist.filter { $0.status == .thinking }.count }
+    public static func valueCount(in ledger: Ledger) -> Int {
+        ledger.profile.generous.count + ledger.profile.restrain.count + ledger.profile.principles.count
+    }
+    public static func lastLetter(in ledger: Ledger) -> Date? {
+        ledger.cards.filter { $0.kind == .weeklyLetter }.map(\.createdAt).max()
     }
 }

@@ -1,75 +1,50 @@
 import SwiftUI
 import YubaiCore
 
-/// 长按 ＋：最近常用，点一下就记下，给撤销；末尾就地整理。
-/// 点完任何一行调 `dismiss()`。
+/// 常用: long-press 记一笔. One tap records with undo; 编辑常用 opens the list.
 struct QuickRepeatMenu: View {
+    struct Item: Identifiable {
+        let id: String
+        let purpose: String
+        let amount: Int64
+        let entry: EntryHistory.Repeat?
+    }
     @Environment(AppStore.self) private var store
-    @Environment(\.dynamicTypeSize) private var textSize
     let dismiss: () -> Void
-    @State private var items: [EntryHistory.Repeat] = []
+    @State private var items: [Item] = QuickRepeatMenu.fixtureItems ?? []
+
+    // canvas Home.dc.html: oftenRows
+    private static let fixtureItems: [Item]? = HomeFixture.current?.isOften == true
+        ? [("午饭", 2_500), ("地铁", 400), ("咖啡", 1_800), ("房租", 350_000)].map { Item(id: $0.0, purpose: $0.0, amount: $0.1, entry: nil) }
+        : nil
 
     var body: some View {
-        VStack(spacing: YubaiSpace.none) {
-            Text("常用").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, YubaiSpace.space16).padding(.bottom, YubaiSpace.space4)
-            ForEach(Array(items.enumerated()), id: \.element.id) { index, item in
-                row(item, index: index)
-                EntryFormDivider()
-            }
-            if receiptAllowed { receiptRow; EntryFormDivider() }
-            Button {
-                dismiss(); store.sheetSource = nil; store.sheet = .frequentEntries
-            } label: {
-                Text("整理常用").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk)
-                    .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
-            }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageQuickRepeats")
-        }.padding(.horizontal, YubaiSpace.insetCard).frame(maxWidth: textSize.isAccessibilitySize ? .infinity : YubaiSize.quickMenuWidth)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.card, style: .continuous))
-            .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
-            .task(id: store.ledgerRevision) {
-                let ledger = store.current, now = Dates.now
-                let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now) }.value
-                guard !Task.isCancelled else { return }; items = value
-            }
-    }
-    private var receiptAllowed: Bool {
-        store.preferences.isAIEnabled(for: .receiptRecognition) && IntelligenceRuntime.isConfigured && IntelligenceRuntime.cloud.unavailableModel == nil
-    }
-
-    private func row(_ item: EntryHistory.Repeat, index: Int) -> some View {
         let hide = store.preferences.hideAmounts
-        return Button { record(item) } label: {
-            let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
-            layout {
-                Text(item.purpose).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1)
-                if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
-                AmountLabel(cents: item.amount, hide: hide, role: .amount, sign: .none).fixedSize(horizontal: false, vertical: true)
-            }.frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("quickRepeat_\(index)")
-            .accessibilityLabel(item.purpose + "，" + (hide ? "金额已隐藏" : AmountLabel.text(item.amount)) + "，记下")
-    }
-    private var receiptRow: some View {
-        Button {
-            dismiss(); store.homeEntrySession = true; store.sheetSource = nil; store.sheet = .screenshotCapture(nil)
-        } label: {
-            Text("拍小票").yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.brandInk)
-                .frame(maxWidth: .infinity, minHeight: YubaiSize.rowDouble, alignment: .leading).contentShape(Rectangle())
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("quickReceipt")
+        OftenMenuCard(rows: items.map { ($0.id, $0.purpose, HomeDisplay.money($0.amount, hidden: hide)) },
+                      onRow: { index in record(items[index]) },
+                      onEdit: { dismiss(); store.sheetSource = nil; store.sheet = .frequentEntries })
+            .task(id: store.ledgerRevision) {
+                guard QuickRepeatMenu.fixtureItems == nil else { return }
+                let ledger = store.current, now = Dates.now
+                let value = await Task.detached(priority: .userInitiated) { EntryHistory.repeats(in: ledger, now: now, limit: HomeSpec.oftenRows) }.value
+                guard !Task.isCancelled else { return }
+                items = value.map { Item(id: $0.id, purpose: $0.purpose, amount: $0.amount, entry: $0) }
+            }
     }
 
-    private func record(_ item: EntryHistory.Repeat) {
-        defer { dismiss(); store.homeEntrySession = false }
-        store.homeEntrySession = true
+    private func record(_ item: Item) {
+        // Not a home entry session: the save shows the undo toast instead of the receipt highlight.
+        defer { dismiss() }
+        guard let entry = item.entry else { return }
         let now = Dates.now
-        let usable = store.accounts.first { $0.id == item.accountID && !$0.archived } ?? ManualBookkeeping.defaultAccount(in: store.current)
+        let usable = store.accounts.first { $0.id == entry.accountID && !$0.archived } ?? ManualBookkeeping.defaultAccount(in: store.current)
         guard let account = usable else { return }
         do {
-            var change = try ManualBookkeeping.change(amount: item.amount, nature: .expense, accountID: account.id, day: now,
-                                                      purpose: item.purpose, category: item.category, now: now)
-            change.items = change.items.map { entry in
-                guard case .addEntry(var draft) = entry else { return entry }
-                draft.subcategory = item.subcategory; draft.categoryUserEdited = true
+            var change = try ManualBookkeeping.change(amount: entry.amount, nature: .expense, accountID: account.id, day: now,
+                                                      purpose: entry.purpose, category: entry.category, now: now)
+            change.items = change.items.map { value in
+                guard case .addEntry(var draft) = value else { return value }
+                draft.subcategory = entry.subcategory; draft.categoryUserEdited = true
                 return .addEntry(draft)
             }
             let saved = store.apply(change, label: "记一笔", finishing: { ledger in
@@ -83,4 +58,64 @@ struct QuickRepeatMenu: View {
             store.finishEntrySaveMotion()
         } catch { store.error = error.localizedDescription }
     }
+}
+
+/// The 常用 card: rows 48, a 6 pt band, then 编辑常用.
+struct OftenMenuCard: View {
+    let rows: [(id: String, name: String, amount: String)]
+    var onRow: (Int) -> Void = { _ in }
+    var onEdit: () -> Void = {}
+    @Environment(\.dynamicTypeSize) private var textSize
+
+    var body: some View {
+        VStack(spacing: .zero) {
+            VStack(spacing: .zero) {
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    Button { onRow(index) } label: {
+                        let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: DS.Space.s4)) : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: DS.Space.s8))
+                        layout {
+                            Text(row.name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1).dsFillWidth()
+                            Text(row.amount).dsText(HomeSpec.oftenAmount).foregroundStyle(DS.Color.ink2).fixedSize()
+                        }.frame(maxWidth: .infinity, minHeight: HomeSpec.oftenRow).contentShape(Rectangle())
+                    }.dsPressStyle().accessibilityIdentifier("quickRepeat_\(index)")
+                        .accessibilityLabel(row.name + "，" + row.amount + "，记下")
+                        .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                }
+            }.padding(.horizontal, DS.Space.s16)
+            if !rows.isEmpty { DS.Color.separator.frame(height: HomeSpec.oftenBand) }
+            Button(action: onEdit) {
+                Text("编辑常用").dsText(DS.Font.tBody).foregroundStyle(DS.Color.accentInk)
+                    .frame(maxWidth: .infinity, minHeight: HomeSpec.oftenRow, alignment: .leading)
+                    .padding(.horizontal, DS.Space.s16).contentShape(Rectangle())
+            }.dsPressStyle().accessibilityIdentifier("manageQuickRepeats")
+        }
+        .frame(maxWidth: textSize.isAccessibilitySize ? .infinity : HomeSpec.oftenWidth)
+        .background(DS.Color.raised).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain).accessibilityIdentifier("quickRepeatMenu")
+    }
+}
+
+/// Scrim under the bottom bar and the menu above 记一笔, scaling from the button.
+struct QuickRepeatOverlay: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if store.oftenMenu {
+                DS.Color.scrim.ignoresSafeArea().contentShape(Rectangle())
+                    .onTapGesture(perform: close).accessibilityHidden(true)
+                    .transition(.opacity)
+                QuickRepeatMenu(dismiss: close)
+                    .padding(.horizontal, DS.Space.s20)
+                    .padding(.bottom, HomeSpec.oftenBottom)
+                    .transition(reduceMotion ? .opacity : .scale(scale: DSInteraction.floatScale, anchor: .bottom).combined(with: .opacity))
+            }
+        }.ignoresSafeArea(.container, edges: .bottom)
+            .animation(reduceMotion ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation, value: store.oftenMenu)
+            .sensoryFeedback(.impact(weight: .medium), trigger: store.oftenMenu) { _, open in open }
+    }
+
+    private func close() { store.oftenMenu = false }
 }

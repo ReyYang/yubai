@@ -40,6 +40,8 @@ enum DS {
         static let warn: SwiftUI.Color = DS.adaptive(0xB88443, 0xD2A867, lightAlpha: 1, darkAlpha: 1)
         /// 要你看一眼的字：快花完、比上期多、待报销、待 AA。
         static let warnInk: SwiftUI.Color = DS.adaptive(0x7A5320, 0xE9CF9F, lightAlpha: 1, darkAlpha: 1)
+        /// 最重的琥珀字：只给「先别买」。
+        static let warnStrong: SwiftUI.Color = DS.adaptive(0x5E3F17, 0xF3DDB3, lightAlpha: 1, darkAlpha: 1)
         /// 琥珀卡和标签的底。
         static let warnSoft: SwiftUI.Color = DS.adaptive(0xEFE1C4, 0x4A3C24, lightAlpha: 1, darkAlpha: 1)
         /// 琥珀卡里进度条的底。
@@ -99,6 +101,7 @@ enum DS {
             Sample(name: "accent-soft", lightHex: "#D6E2CC", darkHex: "#34422F", color: accentSoft),
             Sample(name: "warn", lightHex: "#B88443", darkHex: "#D2A867", color: warn),
             Sample(name: "warn-ink", lightHex: "#7A5320", darkHex: "#E9CF9F", color: warnInk),
+            Sample(name: "warn-strong", lightHex: "#5E3F17", darkHex: "#F3DDB3", color: warnStrong),
             Sample(name: "warn-soft", lightHex: "#EFE1C4", darkHex: "#4A3C24", color: warnSoft),
             Sample(name: "warn-track", lightHex: "#E2CFA8", darkHex: "#5A4A2E", color: warnTrack),
             Sample(name: "track", lightHex: "#DDD2BE", darkHex: "#4A4335", color: track),
@@ -382,6 +385,10 @@ enum DS {
         case disk = "disk"
         case lock = "lock"
         case arrowOut = "arrow-out"
+        case heart = "heart"
+        case mail = "mail"
+        case compass = "compass"
+        case chat = "chat"
 
         var id: String { rawValue }
         static let grid: CGFloat = 256
@@ -443,6 +450,10 @@ enum DS {
             case .disk: ""
             case .lock: ""
             case .arrowOut: ""
+            case .heart: ""
+            case .mail: ""
+            case .compass: ""
+            case .chat: ""
             }
         }
 
@@ -502,6 +513,10 @@ enum DS {
             case .disk: "M5 6c0-1.7 3.1-3 7-3s7 1.3 7 3-3.1 3-7 3-7-1.3-7-3Z M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6 M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"
             case .lock: "M6 11h12v10H6Z M8.5 11V8a3.5 3.5 0 0 1 7 0v3 M12 15v2"
             case .arrowOut: "M7 17 17 7 M9 7h8v8"
+            case .heart: "M12 20s-7-4.4-7-9.5A4 4 0 0 1 12 8a4 4 0 0 1 7 2.5C19 15.6 12 20 12 20Z"
+            case .mail: "M3 6h18v12H3Z M3 7l9 6 9-6"
+            case .compass: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M15.5 8.5l-2 5-5 2 2-5Z"
+            case .chat: "M6 5h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4V7a2 2 0 0 1 2-2Z"
             }
         }
 
@@ -516,6 +531,10 @@ enum DS {
             case .disk: (24, 1.6)
             case .lock: (24, 1.6)
             case .arrowOut: (24, 1.6)
+            case .heart: (24, 1.6)
+            case .mail: (24, 1.6)
+            case .compass: (24, 1.6)
+            case .chat: (24, 1.6)
             default: nil
             }
         }

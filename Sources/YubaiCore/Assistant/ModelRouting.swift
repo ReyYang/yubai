@@ -80,6 +80,8 @@ public struct DeepSeekProvider: LanguageModelProvider {
     public static let defaultCapabilities = ModelCapabilities(contextTokens: 128_000, toolCalling: true,
                                                               structuredOutput: true, imageInput: false, leavesDevice: true)
     public let id = "deepseek"
+    /// The provider name the running pill and settings show.
+    public static let displayName = "DeepSeek"
     public let capabilities: ModelCapabilities
     private let transport: (any ChatTransport)?
     private let unavailableReason: ModelUnavailableReason
@@ -87,6 +89,12 @@ public struct DeepSeekProvider: LanguageModelProvider {
     public init(transport: (any ChatTransport)?, unavailableReason: ModelUnavailableReason = .missingKey,
                 capabilities: ModelCapabilities = DeepSeekProvider.defaultCapabilities) {
         self.transport = transport; self.unavailableReason = unavailableReason; self.capabilities = capabilities
+    }
+
+    /// The reason the app shows when this feature has no model, without touching the keychain.
+    public static func status(preferences: Preferences, feature: AIFeature, keyConfigured: Bool) -> ModelAvailability {
+        guard preferences.isAIEnabled(for: feature) else { return .unavailable(.cloudOff) }
+        return keyConfigured ? .available : .unavailable(.missingKey)
     }
 
     public static func configured(preferences: Preferences, feature: AIFeature, keyStore: APIKeyStore = .shared,
@@ -134,6 +142,15 @@ public struct ModelRouter: ChatTransport {
         ModelRouter(providers: [DeepSeekProvider.configured(preferences: preferences, feature: feature, keyStore: keyStore,
                                                             environment: environment, redactor: redactor)],
                     sharePolicy: CloudSharePolicy(settings: preferences.cloudShareSettings, ledger: ledger))
+    }
+
+    /// Same policy and order with a backend the caller already built (the app's
+    /// per-request DeepSeek client). Nil means cloud AI is off or has no key.
+    public static func configured(preferences: Preferences, feature: AIFeature, ledger: Ledger?,
+                                  transport: (any ChatTransport)?) -> ModelRouter {
+        let reason: ModelUnavailableReason = preferences.isAIEnabled(for: feature) ? .missingKey : .cloudOff
+        return ModelRouter(providers: [DeepSeekProvider(transport: preferences.isAIEnabled(for: feature) ? transport : nil, unavailableReason: reason)],
+                           sharePolicy: CloudSharePolicy(settings: preferences.cloudShareSettings, ledger: ledger))
     }
 
     /// The providers that could take this request right now, best first.

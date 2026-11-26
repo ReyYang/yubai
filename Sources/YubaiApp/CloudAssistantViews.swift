@@ -6,212 +6,6 @@ import UIKit
 import AppKit
 #endif
 
-struct CloudAISettingsSection: View {
-    @State private var key = ""
-    private var configured: Bool { IntelligenceRuntime.isConfigured }
-    private var hasKey: Bool { IntelligenceRuntime.cloud.hasKeychainKey }
-    @State private var savingKey = false
-    @State private var status = ""
-    @State private var testing = false
-    var body: some View {
-        Page(spacing: YubaiSpace.space16, topPadding: YubaiSpace.space8) {
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    HStack {
-                        Text("DeepSeek").yubaiFont(YubaiFont.row)
-                        Spacer(minLength: YubaiSpace.space8)
-                        HStack(spacing: YubaiSpace.space4) {
-                            if configured { Image(systemName: "lock") }
-                            Text(configured ? "已配好" : "未配好")
-                        }.yubaiFont(YubaiFont.caption).foregroundStyle(configured ? YubaiColor.brandInk : YubaiColor.amberInk)
-                            .padding(.horizontal, YubaiSpace.space12).frame(minHeight: YubaiSize.pillHeight).background(configured ? YubaiColor.brandTint : YubaiColor.amberTint, in: Capsule()).fixedSize()
-                    }.frame(minHeight: YubaiSize.headerHeight).accessibilityIdentifier("cloudKeyStatus")
-                    if configured {
-                        EntryFormDivider()
-                        HStack {
-                            Text("存在").yubaiFont(YubaiFont.row)
-                            Spacer(minLength: YubaiSpace.space8)
-                            Text(hasKey ? "本机钥匙串" : "环境变量").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-                        }.frame(minHeight: YubaiSize.headerHeight)
-                    }
-                }
-            }
-            if configured {
-                VStack(spacing: YubaiSpace.space8) {
-                    Button(testing ? "正在连接…" : "测试连接") { testConnection() }.buttonStyle(SecondaryButtonStyle()).disabled(testing)
-                        .accessibilityIdentifier("testCloudKey")
-                    if !status.isEmpty { statusText }
-                }
-                VStack(alignment: .leading, spacing: YubaiSpace.space8) {
-                    Text("换一个").yubaiFont(YubaiFont.callout, weight: .semibold).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.space16)
-                    keyInput
-                    saveButton
-                }.padding(.top, YubaiSpace.space8)
-                if hasKey {
-                    Button("删掉密钥") { deleteKey() }.disabled(savingKey).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.amberInk)
-                        .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin).buttonStyle(PressButtonStyle()).padding(.top, YubaiSpace.space24)
-                        .accessibilityIdentifier("deleteCloudKey")
-                }
-            } else {
-                keyInput
-                saveButton
-                if !status.isEmpty { statusText }
-            }
-        }
-            .navigationTitle("密钥").yubaiNavigation().accessibilityIdentifier("cloudKeyPage")
-            .onAppear { IntelligenceRuntime.cloud.refresh() }
-            .onDisappear { key = "" }
-    }
-    private var keyInput: some View {
-        Card(style: .list) {
-            CardTextFieldRow(title: "密钥", text: $key, identifier: "cloudKeyInput", hidesValue: true, autofocus: !configured)
-        }
-    }
-    private var saveButton: some View {
-        Button("保存密钥") { saveKey() }.buttonStyle(PrimaryButtonStyle()).disabled(savingKey || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityIdentifier("saveCloudKey")
-    }
-    private var statusText: some View {
-        Text(status).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
-            .frame(maxWidth: .infinity, alignment: .center).accessibilityIdentifier("cloudKeyConnectionStatus")
-    }
-    @MainActor private func saveKey() {
-        guard !savingKey else { return }
-        savingKey = true
-        let value = key
-        Task {
-            defer { savingKey = false }
-            do {
-                try await Task.detached(priority: .userInitiated) { try APIKeyStore.shared.save(value) }.value
-                key = ""; IntelligenceRuntime.cloud.refresh(); await IntelligenceRuntime.cloud.waitForRefresh(); status = "密钥已保存"
-            } catch { status = error.localizedDescription }
-        }
-    }
-    @MainActor private func deleteKey() {
-        guard !savingKey else { return }
-        savingKey = true
-        Task {
-            defer { savingKey = false }
-            do {
-                try await Task.detached(priority: .userInitiated) { try APIKeyStore.shared.delete() }.value
-                key = ""; IntelligenceRuntime.cloud.refresh(); await IntelligenceRuntime.cloud.waitForRefresh(); status = "密钥已删掉"
-            } catch { status = error.localizedDescription }
-        }
-    }
-    @MainActor private func testConnection() {
-        guard let configuration = IntelligenceRuntime.cloud.configuration else { return }
-        let client = DeepSeekClient(configuration: configuration)
-        testing = true; status = ""
-        Task {
-            defer { testing = false }
-            do {
-                _ = try await client.chat(system: "请只回复：连接正常。", user: "你好", maxTokens: 64, thinking: false, purpose: "测试连接")
-                IntelligenceRuntime.cloud.succeeded(model: client.configuration.model)
-                status = "连接正常"
-            } catch { IntelligenceRuntime.cloud.failed(error, model: client.configuration.model); status = error.localizedDescription }
-        }
-    }
-}
-
-struct CloudModelMenu: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.surfaceNavigation) private var navigation
-    @State private var models = DeepSeekClient.fallbackModels
-    @State private var fetchedAt: Date?
-    var body: some View {
-        Menu {
-            ForEach(models, id: \.self) { model in
-                Button {
-                    do { try IntelligenceRuntime.cloud.saveModel(model) }
-                    catch { store.error = error.localizedDescription }
-                } label: {
-                    Text(model)
-                    if IntelligenceRuntime.cloud.model == model { Image(systemName: "checkmark") }
-                }.accessibilityIdentifier("cloudModel_" + model)
-                    .accessibilityAddTraits(IntelligenceRuntime.cloud.model == model ? .isSelected : [])
-            }
-            Divider()
-            if let fetchedAt {
-                Text("刚从 DeepSeek 取到 · " + fetchedAt.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits).locale(Locale(identifier: "zh_CN"))))
-            } else { Text("内置模型") }
-            Button("自己填…") { navigation.push { CloudModelEditor() } }.accessibilityIdentifier("customCloudModel")
-        } label: {
-            HStack(spacing: YubaiSpace.space8) {
-                Text("模型").yubaiFont(YubaiFont.row); Spacer(minLength: YubaiSpace.space8)
-                Text(IntelligenceRuntime.cloud.model).yubaiFont(YubaiFont.amountSmall).foregroundStyle(YubaiColor.labelSecondary)
-                Image(systemName: "chevron.down").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
-            }.frame(minHeight: YubaiSize.rowSingle).contentShape(Rectangle())
-        }.accessibilityIdentifier("editCloudModel")
-            .task { await fetchModels() }
-    }
-    private func fetchModels() async {
-        #if DEBUG && targetEnvironment(simulator)
-        if UITestSupport.script != nil { return }
-        #endif
-        // Opening settings during setup or before organizing an import is local.
-        guard store.preferences.cloudAIEnabled,
-              store.pendingOrganization.batchIDs.isEmpty else { return }
-        await IntelligenceRuntime.cloud.waitForRefresh()
-        guard !Task.isCancelled else { return }
-        guard let configuration = IntelligenceRuntime.cloud.configuration else { models = DeepSeekClient.fallbackModels; fetchedAt = nil; return }
-        let client = DeepSeekClient(configuration: configuration)
-        do {
-            let result = try await client.listModels()
-            guard !Task.isCancelled else { return }
-            models = result; fetchedAt = Date()
-        } catch {
-            guard !Task.isCancelled else { return }
-            models = DeepSeekClient.fallbackModels; fetchedAt = nil
-        }
-    }
-}
-
-struct CloudModelEditor: View {
-    @Environment(\.dismiss) private var dismiss
-    @State private var name = IntelligenceRuntime.cloud.model
-    @State private var errorText = ""
-    var body: some View {
-        Form {
-            Section("模型") {
-                CardTextFieldRow(title: "模型", text: $name, identifier: "cloudModelName", autofocus: true).autocorrectionDisabled()
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    #endif
-                InlineFieldError(message: !errorText.isEmpty ? errorText : name.count > 200 || name.contains(where: { $0.isNewline }) ? "模型名字须在一行内，最多 200 字" : nil)
-            }.listRowBackground(YubaiColor.card)
-        }.editorForm().navigationTitle("模型").yubaiNavigation().toolbar {
-            Button("保存") {
-                do { try IntelligenceRuntime.cloud.saveModel(name); dismiss() } catch { errorText = error.localizedDescription }
-            }.disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 200 || name.contains(where: { $0.isNewline }))
-                .accessibilityIdentifier("saveCloudModel")
-        }
-    }
-}
-
-struct ModelUnavailableNote: View {
-    let model: String
-    var body: some View {
-        Text("模型「\(model)」不可用")
-            .foregroundStyle(YubaiColor.amberInk)
-            .yubaiFont(YubaiFont.row).frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, YubaiSpace.gapGroup).padding(.horizontal, YubaiSpace.insetCard)
-            .paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous), background: YubaiColor.amberTint)
-            .accessibilityHint("使用下方模型菜单选择其他模型")
-            .accessibilityIdentifier("modelUnavailable")
-    }
-}
-
-private enum CloudLogText {
-    static func bytes(_ bytes: Int) -> String { String(format: bytes < 10 * 1024 ? "%.1f KB" : "%.0f KB", Double(bytes) / 1024) }
-    static func duration(_ milliseconds: Int) -> String { String(format: "%.1f 秒", Double(milliseconds) / 1000) }
-    static func metadata(_ group: SendLogGroup) -> String {
-        "\(group.requestCount) 来回 · " + bytes(group.totalBytes) + " · " + duration(group.totalDurationMilliseconds)
-    }
-    static func redaction(_ summary: [String: Int]) -> [(key: String, title: String)] {
-        summary.keys.sorted().map { key in (key, (key == "联系人" ? "人名" : key) + " \(summary[key, default: 0])") }
-    }
-}
-
 struct CloudSendLogView: View {
     @Environment(AppStore.self) private var store
     @State private var groups: [SendLogGroup] = []
@@ -237,7 +31,7 @@ struct CloudSendLogView: View {
                     .accessibilityHint("发送记录只存在本机内存，关掉应用就清空；汇总图仅包含保留的记录")
             }
             if groups.isEmpty {
-                EmptyState("paperplane", "还没有发送记录", action: "问余白", onAction: { store.sheet = .ask("") }).accessibilityIdentifier("emptyCloudSendLog")
+                EmptyState("paperplane", "还没有发送记录", action: "问余白", onAction: { store.openAsk() }).accessibilityIdentifier("emptyCloudSendLog")
             } else {
                 summaryCard
                 Segmented(choices: [(false, "全部"), (true, "没成功 \(groups.filter(\.hasFailure).count)")], selection: $onlyFailures).accessibilityIdentifier("cloudLogFilter")
@@ -735,4 +529,15 @@ private struct CloudLogRawDisclosure: View {
 
 private struct CloudLogRawSeparator: View {
     var body: some View { YubaiColor.separator.frame(height: YubaiSize.lineWidth / 2).accessibilityHidden(true) }
+}
+
+private enum CloudLogText {
+    static func bytes(_ bytes: Int) -> String { String(format: bytes < 10 * 1024 ? "%.1f KB" : "%.0f KB", Double(bytes) / 1024) }
+    static func duration(_ milliseconds: Int) -> String { String(format: "%.1f 秒", Double(milliseconds) / 1000) }
+    static func metadata(_ group: SendLogGroup) -> String {
+        "\(group.requestCount) 来回 · " + bytes(group.totalBytes) + " · " + duration(group.totalDurationMilliseconds)
+    }
+    static func redaction(_ summary: [String: Int]) -> [(key: String, title: String)] {
+        summary.keys.sorted().map { key in (key, (key == "联系人" ? "人名" : key) + " \(summary[key, default: 0])") }
+    }
 }

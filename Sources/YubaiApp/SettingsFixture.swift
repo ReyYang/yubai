@@ -128,6 +128,14 @@ enum SettingsFixture: Equatable {
         var batch = ImportBatch(filename: "招商银行信用卡账单.csv", importedCount: 0, duplicateCount: 0, skippedCount: 0)
         batch.importedAt = Self.date("2026-11-20 10:00"); batch.needsOrganization = false
         ledger.imports = [batch]
+        // canvas Settings.dc.html hub: 2 件 / 11.23 / 5 条
+        ledger.wishlist = [WishItem(title: "降噪耳机", amount: 129_900), WishItem(title: "羽绒被", amount: 89_900)]
+        var letter = ButlerCard(kind: .weeklyLetter, title: "每周来信", body: "", dedupeKey: "letter:2026-11-23")
+        letter.createdAt = Self.date("2026-11-23 21:00")
+        ledger.cards = [letter]
+        ledger.profile.restrain = [ProfileArea(title: "数码", note: "能用就不换"), ProfileArea(title: "外卖")]
+        ledger.profile.generous = [ProfileArea(title: "书")]
+        ledger.profile.principles = ["大件先冷静三天", "不借钱买东西"]
         ledger.memories = (1...23).map { MemoryNote(text: "记住的事 \($0)", kind: .life, source: .user, createdAt: Self.date("2026-11-01")) }
         // Entries for the export counts: 86 this cycle, 112 last cycle, 1,284 in all.
         func spend(_ count: Int, from start: String, days: Int) {
@@ -159,7 +167,7 @@ enum SettingsFixture: Equatable {
             seed.route = [.settings, .recurring]; seed.sheet = .subIcon
             seed.draft = SubscriptionDraft(name: "Apple One", amount: 6_800, day: 12, yearly: false, slug: nil)
         case .currency: seed.route = [.settings, .currency]
-        case .hub: seed.route = [.assistantHub]
+        case .hub: seed.route = [.settings, .wishesHub]
         case .export: seed.route = [.settings]; seed.sheet = .export
         case .onboard: break
         }

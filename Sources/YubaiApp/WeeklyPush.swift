@@ -9,7 +9,7 @@ import YubaiCore
     private static var desiredEnabled = false
     // Only the explicit settings action calls requestAuthorization. Restoration,
     // undo and app launch synchronize the one repeating request without prompting.
-    static func sync(enabled: Bool) async {
+    static func sync(enabled: Bool, time: WeeklyReviewTime = .standard) async {
         revision &+= 1; let requestRevision = revision; desiredEnabled = enabled
         let center = UNUserNotificationCenter.current()
         guard enabled else {
@@ -21,8 +21,7 @@ import YubaiCore
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return }
         let content = UNMutableNotificationContent()
         content.title = "余白"; content.body = "每周来信写好了"
-        var date = DateComponents(); date.weekday = 2; date.hour = 9; date.minute = 0
-        let trigger = UNCalendarNotificationTrigger(dateMatching: date, repeats: true)
+        let trigger = UNCalendarNotificationTrigger(dateMatching: time.dateComponents, repeats: true)
         try? await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: trigger))
         if !desiredEnabled { center.removePendingNotificationRequests(withIdentifiers: [identifier]) }
     }
@@ -42,7 +41,7 @@ import YubaiCore
         }
         guard current.id == id, !locked else { return }
         if update("保存每周来信提醒", { $0.preferences.weeklyLetterPush = enabled }) {
-            await WeeklyPush.sync(enabled: enabled)
+            await WeeklyPush.sync(enabled: enabled, time: preferences.reviewTime)
         }
     }
 }

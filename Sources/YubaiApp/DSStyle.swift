@@ -25,6 +25,8 @@ extension EnvironmentValues {
 enum DSInteraction {
     static let reducedPressOpacity = 0.7
     static let warningFraction = 0.85
+    /// Long press that opens 常用 on 记一笔 (UIKit's default long-press time).
+    static let holdDuration = 0.5
     // The generator reads the appearance scale from the float-card role usage.
     static let floatScale = DSMotion.Role.floatCard.initialScale
 }

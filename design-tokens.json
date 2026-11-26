@@ -83,6 +83,11 @@
       "dark": "#E9CF9F",
       "usage": "要你看一眼的字：快花完、比上期多、待报销、待 AA。"
     },
+    "warn-strong": {
+      "light": "#5E3F17",
+      "dark": "#F3DDB3",
+      "usage": "最重的琥珀字：只给「先别买」。"
+    },
     "warn-soft": {
       "light": "#EFE1C4",
       "dark": "#4A3C24",
@@ -839,6 +844,38 @@
           "stroke": 1.6
         },
         "d": "M7 17 17 7 M9 7h8v8"
+      },
+      "heart": {
+        "source": "canvas Settings.dc.html (24 grid, stroke 1.6, round caps and joins)",
+        "line": {
+          "grid": 24,
+          "stroke": 1.6
+        },
+        "d": "M12 20s-7-4.4-7-9.5A4 4 0 0 1 12 8a4 4 0 0 1 7 2.5C19 15.6 12 20 12 20Z"
+      },
+      "mail": {
+        "source": "canvas Settings.dc.html (24 grid, stroke 1.6, round caps and joins)",
+        "line": {
+          "grid": 24,
+          "stroke": 1.6
+        },
+        "d": "M3 6h18v12H3Z M3 7l9 6 9-6"
+      },
+      "compass": {
+        "source": "canvas Settings.dc.html (24 grid, stroke 1.6, round caps and joins)",
+        "line": {
+          "grid": 24,
+          "stroke": 1.6
+        },
+        "d": "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z M15.5 8.5l-2 5-5 2 2-5Z"
+      },
+      "chat": {
+        "source": "canvas Home.dc.html (24 grid, stroke 1.6, round caps and joins)",
+        "line": {
+          "grid": 24,
+          "stroke": 1.6
+        },
+        "d": "M6 5h12a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-7l-5 4V7a2 2 0 0 1 2-2Z"
       }
     }
   },

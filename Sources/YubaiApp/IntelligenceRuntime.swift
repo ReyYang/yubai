@@ -171,6 +171,8 @@ import UIKit
     static let cloud = CloudAIStatus()
     static var isConfigured: Bool {
         #if DEBUG && targetEnvironment(simulator)
+        // Fixture boards stand in for a saved fake key; no request is sent from them.
+        if let fixture = AskFixture.current, UITestSupport.script == nil { return fixture.aiConnected }
         if let configured = UITestSupport.configuredKeyOverride { return configured }
         #endif
         return cloud.configured
@@ -268,6 +270,10 @@ private struct FeatureCloudTransport: ChatTransport {
 }
 
 @MainActor extension AppStore {
+    /// One reason for 「AI 未连接」 everywhere: cloud off, or on without a key.
+    func aiAvailability(for feature: AIFeature = .answers) -> ModelAvailability {
+        DeepSeekProvider.status(preferences: preferences, feature: feature, keyConfigured: IntelligenceRuntime.isConfigured)
+    }
     func assistantTransport(for snapshot: Ledger, feature: AIFeature = .answers, reportingLedgerChanges: Bool = false, preparedRedactor: Redactor? = nil) -> (any ChatTransport)? {
         let revision = ledgerRevision
         let continuingOrganization = reportingLedgerChanges && organizationContinuesInBackground
@@ -286,14 +292,20 @@ private struct FeatureCloudTransport: ChatTransport {
         let redactor = preparedRedactor ?? Redactor(ledger: snapshot)
         let live = FeatureCloudTransport { [weak self] in
             guard let self, self.preferences.isAIEnabled(for: feature), !self.locked || (continuingOrganization && self.organizationContinuesInBackground) else { return nil }
+            // Every cloud request goes through the router so the 「云端能看到」 switches apply.
+            let preferences = self.preferences
+            func routed(_ configuration: DeepSeekConfiguration) -> any ChatTransport {
+                ModelRouter.configured(preferences: preferences, feature: feature, ledger: snapshot,
+                                       transport: CloudBackend(client: DeepSeekClient(configuration: configuration, redactor: redactor)))
+            }
             #if os(iOS)
             if continuingOrganization && UIApplication.shared.applicationState != .active {
                 guard let authorized = self.organizationExecution?.configurationForTransport() else { return nil }
-                return CloudBackend(client: DeepSeekClient(configuration: authorized, redactor: redactor))
+                return routed(authorized)
             }
             #endif
             guard let configuration = IntelligenceRuntime.cloud.configuration else { return nil }
-            return CloudBackend(client: DeepSeekClient(configuration: configuration, redactor: redactor))
+            return routed(configuration)
         }
         return ActiveLedgerTransport(base: live, model: reportingLedgerChanges ? nil : configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
             let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : IntelligenceRuntime.cloud.configuration
@@ -727,19 +739,5 @@ private struct FeatureCloudTransport: ChatTransport {
         }
         if saved { toast = mute ? "以后不提这类了" : "收起了" }
         return saved
-    }
-    func performCardAction(_ card: ButlerCard) {
-        switch card.action ?? .openEvidence {
-        case .openEvidence: sheet = .cardEvidence(card.id)
-        case .reconcileAccount(let id):
-            guard let account = accounts.first(where: { $0.id == id && !$0.archived }) else {
-                error = "这个账户已归档或不存在。"
-                return
-            }
-            openAccountValuation(account.kind == .investment ? .invest(id) : .reconcile(id))
-        case .confirmChangeSet(let id): sheet = .cardProposal(id)
-        case .answerQuestion: sheet = .cardQuestion(card.id)
-        case .openWish(let id): sheet = .wishlist(id)
-        }
     }
 }

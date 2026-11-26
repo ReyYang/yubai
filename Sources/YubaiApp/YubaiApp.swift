@@ -31,18 +31,14 @@ struct LedgerPreset: Equatable {
     var token = UUID()
 }
 enum TabRoute: Hashable {
-    case fixedFlows, profile, wishlist, accounts
-    case triage([UUID])
-    case quickCapture, importHistory, intelligencePrivacy, backup, storage, imports, frequent
-    case unsortedGroups(UUID)
-    case formula, budget, billDetail(UUID), billDate(Date), todo, settings, categories, savingRule, reserve, saved
+    case profile, wishlist
+    case quickCapture, importHistory, backup, storage, frequent
+    case formula, settings, savingRule, reserve
     case weekly(UUID?), whereCategory(title: String, categories: [String], isOther: Bool, selection: OverviewPeriodSelection), memories
     case entryDetail(UUID)
     case assets, accountDetail(UUID), overviewBills(Set<String>, DateInterval, Set<UUID>)
-    case categoryBudget(String), savingWish(UUID), askQuestion(String), askDraft(String), assistantHub
-    case yearlyBills, saving, cycleBills
-    case butlerEvidence(UUID), butlerEvidenceEntries(UUID)
-    case recurring, categorySettings, aiSettings, currency, notices, accountEdit(UUID)
+    case cycleBills
+    case recurring, categorySettings, aiSettings, currency, notices, accountEdit(UUID), wishesHub
 }
 
 struct TabNavigationLink<Content: View, Label: View>: View {
@@ -67,20 +63,16 @@ struct TabNavigationLink<Content: View, Label: View>: View {
 }
 
 enum AppSheet: Identifiable {
-    case imports, accounts, backup, history, syncVersions, addEntry, addPlan, intelligencePrivacy
+    case imports, accounts, backup, history, syncVersions, addEntry, addPlan
     case editEntry(UUID), editPlan(UUID), prefilledEntry(QuickEntryPrefill), screenshotCapture(Data?), screenshotReview(Data)
-    case ask(String), wishlist(UUID?)
-    case cardEvidence(UUID), cardQuestion(UUID), cardProposal(UUID), letter(UUID), savingsFloor
-    case overspend(CycleCover.Source), paydayAmount, paydaySetup
-    case billPay(planID: UUID, occurrence: Date), billMatch(planID: UUID, occurrence: Date, entryID: UUID), billLink(planID: UUID, occurrence: Date)
+    case ask(String)
+    case savingsFloor
     case frequentEntries
-    case billMove(planID: UUID, occurrence: Date)
     var id: String { String(describing: self) }
     var motionSource: String? {
         switch self {
         case .addEntry: nil
         case .ask: "ask"
-        case .cardEvidence(let id), .cardQuestion(let id): "card-" + id.uuidString
         default: nil
         }
     }
@@ -106,7 +98,7 @@ enum AppSheet: Identifiable {
     private(set) var ledger = Ledger() {
         didSet {
             if oldValue.id != ledger.id {
-                askConversation = AskConversationState()
+                ask.reset(); askRequest = nil
                 resetRootNavigation()
             }
             if oldValue != ledger { invalidateDerived() }
@@ -535,7 +527,6 @@ enum AppSheet: Identifiable {
         destination = .ledger; ledgerPreset = nil
         overviewSegment = .review; overviewPeriod = .current; overviewCustomRange = nil
         reviewPeriodSheet = nil; accountValuationTarget = nil; accountValuationInitial = nil
-        homeReceipt = nil
         billCardID = nil
         entrySheet = nil; retainedEntryDraft = nil; lastEntryType = .expense; lastEntryAccountID = nil
         unsortedUndo = nil; unsortedUndoRestoration = nil
@@ -547,7 +538,15 @@ enum AppSheet: Identifiable {
     #if os(iOS)
     var pagingLocked = false
     #endif
-    var askConversation = AskConversationState()
+    let ask = AskController()
+    /// 常用: the long-press menu on 记一笔.
+    var oftenMenu = HomeFixture.current?.isOften == true
+    /// 问余白 is open. Set through `openAsk`.
+    var askRequest: AskRequest?
+    func openAsk(_ text: String = "", send: Bool = false, voice: Bool = false) {
+        guard !locked else { return }
+        askRequest = AskRequest(text: text, send: send, voice: voice)
+    }
     var rootScrollRequest: [Destination: Int] = [:]
     var sheet: AppSheet?; var error: String?
     var entrySheet: EntrySheetViewModel?
@@ -557,8 +556,6 @@ enum AppSheet: Identifiable {
     @ObservationIgnored var lastEntryAccountID: UUID?
     var toastRevision = 0
     var toast: String? { didSet { if toast != nil { toastRevision &+= 1 } } }
-    var homeReceipt: ButlerReceipt?
-    var butlerFocusID: String?
     var pendingButlerTaskID: String?
     var unsortedUndo: UnsortedUndoNotice?
     var unsortedUndoRestoration: UnsortedUndoRestoration?
@@ -684,8 +681,14 @@ enum AppSheet: Identifiable {
             return
         }
         if let fixture = HomeFixture.current {
-            let seed = fixture.makeLedger()
+            var seed = fixture.makeLedger()
+            let askMessages = AskFixture.current?.seed(&seed.ledger, now: fixture.now)
             ledger = seed.ledger
+            // After the ledger: a new ledger id resets the conversation.
+            if let askFixture = AskFixture.current, let askMessages {
+                ask.seed(askMessages)
+                if askFixture.opensSheet { askRequest = AskRequest() }
+            }
             loadingLedger = false
             billCardID = seed.billID
             tabRouteRequest = fixture.initialRoute
@@ -964,7 +967,7 @@ enum AppSheet: Identifiable {
     }
     func openSavingPage() {
         if loadingLedger || locked { pendingSavingPage = true; return }
-        sheet = nil; tabRouteRequest = .saving
+        sheet = nil; settingsSheet = .saving
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
         guard canEditLedger() else { return false }
@@ -1111,7 +1114,7 @@ enum AppSheet: Identifiable {
         .commands {
             CommandGroup(replacing: .newItem) {
                 Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked)
-                Button("问余白") { store.sheet = .ask("") }.keyboardShortcut("k").disabled(store.locked)
+                Button("问余白") { store.openAsk() }.keyboardShortcut("k").disabled(store.locked)
             }
             CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
         }
@@ -1167,6 +1170,7 @@ struct RootView: View {
     @State private var tabBarHeight = HomeSpec.tabHeight
     private var tabBarHidden: Bool { tabPaths[store.destination]?.isEmpty == false }
     private var toastBottomPadding: CGFloat {
+        if store.askRequest != nil { return keyboardVisible ? YubaiSpace.none : AskSpec.composerHeight }
         if keyboardVisible || tabBarHidden { return YubaiSpace.none }
         return tabBarHeight
     }
@@ -1183,7 +1187,7 @@ struct RootView: View {
                 else if store.needsOnboarding { OnboardView().transition(.opacity) }
                 else { mainContentWithInboxLifecycle }
             }
-            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.showsOverviewOverlay) && !store.locked)
+            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.showsOverviewOverlay || store.askRequest != nil) && !store.locked)
             .allowsHitTesting((store.entrySheet == nil && store.billCardID == nil && !store.showsOverviewOverlay) || store.locked)
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
@@ -1208,6 +1212,7 @@ struct RootView: View {
         .yubaiFont(YubaiFont.body).buttonStyle(TextLinkStyle()).toggleStyle(RowToggleStyle()).foregroundStyle(YubaiColor.label).background { PaperCanvas() }
         .environment(\.yubaiZoomNamespace, motionNamespace)
         .appErrors()
+        .modifier(AskOverlayHost())
         .overlay(alignment: .bottom) {
             if !store.locked, !store.showsOverviewOverlay, store.entrySheet == nil, let notice = store.unsortedUndo {
                 Toast(text: HomeButler.privacyText(notice.label, hidden: store.preferences.hideAmounts), onUndo: { store.undoUnsorted(notice.id) }, onDismiss: {
@@ -1255,11 +1260,11 @@ struct RootView: View {
             guard !store.loadingLedger, !store.isDesignFixture else { return }
             if newValue == .background { store.flushBeforeSuspension() }
             if newValue == .active {
-                store.purgeExpiredEntries(); store.askConversation.expire(); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
+                store.purgeExpiredEntries(); store.ask.expireIfNeeded(ledgerID: store.current.id); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
-                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.toast = nil; store.locked = true
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true
             }
         }
         .task(id: phase == .active && !store.locked) {
@@ -1275,9 +1280,6 @@ struct RootView: View {
             if !store.locked, store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }
             if !store.locked, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             await store.configureSync(); store.runCycleMaintenance()
-            #if DEBUG && targetEnvironment(simulator)
-            await UITestSupport.stageGalleryVersions(store)
-            #endif
         }
         .modifier(RootBackgroundTasks())
         .overlay(alignment: .top) {
@@ -1336,10 +1338,6 @@ struct RootView: View {
     private var mainContentWithInboxLifecycle: some View {
         mainContent.onAppear {
             if !store.fixtureRoutes.isEmpty { tabPaths[.ledger] = store.fixtureRoutes; store.fixtureRoutes = [] }
-        }.onChange(of: store.inboxItems.isEmpty, initial: true) { _, empty in
-            if empty, store.tabRouteRequest == nil, tabPaths[store.destination]?.last == .todo {
-                tabPaths[store.destination]?.removeLast()
-            }
         }
     }
 
@@ -1373,16 +1371,12 @@ struct RootView: View {
         ZStack {
             tabNavigation(activeTab, generation: generation)
                 .id("\(generation)-\(activeTab.rawValue)")
+            QuickRepeatOverlay()
         }
             .overlay(alignment: .bottom) { tabBarOverlay }
             .onChange(of: store.navigationRevision) { _, _ in tabPaths = [:] }
             .onChange(of: store.tabRouteRequest, initial: true) { _, route in
                 if let route { openTabRoute(route) }
-            }
-            .onChange(of: store.butlerFocusID, initial: true) { _, id in
-                guard id != nil, !store.locked else { return }
-                store.destination = .ledger
-                tabPaths[.ledger] = [.todo]
             }
             .onChange(of: store.locked) { _, locked in
                 if !locked, let id = store.pendingButlerTaskID { store.pendingButlerTaskID = nil; store.openButlerNotice(id) }
@@ -1407,7 +1401,7 @@ struct RootView: View {
                 let target: Destination = selected == .home ? .ledger : .insights
                 if target == store.destination { store.rootScrollRequest[target, default: 0] += 1 }
                 else { store.destination = target }
-            }), onEntry: addEntry)
+            }), onEntry: addEntry, onEntryHold: { if !store.accounts.isEmpty { store.oftenMenu = true } })
             // The bar's background alone extends into the bottom safe area.
             .onGeometryChange(for: CGFloat.self) { max(HomeSpec.tabHeight, $0.size.height) } action: {
                 tabBarHeight = $0
@@ -1459,61 +1453,35 @@ struct RootView: View {
             tabPaths[.insights] = []
             store.destination = .insights
         }
-        else if tabPaths[store.destination]?.last == .todo && store.inboxItems.isEmpty {
-            tabPaths[store.destination] = [route]
-        }
-        else if route != .saving || tabPaths[store.destination]?.last != .saving {
-            // UIKit's scene delegate and SwiftUI can deliver the same saving link.
-            tabPaths[store.destination, default: []].append(route)
-        }
+        else { tabPaths[store.destination, default: []].append(route) }
         store.tabRouteRequest = nil
     }
 
     @ViewBuilder private func tabDestination(_ route: TabRoute) -> some View {
         switch route {
-        case .saving: SavingTabView()
-        case .fixedFlows: FixedFlowsView()
-        case .triage(let ids): LetterTriageView(entryIDs: ids)
-        case .unsortedGroups(let id): UnsortedGroupsView(questionID: id)
         case .profile: ProfileView()
         case .wishlist: WishlistView()
-        case .accounts: AccountsView()
         case .formula: BudgetDetailView(startsEditing: HomeFixture.current?.editsBudget == true)
         case .entryDetail(let id): BillDetailRoute(entryID: id)
-        case .butlerEvidence(let id): ButlerSuggestionEvidence(suggestionID: id)
-        case .butlerEvidenceEntries(let id): ButlerSuggestionEntriesPage(suggestionID: id)
-        case .categoryBudget(let category): BudgetDetailView(initialCategory: category)
-        case .savingWish(let id): WishlistView(focusedWishID: id)
-        case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
-        case .askDraft(let text): AskYubaiView(initialText: text)
-        case .budget: BudgetDetailView(startsEditing: true)
-        case .assistantHub: YubaiTabView(asDestination: true)
-        case .billDetail(let id): BillDetailView(planID: id)
-        case .billDate(let date): FixedFlowsView(selectedDate: date)
-        case .yearlyBills: YearlyBillsView()
         case .cycleBills: CycleBillsView()
-        case .todo: TodoView()
         case .settings: SettingsView()
         case .recurring: RecurringView()
         case .categorySettings: CategorySettingsView()
         case .aiSettings: AISettingsView()
         case .currency: CurrencyView()
         case .notices: NoticeSettingsView()
+        case .wishesHub: WishesHubView()
         case .accountEdit(let id): AccountEditView(accountID: id)
-        case .categories: CategoriesView()
         case .savingRule: SavingsView()
         case .reserve: ReserveView()
-        case .saved: SavedView()
         case .weekly(let id): weeklyDestination(id)
         case .assets, .overviewBills: EmptyView()
         case .accountDetail(let id): AccountDetailView(accountID: id)
         case let .whereCategory(title, categories, isOther, selection): ReviewDrillView(title: title, categories: categories, isOther: isOther, selection: selection)
         case .memories: MemoryView()
-        case .imports: ImportView()
         case .frequent: FrequentEntriesView()
         case .quickCapture: QuickCaptureSettingsView()
         case .importHistory: ImportHistoryView()
-        case .intelligencePrivacy: IntelligencePrivacyView()
         case .backup: BackupView()
         case .storage: StorageView()
         }
@@ -1542,7 +1510,7 @@ struct RootView: View {
         switch d {
         case .insights: OverviewTabView()
         case .ledger: LedgerTabView(navigationRevision: store.navigationRevision)
-        case .yubai: YubaiTabView()
+        case .yubai: SettingsView()
         }
     }
     @ViewBuilder func sheetView(_ sheet: AppSheet) -> some View {
@@ -1554,25 +1522,12 @@ struct RootView: View {
         case .editPlan(let id): FixedFlowEditor(planID: id)
         case .imports: ImportView()
         case .accounts: AccountsView()
-        case .ask(let text): AskYubaiView(initialText: text)
-        case .wishlist(let id): WishlistView(focusedWishID: id).manualSheetHeader("心愿单", cancelTitle: "关闭", showsAction: false)
+        case .ask: EmptyView()
         case .backup: BackupView()
         case .history: RecoveryVersionsView()
         case .syncVersions: SyncVersionsView()
         case .savingsFloor: SavingsFloorSheet(initial: store.current.profile.floorAmount)
-        case .overspend(let source): OverspendSheet(source: source)
-        case .paydayAmount: PaydaySheet()
-        case .paydaySetup: PaydaySetupSheet()
-        case .billPay(let planID, let occurrence): BillPaySheet(planID: planID, occurrence: occurrence)
-        case .billMatch(let planID, let occurrence, let entryID): BillMatchSheet(planID: planID, occurrence: occurrence, entryID: entryID)
-        case .billLink(let planID, let occurrence): BillLinkSheet(planID: planID, occurrence: occurrence)
-        case .billMove(let planID, let occurrence): BillMoveSheet(planID: planID, occurrence: occurrence)
-        case .frequentEntries: FrequentEntriesView().manualSheetHeader("整理常用", cancelTitle: "关闭", showsAction: false)
-        case .intelligencePrivacy: IntelligencePrivacyView().manualSheetHeader("智能与隐私", cancelTitle: "关闭", showsAction: false)
-        case .cardEvidence(let id): ButlerEvidenceView(cardID: id)
-        case .cardQuestion(let id): ButlerQuestionView(cardID: id)
-        case .cardProposal(let id): ButlerProposalView(changeID: id)
-        case .letter(let id): LetterDetailView(cardID: id)
+        case .frequentEntries: FrequentEntriesView().manualSheetHeader("编辑常用", cancelTitle: "关闭", showsAction: false)
         }
     }
     var lockedView: some View {
@@ -1620,13 +1575,25 @@ private struct ButlerRefreshTask: ViewModifier {
 private struct WeeklyPushTask: ViewModifier {
     @Environment(AppStore.self) private var store
     func body(content: Content) -> some View {
-        content.task(id: store.preferences.weeklyLetterPush) {
+        content.task(id: WeeklyPushKey(enabled: store.preferences.weeklyLetterPush, time: store.preferences.reviewTime)) {
             await store.waitForLedger()
             guard !Task.isCancelled else { return }
-            await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush)
+            await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush, time: store.preferences.reviewTime)
         }
     }
 }
+/// 问余白 above the page and its bar, under the toast and the entry editor it can open.
+private struct AskOverlayHost: ViewModifier {
+    @Environment(AppStore.self) private var store
+    func body(content: Content) -> some View {
+        content.overlay {
+            if !store.locked, let request = store.askRequest {
+                AskSheetOverlay(request: request, close: { if store.askRequest?.id == request.id { store.askRequest = nil } }).id(request.id)
+            }
+        }
+    }
+}
+private struct WeeklyPushKey: Equatable { let enabled: Bool; let time: WeeklyReviewTime }
 private struct LedgerPrivacyCover: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase

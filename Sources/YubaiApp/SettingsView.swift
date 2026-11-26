@@ -33,6 +33,7 @@ struct SettingsView: View {
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
                             link(.memory, "余白记得的", "\(store.settingsSummary.memoryCount) 条", id: "openMemories") { store.tabRouteRequest = .memories }
+                            link(.heart, "心愿与回顾", "\(WishesHub.wishCount(in: ledger)) 件心愿", id: "openWishesHub") { store.tabRouteRequest = .wishesHub }
                             link(.bell, "通知", "\(SettingsDisplay.noticeCount(store.preferences)) 项", id: "openNoticeSettings") { store.tabRouteRequest = .notices }
                         }
                         DSSettingsCard {
@@ -52,16 +53,6 @@ struct SettingsView: View {
                             link(.export, "导出账单", "CSV", id: "settingsExport") { store.settingsSheet = .export }
                             link(.disk, "存储空间", storageSize ?? "", id: "openStorage") { store.tabRouteRequest = .storage }
                         }
-                        #if DEBUG && targetEnvironment(simulator)
-                        // UI tests only: pages whose settings rows are gone stay testable without a URL round trip.
-                        if UITestSupport.script != nil {
-                            DSSettingsCard {
-                                link(.memory, "余白", "", first: true, id: "openAssistantHub") { store.tabRouteRequest = .assistantHub }
-                                link(.ai, "智能与隐私", "", id: "openLegacyIntelligencePrivacy") { store.tabRouteRequest = .intelligencePrivacy }
-                                link(.catAll, "预算", "", id: "openSpendingParts") { store.tabRouteRequest = .budget }
-                            }
-                        }
-                        #endif
                         Text("余白 " + SettingsDisplay.version).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3)
                             .frame(maxWidth: .infinity).id("settingsEnd")
                     }
@@ -232,91 +223,6 @@ private struct SettingsStorageSizeTask: ViewModifier {
     }
 }
 
-struct IntelligencePrivacyView: View {
-    @Environment(AppStore.self) private var store
-    private var hasKey: Bool { IntelligenceRuntime.cloud.hasKeychainKey }
-    private var configured: Bool { IntelligenceRuntime.isConfigured }
-    @State private var sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
-    var body: some View {
-        Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup, identifier: "intelligencePrivacyPage") {
-            if let model = IntelligenceRuntime.cloud.unavailableModel { ModelUnavailableNote(model: model) }
-            Card(style: .list) {
-                VStack(spacing: YubaiSpace.none) {
-                    Toggle("用云端 AI", isOn: Binding(get: { store.preferences.cloudAIEnabled }, set: { value in
-                        store.update("保存云端 AI 偏好") { $0.preferences.cloudAIEnabled = value }
-                    })).yubaiFont(YubaiFont.rowTitle).tint(YubaiColor.toggleOn).frame(minHeight: YubaiSize.rowDouble).accessibilityIdentifier("cloudAIToggle")
-                    separator
-                    NavigationLink {
-                        Page { Card(style: .list) { CloudModelMenu() } }.navigationTitle("服务").yubaiNavigation()
-                    } label: { settingsRow("服务", detail: configured ? "DeepSeek · 已配好" : "DeepSeek · 未配好", chevron: true) }
-                        .accessibilityIdentifier("openCloudService")
-                    separator
-                    NavigationLink { CloudAISettingsSection() } label: {
-                        settingsRow("密钥", detail: hasKey ? "只存在这台手机" : (configured ? "使用环境变量" : "未配好"), chevron: true)
-                    }.hidesListDisclosure().accessibilityLabel(hasKey ? "密钥，保存在本机钥匙串，不进入账本或备份" : (configured ? "密钥，使用环境变量" : "密钥，未配好"))
-                        .accessibilityIdentifier("openCloudKey")
-                }.buttonStyle(PressButtonStyle())
-            }
-            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                heading("它用来做这些")
-                Card(style: .list) {
-                    VStack(spacing: YubaiSpace.none) {
-                        featureToggle("给导入的账单归类", feature: .importClassification)
-                        separator
-                        featureToggle("回答你问的问题", feature: .answers)
-                        separator
-                        featureToggle("写每周来信", feature: .weeklyReview)
-                        separator
-                        featureToggle("拍小票、认截图", feature: .receiptRecognition)
-                        separator
-                        featureToggle("管家的建议", feature: .butlerSuggestions).disabled(!configured)
-                        separator
-                        SettingsRow(title: "上次想", detail: store.current.butlerAI?.lastRunAt.map { FixedFlowPresentation.monthDay($0) } ?? "还没想过", chevron: false)
-                            .uiTestAccessibilityValue(butlerScriptState)
-                            .accessibilityIdentifier("butlerLastRun")
-                    }
-                }
-            }
-            VStack(alignment: .leading, spacing: YubaiSpace.gapHeading) {
-                heading("发出去的只有")
-                Card(style: .compact, background: YubaiColor.raised) {
-                    Text("商户名、金额、日期、分类。不发账户号、不发余额、不发你的名字。").yubaiFont(YubaiFont.callout)
-                }
-            }
-            Card(style: .list) {
-                NavigationLink { CloudSendLogView() } label: { settingsRow("看最近发出去了什么", detail: "今天 \(sendCount) 次", chevron: true) }.hidesListDisclosure()
-                    .buttonStyle(PressButtonStyle()).accessibilityIdentifier("openCloudSendLog")
-            }
-        }.navigationTitle("智能与隐私").yubaiNavigation().onAppear {
-            IntelligenceRuntime.cloud.refresh()
-            sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count
-        }
-        .onReceive(NotificationCenter.default.publisher(for: SendLog.didRecord).receive(on: RunLoop.main)) { _ in sendCount = SendLog.shared.groups.flatMap(\.items).filter { Dates.calendar.isDate($0.time, inSameDayAs: Dates.now) }.count }
-    }
-    private func featureToggle(_ title: String, feature: AIFeature) -> some View {
-        Toggle(title, isOn: Binding(get: { store.preferences.isAIEnabled(for: feature) }, set: { enabled in
-            if store.update("保存智能偏好", entryMotion: false, showToast: false, { $0.preferences.setAIEnabled(enabled, for: feature) }), !enabled, feature == .importClassification {
-                store.stopOrganizingImports()
-            }
-        })).yubaiFont(YubaiFont.row).tint(YubaiColor.toggleOn)
-            .frame(minHeight: YubaiSize.rowDouble).disabled(!store.preferences.cloudAIEnabled)
-            .accessibilityIdentifier("aiFeature_" + feature.rawValue)
-    }
-    private var butlerScriptState: String {
-        #if DEBUG && targetEnvironment(simulator)
-        "requests=\(UITestRequestLog.shared.count);suggestions=\(store.current.butlerAI?.suggestions.count ?? 0);reviews=\(store.current.butlerAI?.reviews.count ?? 0);memories=\(store.current.memories.count)"
-        #else
-        ""
-        #endif
-    }
-    private func heading(_ text: String) -> some View { Text(text).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).padding(.horizontal, YubaiSpace.insetCard) }
-    private var separator: some View { Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true) }
-    private func settingsRow(_ title: String, detail: String, chevron: Bool = false) -> some View {
-        SettingsRow(title: title, detail: detail, chevron: chevron)
-    }
-
-}
-
 extension UTType { static let yubaiBackup = UTType(exportedAs: "app.yubai.backup", conformingTo: .data) }
 struct ExportDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.data, .json, .yubaiBackup, .commaSeparatedText] }
@@ -341,7 +247,6 @@ struct BackupView: View {
     @State private var csvExport = false
     @State private var choosingBackupFolder = false
     @State private var backupFolderLedgerID: UUID?
-    @State private var galleryRestoreStarted = false
     private struct BackupHeader: Decodable { let format: String; let version: Int; let encrypted: Bool }
     @FocusState private var passwordFocus: Bool
     var body: some View {
@@ -389,30 +294,7 @@ struct BackupView: View {
             .fileImporter(isPresented: $importing, allowedContentTypes: [.yubaiBackup, .json, .data]) { result in do { let url = try result.get(); Task { await acceptBackup(url) } } catch { message = error.localizedDescription } }
             .task { await store.configureSync() }
             .onAppear { if let url = store.importedURL, url.pathExtension.lowercased() == "yubaibackup" { store.importedURL = nil; Task { await acceptBackup(url) } } }
-            #if DEBUG && targetEnvironment(simulator)
-            .task { await prepareGalleryRestore() }
-            .task(id: store.preferences.lastBackupAt) {
-                let count = await Task.detached(priority: .utility) { UITestSupport.secondBatchBackupFileCount }.value
-                if !Task.isCancelled { backupFileCount = count }
-            }
-            #endif
     }
-    #if DEBUG && targetEnvironment(simulator)
-    private func prepareGalleryRestore() async {
-        guard !galleryRestoreStarted, UITestSupport.script == "gallery", ProcessInfo.processInfo.environment["YUBAI_GALLERY_RESTORE"] == "1" else { return }
-        galleryRestoreStarted = true
-        let ledger = store.current
-        do {
-            let url = store.localRepository.directory.appendingPathComponent("gallery-restore.yubaibackup")
-            try await Task.detached {
-                try Backup.export(ledger, password: "GalleryOnly123").write(to: url, options: .atomic)
-            }.value
-            guard !Task.isCancelled else { return }
-            await acceptBackup(url)
-            _ = await Task.detached { try? FileManager.default.removeItem(at: url) }.value
-        } catch { message = error.localizedDescription }
-    }
-    #endif
     func acceptBackup(_ url: URL) async {
         pendingRestore = nil; restoreData = nil; restorePassword = ""; encryptedRestore = false; message = nil; busy = true
         do {
@@ -550,7 +432,14 @@ struct ImportHistoryView: View {
     @State private var filename = ""
     var body: some View {
         Page {
-            if store.imports.isEmpty { EmptyState("square.and.arrow.down", "还没有导入记录", action: "导入账单", onAction: { store.sheet = .imports }).accessibilityIdentifier("emptyImportHistory") }
+            DSSettingsCard {
+                Button { store.sheet = .imports } label: {
+                    HStack(spacing: DS.Space.s12) {
+                        DSIconView(icon: .inbox, size: DS.Size.icon, color: DS.Color.accentInk)
+                        Text("导入账单").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.accentInk).dsFillWidth()
+                    }.frame(minHeight: SettingsSpec.row).contentShape(Rectangle())
+                }.dsPressStyle().accessibilityIdentifier("importBills")
+            }
             CardRows(Array(store.imports.reversed())) { batch in
                 VStack(alignment: .leading, spacing: YubaiSpace.space8) {
                     NavigationLink {

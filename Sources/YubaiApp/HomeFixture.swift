@@ -6,7 +6,7 @@ enum HomeFixture: Equatable {
     case budget(Budget)
     case bill(Bill, menu: Bool)
 
-    enum Home: String { case normal, tight, over, nopay, empty, search, running, worst }
+    enum Home: String { case normal, tight, over, nopay, empty, search, running, often, worst }
     enum Budget: String { case view, edit }
     enum Bill: String { case none, partial, expense, reimburse, income, transfer, deposit, large }
 
@@ -18,6 +18,8 @@ enum HomeFixture: Equatable {
             return args[index + 1]
         }
         if let mode = value("-YubaiHomeFixture").flatMap(Home.init(rawValue:)) { return .home(mode) }
+        // 问余白 boards sit on the home normal board.
+        if value("-YubaiAskFixture") != nil { return .home(.normal) }
         if let mode = value("-YubaiBudgetFixture").flatMap(Budget.init(rawValue:)) { return .budget(mode) }
         if let mode = value("-YubaiBillFixture").flatMap(Bill.init(rawValue:)) {
             return .bill(mode, menu: args.contains("-YubaiBillMenu"))
@@ -29,6 +31,7 @@ enum HomeFixture: Equatable {
     var isTight: Bool { self == .home(.tight) }
     var isSearch: Bool { self == .home(.search) }
     var isRunning: Bool { self == .home(.running) }
+    var isOften: Bool { self == .home(.often) }
     var showBillMenu: Bool { if case .bill(_, let menu) = self { menu } else { false } }
     var initialRoute: TabRoute? { if case .budget = self { .formula } else { nil } }
     var editsBudget: Bool { self == .budget(.edit) }

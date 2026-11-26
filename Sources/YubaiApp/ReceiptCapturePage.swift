@@ -91,9 +91,6 @@ struct ReceiptCapturePage: View {
             .task {
                 guard !loaded else { return }; loaded = true
                 accountID = ManualBookkeeping.defaultAccount(in: store.current)?.id
-                #if DEBUG && targetEnvironment(simulator)
-                if let fixture = UITestSupport.addEntryReceipt ?? UITestSupport.secondBatchReceipt { await recognize(nil, fixture: fixture); return }
-                #endif
                 if let imageData { start(imageData) } else { chooseImage() }
             }
             .task(id: selectionKey) { await prepare() }
@@ -184,7 +181,7 @@ struct ReceiptCapturePage: View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             let status = !IntelligenceRuntime.isConfigured ? "还没配密钥" : (IntelligenceRuntime.cloud.unavailableModel != nil ? "模型不可用" : "云端智能没开")
             Text(status).yubaiFont(YubaiFont.rowTitle)
-            NavigationLink("智能与隐私") { IntelligencePrivacyView() }
+            Button("余白的 AI") { store.sheet = nil; store.tabRouteRequest = .aiSettings }
                 .buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("configureReceiptAI")
         }
     }

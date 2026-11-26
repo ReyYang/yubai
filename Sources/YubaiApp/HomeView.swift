@@ -86,8 +86,8 @@ struct HomeView: View {
                  openBudget: { store.tabRouteRequest = .formula },
                  openSettings: { store.tabRouteRequest = .settings },
                  openBill: { store.billCardID = $0 },
-                 openAsk: { store.tabRouteRequest = .askDraft($0) },
-                 openVoice: { store.tabRouteRequest = .askDraft("") },
+                 openAsk: { store.openAsk($0, send: true) },
+                 openVoice: { store.openAsk(voice: true) },
                  recordSalary: { store.requestCaptureSheet(.prefilledEntry(.init(category: nil, amount: nil, purpose: "工资", nature: .income))) },
                  cover: { amount in
                      _ = store.update("补上") { try Reserve.transfer(.take, amount: amount, in: &$0, now: store.financialNow) }
@@ -325,13 +325,13 @@ private struct HomePage: View {
                 openAsk(needle)
             } label: {
                 HStack(spacing: DS.Space.s12) {
-                    DSIconView(icon: .ai, size: DS.Size.brandTile, color: DS.Color.accentInk)
+                    DSIconView(icon: .chat, size: DS.Size.brandTile, color: DS.Color.accentInk)
                         .frame(width: HomeSpec.tile32, height: HomeSpec.tile32).dsSurface(DS.Color.accentSoft, radius: DS.Radius.s)
                     Text("问余白「\(needle)」").dsText(HomeSpec.medium).lineLimit(1)
                     Spacer(minLength: .zero)
-                    DSIconView(icon: .chevron, size: DS.Space.s16, color: DS.Color.accentInk)
-                }.foregroundStyle(DS.Color.accentInk).padding(.vertical, DS.Space.s8).contentShape(Rectangle())
-            }.dsPressStyle().padding(.top, DS.Space.s8).accessibilityIdentifier("askHomeSearch")
+                    DSIconView(icon: .chevron, size: DS.Space.s16, color: DS.Color.ink3)
+                }.foregroundStyle(DS.Color.accentInk).frame(height: SettingsSpec.row).contentShape(Rectangle())
+            }.dsPressStyle().padding(.top, DS.Space.s4).accessibilityIdentifier("askHomeSearch")
             DS.Color.separator.frame(height: DS.Stroke.hairline)
             DSDayHeader(title: "\(results.count) 笔", total: HomeDisplay.signed(billNet(results), hidden: hide))
                 .accessibilityIdentifier("entriesSearchTotal")
@@ -400,24 +400,58 @@ private struct HomeStatus: View {
     }
 }
 
+/// 余白在算: a question still running after 问余白 was closed. Tap to reopen.
 private struct HomeRunningOverlay: View {
+    @Environment(AppStore.self) private var store
+
     var body: some View {
-        if HomeFixture.current?.isRunning == true {
-            HStack(spacing: DS.Space.s8) {
-                HStack(spacing: DS.Space.s4) {
-                    ForEach(HomeSpec.statusDotOpacities, id: \.self) { opacity in
-                        Circle().fill(DS.Color.accent)
-                            .frame(width: HomeSpec.statusDots, height: HomeSpec.statusDots).opacity(opacity)
-                    }
-                }.dsBreathe().accessibilityHidden(true)
-                Text("核对购物预算…").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink)
-                Text("本机 AI").dsText(DS.Font.tTag).fontWeight(.regular)
-                    .foregroundStyle(DS.Color.accentInk).padding(.horizontal, HomeSpec.gap6).dsPill(DS.Color.accentSoft)
-            }.padding(.horizontal, DS.Space.s12).frame(minHeight: HomeSpec.statusHeight).dsPill(DS.Color.raised)
-                .overlay(DS.Shape.pill.strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
-                .dsShadow(DS.Shadow.float).padding(.bottom, HomeSpec.statusBottom)
-                .allowsHitTesting(false)
+        if HomeFixture.current?.isRunning == true || (store.ask.busy && store.askRequest == nil) {
+            Button { store.openAsk() } label: {
+                HomeRunningPill(task: HomeFixture.current?.isRunning == true ? "核对购物预算…" : store.ask.runningLabel)
+            }.dsPressStyle().padding(.bottom, HomeSpec.statusBottom)
+                .accessibilityIdentifier("askRunning")
+                .transition(.opacity)
         }
+    }
+}
+
+struct HomeRunningPill: View {
+    let task: String
+
+    var body: some View {
+        HStack(spacing: DS.Space.s8) {
+            HomeRunningDots()
+            Text(task).dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink).lineLimit(1).fixedSize()
+            Text(DeepSeekProvider.displayName).dsText(HomeSpec.pillBadge)
+                .foregroundStyle(DS.Color.accentInk).padding(.horizontal, DS.Space.s8)
+                .frame(height: HomeSpec.pillBadgeHeight).dsPill(DS.Color.accentSoft)
+        }.padding(.leading, HomeSpec.askInset).padding(.trailing, DS.Space.s8)
+            .frame(height: HomeSpec.statusHeight)
+            .background(DS.Color.raised, in: Capsule(style: .continuous))
+            .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
+            .dsShadow(DS.Shadow.near)
+            .accessibilityElement(children: .combine)
+    }
+}
+
+/// Three dots at 1 / .6 / .3 that hand the bright one along; still under Reduce Motion.
+private struct HomeRunningDots: View {
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.dsAnimationsEnabled) private var animationsEnabled
+
+    var body: some View {
+        let still = !animationsEnabled || (reduceMotionOverride ?? systemReduceMotion)
+        PhaseAnimator(still ? [0] : [0, 1, 2]) { phase in
+            HStack(spacing: HomeSpec.statusDotGap) {
+                ForEach(HomeSpec.statusDotOpacities.indices, id: \.self) { index in
+                    let count = HomeSpec.statusDotOpacities.count
+                    Circle().fill(DS.Color.accent).frame(width: HomeSpec.statusDots, height: HomeSpec.statusDots)
+                        .opacity(HomeSpec.statusDotOpacities[(index - phase + count) % count])
+                }
+            }
+        } animation: { _ in DSMotion.standardAnimation }
+            .accessibilityHidden(true)
     }
 }
 

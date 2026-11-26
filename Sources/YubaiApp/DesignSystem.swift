@@ -494,15 +494,6 @@ struct RowToggleStyle: ToggleStyle {
     }
 }
 
-struct SmallActionStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.label)
-            .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.chipHeight)
-            .background(YubaiColor.raised, in: Capsule()).yubaiHitTarget()
-            .opacity(configuration.isPressed ? 0.75 : 1).animation(YubaiMotion.instant, value: configuration.isPressed)
-    }
-}
-
 private struct NumberChange: ViewModifier {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     let value: Double
@@ -1612,21 +1603,6 @@ struct SectionHeading: View {
     }
 }
 
-/// Labels and money retain their fonts; the value gets its own line before
-/// either side is squeezed. The stacked value can wrap even at accessibility5.
-struct AdaptiveValueRow<Label: View, Value: View>: View {
-    @Environment(\.dynamicTypeSize) private var textSize
-    var spreadsValue = true
-    @ViewBuilder let label: () -> Label
-    @ViewBuilder let value: () -> Value
-    var body: some View {
-        AdaptiveStackLayout(stacked: textSize.isAccessibilitySize, spreads: spreadsValue, baseline: true) {
-            label().fixedSize(horizontal: false, vertical: true)
-            value().fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
 struct AmountLabel: View {
     enum Role {
         case hero, display, input, large, amount, small, day, chart, summary, card, donut, account
@@ -2369,18 +2345,6 @@ struct SystemSettingsButton: View {
     }
 }
 
-struct EmptyAccountState: View {
-    let add: () -> Void
-    var body: some View {
-        VStack(spacing: YubaiSpace.gapSection) {
-            PaperClothOutline().stroke(YubaiColor.borderDashed, style: StrokeStyle(lineWidth: 1.2, dash: [4, 4]))
-                .frame(width: 120, height: 120).accessibilityHidden(true)
-            Button("添加第一个账户", action: add).buttonStyle(PrimaryButtonStyle()).accessibilityIdentifier("addFirstAccount")
-        }.frame(maxWidth: .infinity).padding(.vertical, YubaiSpace.gapSection)
-            .accessibilityElement(children: .contain).accessibilityLabel("还没有账户")
-    }
-}
-
 extension Nature {
     var entryLabel: String { self == .refund ? "退款" : paired ? "转账" : (inflow ? "收入" : "支出") }
 }
@@ -2490,14 +2454,6 @@ extension YubaiFont {
     static let savingsHero = Style(size: 40, lineHeight: 48, weight: .semibold, family: .num, tracking: -1.5, relativeTo: .largeTitle)
 }
 
-struct RoundPressStyle: ButtonStyle {
-    @Environment(\.yubaiReduceMotion) private var reduceMotion
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label.yubaiHitTarget().opacity(configuration.isPressed ? 0.75 : 1)
-            .animation(configuration.isPressed ? YubaiMotion.instant : (reduceMotion ? YubaiMotion.quick : YubaiMotion.lively), value: configuration.isPressed)
-    }
-}
-
 struct ProposalCard: View {
     @Environment(AppStore.self) private var store
     let title: String
@@ -2536,15 +2492,6 @@ struct ProposalCard: View {
             }
             Button(secondaryTitle, action: cancel).buttonStyle(SecondaryButtonStyle(background: YubaiColor.raised, compact: true))
         }
-    }
-}
-
-struct AssistantCard<Content: View>: View {
-    let content: Content
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
-    var body: some View {
-        content.padding(YubaiSpace.insetCard).frame(maxWidth: .infinity, alignment: .leading)
-            .paperCardSurface(in: UnevenRoundedRectangle(topLeadingRadius: 6, bottomLeadingRadius: 22, bottomTrailingRadius: 22, topTrailingRadius: 22), background: YubaiColor.paperSheet, flat: true)
     }
 }
 
@@ -2593,18 +2540,6 @@ private struct NumberKeyboardAccessory: UIViewRepresentable {
 /// 金额文字，永远两位小数；隐藏金额时只留圆点。拼接文案用，单独显示金额用 `AmountLabel`。
 func amount2(_ cents: Int64, hide: Bool) -> String { hide ? "••••" : AmountLabel.text(cents) }
 
-/// 钱罐：24 格坐标系里的描边，粗细随选中态变化（和 `PaperClothOutline` 同一套写法）。
-struct SavingJarOutline: Shape {
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        path.addRoundedRect(in: CGRect(x: 8.5, y: 2.8, width: 7, height: 3), cornerSize: CGSize(width: 1, height: 1))
-        path.addRoundedRect(in: CGRect(x: 5.5, y: 6.4, width: 13, height: 14.8), cornerSize: CGSize(width: 4.4, height: 4.4))
-        path.move(to: CGPoint(x: 9.5, y: 13.2)); path.addLine(to: CGPoint(x: 14.5, y: 13.2))
-        let scale = min(rect.width, rect.height) / 24
-        return path.applying(CGAffineTransform(a: scale, b: 0, c: 0, d: scale, tx: rect.midX - 12 * scale, ty: rect.midY - 12 * scale))
-    }
-}
-
 /// 三个标签页的图标：底栏和 macOS 侧栏共用。
 struct DestinationGlyph: View {
     let destination: Destination
@@ -2622,144 +2557,7 @@ struct DestinationGlyph: View {
     }
 }
 
-/// 三个根页共用的页头：左边眼睛（显示/隐藏金额），右边设置，中间标题。
-struct RootHeader: View {
-    @Environment(AppStore.self) private var store
-    let title: String
-    private var side: CGFloat { YubaiSize.iconButton }
-    var body: some View {
-        HStack(spacing: YubaiSpace.none) {
-            AmountVisibilityButton()
-            Text(title).yubaiFont(YubaiFont.navTitle).lineLimit(1).frame(maxWidth: .infinity)
-                .accessibilityAddTraits(.isHeader).accessibilityIdentifier("rootHeaderTitle")
-            Color.clear.frame(width: side, height: side)
-        }.frame(minHeight: YubaiSize.headerHeight)
-            .accessibilityElement(children: .contain)
-            // Safe-area headers can escape a hidden NavigationStack's AX
-            // boundary. Hide the header at its own boundary as well.
-            .accessibilityHidden(store.destination.title != title)
-    }
-
-}
-
 // MARK: - Round 45 shared components
-
-/// 现在页的一问两答卡：眉标、标题（名字 + 金额 + 问句）、两个答案；同时有几件事时右上角写「还有 N 件」。
-struct ButlerCardHeader<Content: View>: View {
-    @ScaledMetric(relativeTo: .caption2) private var lineHeight = YubaiFont.meta.lineHeight
-    var dismiss: (() -> Void)?
-    var identifier = "dismissHomeCard"
-    @ViewBuilder var content: () -> Content
-    var body: some View {
-        content().padding(.trailing, dismiss == nil ? YubaiSpace.none : YubaiSize.tapMin + YubaiSpace.space8)
-            .overlay(alignment: .topTrailing) {
-                if let dismiss {
-                    CardDismissButton(action: dismiss).accessibilityIdentifier(identifier)
-                        .offset(y: (lineHeight - YubaiSize.tapMin) / 2)
-                }
-            }
-    }
-}
-
-struct QuestionCard: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.butlerCardDismiss) private var inheritedDismiss
-    @Environment(\.dynamicTypeSize) private var textSize
-    let eyebrow: String
-    let title: String
-    var amount: Int64? = nil
-    var question = ""
-    var amber = false
-    var more = 0
-    var onMore: (() -> Void)? = nil
-    var evidenceTitle: String? = nil
-    var onEvidence: (() -> Void)? = nil
-    var titleIdentifier = ""
-    let yesTitle: String
-    let noTitle: String
-    var yesIdentifier = ""
-    var noIdentifier = ""
-    var yesEnabled = true
-    let yes: () -> Void
-    let no: () -> Void
-    var onDismiss: (() -> Void)? = nil
-    var dismissIdentifier = ""
-    private var dismissAction: (() -> Void)? { onDismiss ?? inheritedDismiss }
-    private var headline: String {
-        var parts = [title]
-        if let amount { parts.append(amount2(amount, hide: store.preferences.hideAmounts)) }
-        if !question.isEmpty { parts.append(question) }
-        return parts.joined(separator: " ")
-    }
-    var body: some View {
-        Card {
-            VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-                if !eyebrow.isEmpty || more > 0 || evidenceTitle != nil || dismissAction != nil { topLine }
-                ButlerHeadline(text: headline, identifier: titleIdentifier)
-                answers.padding(.top, YubaiSpace.space4)
-            }
-        }.accessibilityElement(children: .contain)
-    }
-    @ViewBuilder private var topLine: some View {
-        if !eyebrow.isEmpty || dismissAction != nil {
-            ButlerCardHeader(dismiss: dismissAction, identifier: dismissIdentifier.isEmpty ? "dismissHomeCard" : dismissIdentifier) {
-                ButlerKicker(title: eyebrow, more: more, evidenceTitle: evidenceTitle, onEvidence: onEvidence)
-            }
-        }
-    }
-    private var answers: some View {
-        ChipFlow(spacing: YubaiSpace.gapGroup, stacked: textSize.isAccessibilitySize) { answerButtons }
-    }
-    @ViewBuilder private var answerButtons: some View {
-        Button(yesTitle, action: yes).buttonStyle(NowCardButtonStyle(primary: true)).disabled(!yesEnabled).accessibilityIdentifier(yesIdentifier)
-        if !noTitle.isEmpty { Button(noTitle, action: no).buttonStyle(NowCardButtonStyle(primary: false)).accessibilityIdentifier(noIdentifier) }
-    }
-}
-
-struct CardDismissButton: View {
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark").yubaiFont(YubaiFont.meta)
-                .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
-        }.buttonStyle(PressButtonStyle()).accessibilityLabel("收起")
-    }
-}
-
-private struct ButlerHeadline: View {
-    @Environment(\.dynamicTypeSize) private var textSize
-    let text: String
-    let identifier: String
-    @State private var expanded = false
-    @State private var fullHeight: CGFloat = 0
-    @State private var visibleHeight: CGFloat = 0
-    private var showsFullText: Bool { textSize.isAccessibilitySize || expanded }
-    private var showsDisclosure: Bool { !textSize.isAccessibilitySize && (expanded || fullHeight > visibleHeight + 0.5) }
-    var body: some View {
-        VStack(alignment: .leading, spacing: YubaiSpace.none) {
-            Text(text).yubaiFont(YubaiFont.butlerTitle).foregroundStyle(YubaiColor.label)
-                .lineLimit(showsFullText ? nil : 2).fixedSize(horizontal: false, vertical: true)
-                .accessibilityLabel(text).accessibilityIdentifier(identifier)
-                .accessibilityValue(showsFullText ? "已展开" : "已收起")
-                .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { visibleHeight = $0 }
-                .background(alignment: .topLeading) {
-                    Text(text).yubaiFont(YubaiFont.butlerTitle).fixedSize(horizontal: false, vertical: true)
-                        .hidden().accessibilityHidden(true)
-                        .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { fullHeight = $0 }
-                }
-            // A hidden Button can survive in AX. Keep the headline mounted
-            // across live size changes, and create only a real disclosure.
-            if showsDisclosure {
-                Button { expanded.toggle() } label: {
-                    Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.meta)
-                        .foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget()
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel(expanded ? "收起全文" : "展开全文")
-                    .accessibilityValue(expanded ? "已展开" : "")
-                    .accessibilityIdentifier("expandButlerHeadline")
-            }
-        }
-    }
-}
 
 /// 一行结果：左边标签，右边「a → b」之类的数；不够宽时上下排。可琥珀。
 struct ResultBar: View {
@@ -2984,36 +2782,6 @@ extension AmountEntrySheet where Accessory == EmptyView {
     }
 }
 
-/// 分类格：图标在上、字在下。三态：普通 / 描边（建议，只提示不选中）/ 选中。
-struct IconGridCell: View {
-    enum Mode: Equatable { case normal, outlined, selected }
-    let title: String
-    let symbol: String
-    var mode: Mode = .normal
-    var identifier = ""
-    var hintValue = "建议"
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: YubaiSpace.space2) {
-                Image(systemName: symbol).font(.system(size: 17)).frame(height: YubaiSize.headerIcon).accessibilityHidden(true)
-                Text(title).yubaiFont(YubaiFont.caption).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
-            }.foregroundStyle(mode == .selected ? YubaiColor.onBrand : YubaiColor.label)
-                .padding(.vertical, YubaiSpace.space8).padding(.horizontal, YubaiSpace.space4)
-                .frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin + YubaiSpace.space8)
-                .background(mode == .selected ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                .overlay {
-                    if mode == .outlined {
-                        RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(YubaiColor.brand, lineWidth: 1.5)
-                    }
-                }.contentShape(RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-        }.buttonStyle(PressButtonStyle()).accessibilityLabel(title)
-            .accessibilityValue(mode == .outlined ? hintValue : "")
-            .accessibilityAddTraits(mode == .selected ? .isSelected : [])
-            .accessibilityIdentifier(identifier)
-    }
-}
-
 /// Short choices share a row only when their intrinsic labels fit. Longer
 /// choices stack and wrap, preserving both the font and the full hit target.
 struct Segmented<Value: Hashable>: View {
@@ -3063,26 +2831,6 @@ struct Segmented<Value: Hashable>: View {
     @ViewBuilder private var selectedSurface: some View {
         if reduceMotion { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).fill(YubaiColor.raised) }
         else { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).fill(YubaiColor.raised).matchedGeometryEffect(id: "selection", in: selectionNamespace) }
-    }
-}
-
-/// 细进度线（0…1）。首启清单、心愿单等待。
-struct ProgressLine: View {
-    @Environment(\.yubaiReduceMotion) private var reduceMotion
-    let value: Double
-    var tint = YubaiColor.brand
-    var track = YubaiColor.neutralSoft
-    var height: CGFloat = YubaiSpace.space4
-    private var clamped: Double { min(1, max(0, value)) }
-    var body: some View {
-        Capsule().fill(track).frame(height: height)
-            .overlay(alignment: .leading) {
-                GeometryReader { proxy in
-                    Capsule().fill(tint).frame(width: proxy.size.width * clamped)
-                }
-            }
-            .animation(YubaiMotion.progress(reduceMotion: reduceMotion), value: clamped)
-            .accessibilityElement(children: .ignore).accessibilityValue("\(Int((clamped * 100).rounded()))%")
     }
 }
 
@@ -3641,47 +3389,6 @@ struct CardTextFieldRow: View {
     }
 }
 
-/// Search has its own rounded surface; it is not a labeled form row.
-struct SearchInput: View {
-    @Binding var text: String
-    var placeholder = "搜索"
-    var identifier = ""
-    var label = "搜索"
-    var focus: FocusState<Bool>.Binding? = nil
-    var autofocus = false
-    var showsCancel = false
-    var cancelIdentifier = ""
-    var cancel: () -> Void = {}
-    @FocusState private var localFocus: Bool
-    private var fieldFocus: FocusState<Bool>.Binding { focus ?? $localFocus }
-    var body: some View {
-        HStack(spacing: YubaiSpace.gapGroup) {
-            HStack(spacing: YubaiSpace.space8) {
-                Image(systemName: "magnifyingglass").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
-                // Initial search focus uses the same native appearance gate
-                // and active editing session as autofocus form fields. Setting
-                // .focused before inserting the controller bypasses that gate.
-                RowTextInput(text: $text, placeholder: placeholder, label: label, identifier: identifier,
-                             focus: fieldFocus, search: true, autofocus: autofocus)
-                if !text.isEmpty {
-                    Button { text = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(YubaiColor.labelMuted).yubaiHitTarget() }
-                        .accessibilityLabel("清空搜索").accessibilityIdentifier(identifier + "Clear")
-                }
-            }.padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.buttonHeight)
-                .contentShape(Rectangle()).onTapGesture { fieldFocus.wrappedValue = true }
-                .background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                .overlay { if fieldFocus.wrappedValue { RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous).strokeBorder(YubaiColor.brand, lineWidth: YubaiSize.lineWidth) } }
-            if showsCancel {
-                Button("取消") { fieldFocus.wrappedValue = false; cancel() }.yubaiFont(YubaiFont.body).fixedSize().yubaiHitTarget()
-                    .accessibilityIdentifier(cancelIdentifier)
-            }
-        }.buttonStyle(PressButtonStyle())
-            #if os(macOS)
-            .task { if autofocus { fieldFocus.wrappedValue = true } }
-            #endif
-    }
-}
-
 enum SystemGlyph {
     static func validated(_ candidate: String) -> String {
         #if os(iOS)
@@ -3913,48 +3620,6 @@ private struct AmountKeyButtonStyle: ButtonStyle {
     }
 }
 
-/// A single button keeps the entire amount accessible and avoids decimalPad.
-struct EditableAmountDisplay: View {
-    let amount: String
-    let keypad: EntryKeypad
-    let presented: Bool
-    let selected: Bool
-    let identifier: String
-    let open: () -> Void
-    var hide = false
-    var ink: Color? = nil
-    var body: some View {
-        Button(action: open) {
-            VStack(alignment: .leading, spacing: YubaiSpace.none) {
-                if presented && !hide, let expression = keypad.expressionText {
-                    Text(expression).yubaiFont(YubaiFont.amount).foregroundStyle(YubaiColor.labelSecondary)
-                        .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("entryKeypadExpression")
-                }
-                amountLine
-            }.contentShape(Rectangle())
-        }.buttonStyle(.plain).foregroundStyle(YubaiColor.label)
-            .accessibilityLabel("金额").accessibilityValue(hide ? "金额已隐藏" : presented ? keypad.groupedResultText : EntryKeypad(amount: (try? Money.parse(amount)) ?? 0).groupedResultText)
-            .accessibilityIdentifier(identifier)
-            .background {
-                GeometryReader { proxy in
-                    Color.clear.preference(key: AmountEditorFrame.self, value: proxy.frame(in: .named("amountEditor")))
-                }
-            }
-    }
-    private var amountLine: some View {
-        HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.space8) {
-            Text("¥").yubaiFont(YubaiFont.amountAccount).foregroundStyle(YubaiColor.labelSecondary)
-            Text(hide ? "••••" : presented ? keypad.groupedResultText : ((try? Money.parse(amount)).map { EntryKeypad(amount: $0).groupedResultText } ?? "0.00"))
-                .yubaiFont(YubaiFont.entryAmount).fixedSize(horizontal: false, vertical: true).layoutPriority(1)
-                .foregroundStyle(ink ?? YubaiColor.label)
-                .padding(.horizontal, YubaiSpace.space4)
-
-            if presented && !hide { EntryAmountCursor() }
-            Spacer(minLength: YubaiSpace.none)
-        }.frame(minHeight: YubaiSize.rowDouble)
-    }
-}
-
 private struct AmountEditorFrame: PreferenceKey {
     static let defaultValue: CGRect = .zero
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) { value = nextValue() }
@@ -3976,24 +3641,6 @@ private struct AmountEditorOutsideTap: ViewModifier {
 extension View {
     func finishAmountOnOutsideTap(presented: Bool, finish: @escaping () -> Void) -> some View {
         modifier(AmountEditorOutsideTap(presented: presented, finish: finish))
-    }
-}
-
-struct EntryRepeatChip: View {
-    var selected: Bool
-    var value: String
-    var opensPlan = false
-    var inTray = false
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            Text(value + (opensPlan ? " ›" : "")).yubaiFont(YubaiFont.callout, weight: selected ? .medium : .regular)
-                .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: inTray ? 34 : YubaiSize.chipHeight)
-                .background(inTray ? YubaiColor.keyFn : selected ? YubaiColor.selected : YubaiColor.raised, in: Capsule())
-                .overlay { if selected { Capsule().strokeBorder(YubaiColor.brand, lineWidth: 1.5) } }
-                .yubaiHitTarget()
-        }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("entryRepeat")
-            .accessibilityLabel("重复").accessibilityValue(value).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -4099,47 +3746,6 @@ struct DestructiveButtonStyle: ButtonStyle {
     }
 }
 
-
-/// Shared text field and send styling; callers supply screenshot and voice controls.
-struct ChatInputBar<Leading: View, Accessory: View>: View {
-    @Binding var text: String
-    var placeholder: String
-    var accessibilityLabel: String
-    var inputID: String
-    var sendID: String
-    var enabled = true
-    var busy = false
-    var showSend = true
-    var focus: FocusState<Bool>.Binding? = nil
-    var send: () -> Void
-    @ViewBuilder var leading: () -> Leading
-    @ViewBuilder var accessory: () -> Accessory
-    @FocusState private var localFocus: Bool
-    var body: some View {
-        HStack(alignment: .bottom, spacing: YubaiSpace.space8) {
-            leading().frame(height: YubaiSize.iconButton)
-            HStack(spacing: YubaiSpace.none) {
-                RowTextInput(text: $text, placeholder: placeholder, label: accessibilityLabel, identifier: inputID,
-                             multiline: true, maximumLines: 5, verticalInset: YubaiSpace.gapGroup,
-                             style: YubaiFont.navTitle, focus: focus ?? $localFocus)
-            }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
-                .onTapGesture { (focus ?? $localFocus).wrappedValue = true }
-            accessory().frame(height: YubaiSize.iconButton)
-            if showSend {
-                Button(action: send) {
-                    Image(systemName: "arrow.up").fontWeight(.semibold)
-                        .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton)
-                        .foregroundStyle(Color.white).background(YubaiColor.brand, in: Circle())
-                        .yubaiHitTarget()
-                }.accessibilityLabel("发送").accessibilityIdentifier(sendID)
-                    .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-        }.disabled(!enabled || busy).padding(YubaiSpace.space8).frame(minHeight: YubaiSize.buttonHeight)
-            .fixedSize(horizontal: false, vertical: true)
-            .buttonStyle(PressButtonStyle()).floatingSurface(in: Capsule(), shadow: YubaiShadow.input)
-            .opacity(enabled ? 1 : 0.6)
-    }
-}
 
 
 private struct EntrySaveReceipt: View {
@@ -4429,34 +4035,6 @@ private struct EntryDateSheet: View {
 }
 
 
-/// A recurring day-of-month is a number from 1–31, independent of the current
-/// month's length; actual dated occurrences use EntryCalendarView.
-struct MonthDayChoices: View {
-    @Environment(\.dynamicTypeSize) private var textSize
-    @Environment(\.yubaiMinimumTarget) private var minimum
-    @State private var width: CGFloat = 0
-    @Binding var selection: Int
-    var identifier: String
-    var choose: (Int) -> Void = { _ in }
-    var body: some View {
-        // Both callers offer the full width inside insetPage, outside a Card.
-        // Spend the gap first; keep the week-like seven columns at every
-        // standard text size and four at accessibility sizes.
-        let metrics = MonthDayGridMetrics(availableWidth: width, minimumTarget: minimum, accessibility: textSize.isAccessibilitySize)
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(minimum: minimum), spacing: metrics.spacing), count: metrics.columns), spacing: metrics.spacing) {
-            ForEach(1...31, id: \.self) { value in
-                Button { selection = value; choose(value) } label: {
-                    Text("\(value)").yubaiFont(YubaiFont.callout).lineLimit(1)
-                        .frame(minWidth: minimum, maxWidth: .infinity, minHeight: minimum)
-                        .foregroundStyle(selection == value ? YubaiColor.onBrand : YubaiColor.label)
-                        .background(selection == value ? YubaiColor.brand : YubaiColor.card, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
-                }.buttonStyle(PressButtonStyle()).accessibilityLabel("每月 \(value) 号")
-                    .accessibilityAddTraits(selection == value ? .isSelected : []).accessibilityIdentifier(identifier + "\(value)")
-            }
-        }.onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
-    }
-}
-
 /// Chips wrap at their intrinsic width, including at accessibility text sizes.
 struct EntryChipLayout: Layout {
     var spacing: CGFloat = YubaiSpace.space8
@@ -4556,63 +4134,6 @@ extension YubaiFont {
 
 // MARK: - Round 47 home paper and window
 
-/// Existing bamboo silhouette, shared by the first wall and the daily receipt.
-struct ReceiptTornEdge: Shape {
-    func path(in rect: CGRect) -> Path {
-        var p = Path(); p.move(to: .zero); p.addLine(to: CGPoint(x: rect.maxX, y: 0))
-        let count = max(1, Int(rect.width / 6)), step = rect.width / CGFloat(count)
-        for index in (0..<count).reversed() {
-            p.addLine(to: CGPoint(x: CGFloat(index) * step + step / 2, y: rect.maxY))
-            p.addLine(to: CGPoint(x: CGFloat(index) * step, y: 1))
-        }
-        p.closeSubpath(); return p
-    }
-}
-
-struct ReceiptRule: View {
-    var dotted = false
-    var body: some View {
-        GeometryReader { geometry in
-            Path { p in p.move(to: .zero); p.addLine(to: CGPoint(x: geometry.size.width, y: 0)) }
-                .stroke(YubaiColor.label.opacity(dotted ? 0.30 : 0.38), style: StrokeStyle(lineWidth: 1, dash: dotted ? [YubaiSize.separator, YubaiSpace.space2] : [YubaiSize.receiptLineDash, YubaiSpace.space4]))
-        }.frame(height: 1).accessibilityHidden(true)
-    }
-}
-
-/// A swipe is local to this row, so undo never restores an unrelated ledger snapshot.
-struct ReceiptSwipeRow<Content: View>: View {
-    @Environment(\.yubaiReduceMotion) private var reduceMotion
-    @Environment(\.colorScheme) private var scheme
-    let enabled: Bool
-    let identifier: String
-    let undo: () -> Void
-    @ViewBuilder let content: () -> Content
-    @State private var revealed = false
-    var body: some View {
-        ZStack(alignment: .trailing) {
-            if revealed && enabled {
-                Button(action: undo) {
-                    Text("撤销").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
-                        .lineLimit(1).minimumScaleFactor(0.5)
-                        .frame(width: YubaiSize.receiptUndoWidth, height: YubaiSize.tapMin).contentShape(Rectangle())
-                }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier)
-            }
-            content().background(YubaiColor.receiptPaper(for: scheme))
-                .offset(x: revealed && enabled ? -YubaiSize.receiptUndoWidth : 0)
-                #if os(iOS)
-                .gesture(HorizontalPan(shouldBegin: { _ in enabled }, ended: { distance, _ in
-                    withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { revealed = distance < -20 }
-                }))
-                #else
-                .simultaneousGesture(DragGesture(minimumDistance: 20).onEnded { value in
-                    guard enabled, abs(value.translation.width) > abs(value.translation.height) else { return }
-                    withAnimation(YubaiMotion.control(reduceMotion: reduceMotion)) { revealed = value.translation.width < -20 }
-                })
-                #endif
-        }.clipped().contentShape(Rectangle()).accessibilityActions { if enabled { Button("撤销这一笔", action: undo) } }
-    }
-}
-
 private struct ReceiptPrint: ViewModifier {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     let highlighted: Bool
@@ -4680,61 +4201,6 @@ extension YubaiFont {
     static let waterToday = Style(size: 10, lineHeight: 14, weight: .regular, family: .sans, relativeTo: .caption2)
 }
 
-struct WaterBar: View {
-    @Environment(\.dynamicTypeSize) private var textSize
-    let fill: Double
-    let tick: Double
-    var fast = false
-    var hide = false
-    @ScaledMetric(relativeTo: .caption2) private var labelHeight = YubaiFont.waterToday.lineHeight
-    @ScaledMetric(relativeTo: .caption2) private var labelWidth = YubaiSize.waterLabelWidth
-    private var height: CGFloat { textSize.isAccessibilitySize ? YubaiSize.waterHeightAccessible : YubaiSize.waterHeight }
-    private var tickHeight: CGFloat { textSize.isAccessibilitySize ? YubaiSize.waterTickHeightAccessible : YubaiSize.waterTickHeight }
-    /// The tick is centred on the bar; the label starts a clear gap below the tick's foot.
-    private var labelTop: CGFloat { height / 2 + tickHeight / 2 + YubaiSpace.space4 }
-    var body: some View {
-        GeometryReader { geometry in
-            let x = min(max(0, tick), 1) * geometry.size.width
-            ZStack(alignment: .topLeading) {
-                Capsule().fill(YubaiColor.card).frame(height: height)
-                Capsule().fill(fast ? YubaiColor.amberDot : YubaiColor.brand)
-                    .frame(width: geometry.size.width * min(max(0, fill), 1), height: height)
-                RoundedRectangle(cornerRadius: YubaiSpace.space2, style: .continuous).fill(YubaiColor.label)
-                    .frame(width: textSize.isAccessibilitySize ? YubaiSize.waterTickWidthAccessible : YubaiSize.waterTickWidth, height: tickHeight)
-                    .position(x: x, y: height / 2)
-                Text("今天").yubaiFont(YubaiFont.waterToday).foregroundStyle(YubaiColor.labelSecondary)
-                    .fixedSize().position(x: min(max(labelWidth / 2, x), geometry.size.width - labelWidth / 2), y: labelTop + labelHeight / 2)
-            }
-        }.frame(height: labelTop + labelHeight + YubaiSpace.space8)
-            .accessibilityElement(children: .ignore).accessibilityLabel(hide ? "金额已隐藏" : "已经花了 \(Int(fill * 100))%，日子过了 \(Int(tick * 100))%")
-            .accessibilityValue(fast ? "花得比日子快" : "")
-            .accessibilityIdentifier("ledgerWaterBar")
-    }
-}
-
-struct SavedPill: View {
-    // SavingJarOutline uses a 24pt design grid. Scale its stroke from that
-    // grid, not from the small chip's rasterized frame.
-    @ScaledMetric(relativeTo: .callout) private var jarStroke = YubaiSize.outline * YubaiSize.smallGlyph / 24
-    let total: Int64
-    var hide = false
-    var body: some View {
-        SavedPillLayout { title; amount; chevron }
-            .padding(.horizontal, YubaiSpace.space10).padding(.vertical, YubaiSpace.space6)
-            .frame(minHeight: YubaiSize.savedPillHeight)
-            .controlSurface(in: RoundedRectangle(cornerRadius: YubaiSize.savedPillHeight / 2, style: .continuous))
-    }
-    private var title: some View {
-        HStack(spacing: YubaiSpace.space6) {
-            SavingJarOutline().stroke(YubaiColor.brandInk, style: StrokeStyle(lineWidth: jarStroke, lineCap: .round, lineJoin: .round))
-                .yubaiTextIcon(YubaiSize.smallGlyph, relativeTo: YubaiFont.callout).accessibilityHidden(true)
-            Text("已存").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
-        }
-    }
-    private var amount: some View { AmountLabel(cents: total, hide: hide, role: .small, currency: true) }
-    private var chevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
-}
-
 struct ProportionalBar: View {
     let fraction: Double
     var body: some View {
@@ -4746,48 +4212,3 @@ struct ProportionalBar: View {
 }
 
 struct CashCurvePoint: Equatable, Sendable { var date: Date; var amount: Int64 }
-
-/// One cash curve renderer: actual to today, then a dashed forecast. It accepts
-/// only dated values, keeping financial rules outside the drawing code.
-struct CashCurve: View {
-    let history: [CashCurvePoint]
-    let forecast: [CashCurvePoint]
-    let start: Date
-    let end: Date
-    var body: some View {
-        Canvas { context, size in
-            let values = (history + forecast).map { Double($0.amount) }
-            let low = values.min() ?? 0, high = values.max() ?? 1
-            let span = max(1, high - low), duration = max(1, end.timeIntervalSince(start))
-            func point(_ value: CashCurvePoint) -> CGPoint {
-                CGPoint(x: size.width * min(1, max(0, value.date.timeIntervalSince(start) / duration)),
-                        y: size.height * (0.12 + 0.76 * (1 - (Double(value.amount) - low) / span)))
-            }
-            func path(_ points: [CashCurvePoint]) -> Path {
-                Path { path in
-                    for (index, value) in points.enumerated() {
-                        if index == 0 { path.move(to: point(value)) } else { path.addLine(to: point(value)) }
-                    }
-                }
-            }
-            context.stroke(path(history), with: .color(YubaiColor.brand), style: StrokeStyle(lineWidth: YubaiSize.lineWidth, lineCap: .round, lineJoin: .round))
-            context.stroke(path(forecast), with: .color(YubaiColor.brand), style: StrokeStyle(lineWidth: YubaiSize.lineWidth, lineCap: .round, lineJoin: .round, dash: [3, 5]))
-            if let today = history.last {
-                let p = point(today)
-                context.fill(Path(ellipseIn: CGRect(x: p.x - 4, y: p.y - 4, width: 8, height: 8)), with: .color(YubaiColor.brand))
-            }
-        }.frame(height: YubaiSize.cashChartHeight).accessibilityHidden(true)
-    }
-}
-
-struct AmountVisibilityButton: View {
-    @Environment(AppStore.self) private var store
-    var body: some View {
-        HeaderIconButton {
-            store.update("切换金额显示", recordUndo: false) { $0.preferences.hideAmounts.toggle() }
-        } icon: { size in
-            Image(systemName: store.preferences.hideAmounts ? "eye.slash" : "eye").font(.system(size: size))
-        }.accessibilityLabel(store.preferences.hideAmounts ? "显示金额" : "隐藏金额")
-            .accessibilityIdentifier("toggleAmountVisibility")
-    }
-}

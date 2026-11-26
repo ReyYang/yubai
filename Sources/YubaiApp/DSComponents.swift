@@ -396,11 +396,16 @@ struct DSTabBar: View {
     enum Tab: String { case home, overview }
     @Binding var selection: Tab
     var onEntry: () -> Void
+    var onEntryHold: () -> Void = {}
+    @State private var held = false
 
     var body: some View {
         HStack(spacing: DS.Space.s20) {
             tab(.home, title: "首页", icon: .tabHome)
-            Button(action: onEntry) {
+            Button {
+                // A long press already opened 常用; its release is not a tap.
+                if held { held = false } else { onEntry() }
+            } label: {
                 HStack(spacing: HomeSpec.gap6) {
                     DSIconView(icon: .add, size: DS.Size.brandTile, color: DS.Color.onAccent)
                     Text("记一笔").dsText(DS.Font.tBody).fontWeight(.semibold)
@@ -409,6 +414,8 @@ struct DSTabBar: View {
                     .padding(.horizontal, DS.Space.s20)
                     .frame(minWidth: HomeSpec.entryWidth, minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
             }.dsPressStyle().accessibilityIdentifier("addEntry")
+                .simultaneousGesture(LongPressGesture(minimumDuration: DSInteraction.holdDuration).onEnded { _ in held = true; onEntryHold() })
+                .accessibilityAction(named: "常用") { onEntryHold() }
             tab(.overview, title: "全景", icon: .tabOverview)
         }.dynamicTypeSize(...DynamicTypeSize.xLarge)
             .padding(.horizontal, DS.Space.s12)
@@ -463,6 +470,20 @@ struct DSHomeSearchField: View {
             .textFieldStyle(.plain).dsText(DS.Font.tLabel).tint(DS.Color.accent)
             .foregroundStyle(DS.Color.ink).focused(focus).onSubmit(onSubmit)
             .accessibilityLabel("搜账单").accessibilityIdentifier("entriesSearch")
+    }
+}
+
+/// 问余白's field: Return sends.
+struct DSAskField: View {
+    @Binding var text: String
+    var focus: FocusState<Bool>.Binding
+    var onSubmit: () -> Void
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text("问余白").foregroundStyle(DS.Color.ink3))
+            .textFieldStyle(.plain).dsText(DS.Font.tLabel).tint(DS.Color.accent)
+            .foregroundStyle(DS.Color.ink).focused(focus).submitLabel(.send).onSubmit(onSubmit)
+            .accessibilityLabel("问余白").accessibilityIdentifier("askInput")
     }
 }
 
