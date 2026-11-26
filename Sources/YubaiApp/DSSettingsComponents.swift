@@ -157,7 +157,7 @@ struct AnyInsettableShape: InsettableShape {
 
     static func fallback(for name: String) -> Color {
         let palette = [DS.Color.chart1, DS.Color.chart2, DS.Color.chart3, DS.Color.chart4, DS.Color.chart5]
-        let hash = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0xFFFF }
+        let hash = name.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) % 65_521 }
         return palette[hash % palette.count]
     }
 
@@ -323,5 +323,53 @@ struct DSSplitBar: View {
         }
         .frame(height: SettingsSpec.previewBar)
         .accessibilityHidden(true)
+    }
+}
+
+// MARK: Gallery
+
+/// Gallery specimens for the settings components.
+struct SettingsGallerySpecimen: View {
+    let component: String
+    @State private var on = true
+    @State private var off = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Space.s16) {
+            switch component {
+            case "BrandTile":
+                HStack(spacing: DS.Space.s12) {
+                    ForEach([DS.Size.brandTile, SettingsSpec.rowTile, SettingsSpec.pickTile], id: \.self) { size in
+                        DSBrandTile(name: "Netflix", slug: "netflix", size: size)
+                    }
+                }
+                HStack(spacing: DS.Space.s12) {
+                    DSBrandTile(name: "Fit", size: SettingsSpec.rowTile)
+                    DSBrandTile(name: "工资", size: SettingsSpec.rowTile, shape: .circle)
+                    DSBrandTile(name: "Spotify", slug: "spotify", size: SettingsSpec.rowTile)
+                    DSBrandTile(name: "Apple", slug: "apple", size: SettingsSpec.rowTile)
+                    DSBrandTile(name: "Notion", slug: "notion", size: SettingsSpec.rowTile)
+                }
+            case "SettingsRow":
+                DSSettingsCard {
+                    DSSettingsRow(icon: .cycle, name: "周期起始日", tint: DS.Color.accentInk, accessory: .link("每月 10 日"), separator: false)
+                    DSSettingsRow(icon: .bolt, name: "快速记账", accessory: .link("Apple Pay"))
+                    DSSettingsRow(icon: .lock, name: "面容 ID 解锁", accessory: .toggle($on))
+                    DSSettingsRow(icon: .cloud, name: "iCloud 同步", accessory: .toggle($off))
+                }
+            case "ShareChips":
+                DSShareChips(items: [.init(id: "amount", title: "金额", on: true), .init(id: "category", title: "分类", on: true),
+                                     .init(id: "note", title: "备注", on: false), .init(id: "account", title: "账户", on: false)])
+                DSShareChips(items: [.init(id: "amount", title: "金额", on: true), .init(id: "category", title: "分类", on: true),
+                                     .init(id: "note", title: "备注", on: false), .init(id: "account", title: "账户", on: false)], enabled: false)
+            case "TypeGrid":
+                DSTypeGrid(items: AccountType.gridItems, selection: AccountType.debit.rawValue)
+            default:
+                DSDayGrid(selection: 10)
+                DSDayGrid(selection: CycleStart.lastDay, identifier: "galleryLastDay_")
+            }
+        }
+        .padding(DS.Space.s20)
+        .background(DS.Color.bg)
     }
 }

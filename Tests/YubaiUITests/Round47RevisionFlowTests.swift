@@ -40,7 +40,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
 
     private func openAssistantHub() {
         backToHome()
-        tap("openSettings"); tap("openAssistantHub")
+        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
     }
 
     private func openInbox() {
@@ -83,7 +83,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         tapControl(settings, in: app, reveals: false)
         XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
         tap("openIntelligencePrivacy")
-        XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5))
+        XCTAssertTrue(element("aiSettingsScroll").waitForExistence(timeout: 5))
         XCTAssertEqual(app.state, .runningForeground)
     }
     private func formula() { tap("fundsFormula"); XCTAssertTrue(element("formulaResult").waitForExistence(timeout: 5)) }

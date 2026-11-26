@@ -14,8 +14,16 @@ struct OnboardingAccount: Identifiable, Equatable {
 @MainActor @Observable final class OnboardingDraft {
     var step = 1
     var day = Payday.defaultDay
-    var takeHome: Int64 = 0
-    var saving: Int64 = 0
+    var takeHomePad = EntryKeypad()
+    var savingPad = EntryKeypad()
+    var takeHome: Int64 {
+        get { takeHomePad.amount ?? 0 }
+        set { takeHomePad = newValue > 0 ? EntryKeypad(amount: newValue) : EntryKeypad() }
+    }
+    var saving: Int64 {
+        get { savingPad.amount ?? 0 }
+        set { savingPad = newValue > 0 ? EntryKeypad(amount: newValue) : EntryKeypad() }
+    }
     var floor: Int64?
     var focusSaving = false
     var editing: UUID?
@@ -92,12 +100,15 @@ struct OnboardView: View {
 
     private func topBar(step: Int) -> some View {
         HStack(spacing: DS.Space.s12) {
-            Button { back() } label: {
-                DSIconView(icon: .back, size: HomeSpec.navIcon, color: DS.Color.ink)
-                    .frame(width: DS.Size.tapMin, height: DS.Size.tapMin).contentShape(Rectangle())
+            if step > 1 {
+                Button { back() } label: {
+                    DSIconView(icon: .back, size: HomeSpec.navIcon, color: DS.Color.ink)
+                        .frame(width: DS.Size.tapMin, height: DS.Size.tapMin).contentShape(Rectangle())
+                }
+                .dsPressStyle().accessibilityLabel("上一步").accessibilityIdentifier("onboardBack")
+            } else {
+                Color.clear.frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
             }
-            .dsPressStyle().opacity(step == 1 ? .zero : 1).disabled(step == 1)
-            .accessibilityHidden(step == 1).accessibilityLabel("上一步").accessibilityIdentifier("onboardBack")
             HStack(spacing: SettingsSpec.progressGap) {
                 ForEach(1...3, id: \.self) { index in
                     Capsule(style: .continuous).fill(index <= step ? DS.Color.accent : DS.Color.track).frame(height: SettingsSpec.progressHeight)
@@ -140,11 +151,7 @@ struct OnboardView: View {
     }
 
     private func press(_ key: String, _ draft: OnboardingDraft) {
-        var keypad = EntryKeypad(amount: draft.focusSaving ? draft.saving : draft.takeHome)
-        if (draft.focusSaving ? draft.saving : draft.takeHome) == 0 { keypad.reset() }
-        keypad.press(key)
-        let value = keypad.amount ?? 0
-        if draft.focusSaving { draft.saving = value } else { draft.takeHome = value }
+        if draft.focusSaving { draft.savingPad.press(key) } else { draft.takeHomePad.press(key) }
     }
 }
 
@@ -205,7 +212,7 @@ private struct OnboardSaving: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("每月到手").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2)
                     Spacer(minLength: DS.Space.s8)
-                    Text(OverviewDisplay.money(draft.takeHome, hidden: hidden)).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
+                    Text(hidden ? OverviewDisplay.money(0, hidden: true) : draft.focusSaving ? OverviewDisplay.money(draft.takeHome, hidden: false) : draft.takeHomePad.groupedText).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
                     if !draft.focusSaving { caret }
                 }
                 .padding(.horizontal, DS.Space.s16).frame(maxWidth: .infinity, minHeight: SettingsSpec.incomeBox)
@@ -220,7 +227,7 @@ private struct OnboardSaving: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("每月先攒").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
                     Spacer(minLength: DS.Space.s8)
-                    Text(OverviewDisplay.money(draft.saving, hidden: hidden)).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
+                    Text(hidden ? OverviewDisplay.money(0, hidden: true) : draft.focusSaving ? draft.savingPad.groupedText : OverviewDisplay.money(draft.saving, hidden: false)).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
                         .accessibilityIdentifier("onboardSavingAmount")
                     if draft.focusSaving { caret }
                 }

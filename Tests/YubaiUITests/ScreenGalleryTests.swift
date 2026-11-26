@@ -697,9 +697,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Yubai") { try load("v47r-yubai"); try root("yubai"); try require("askYubai"); try reveal(element("openSettings")) }
         stop("Yubai-Settings") { try load(); try settings(); try require("settingsScroll") }
         stop("Empty-Restraint") { try load("v47r-restraint-empty"); try root("yubai"); try tap("openProfile"); try require("emptyState_restraint") }
-        stop("First-A") { try load("v47-first"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
-        stop("First-A-ReduceMotion") { try launch("v47-first", dark: dark, large: large, reduceMotion: true); try require("firstOpenScene") }
-        stop("First-After") { try load("v47-first"); try tap("addEntry"); try recordEntry("28"); try close(); try require("firstSalaryCard"); try require("entriesScroll") }
+        stop("First-A") { try load("v47-first"); try require("onboardScene") }
+        stop("First-A-ReduceMotion") { try launch("v47-first", dark: dark, large: large, reduceMotion: true); try require("onboardScene") }
+        stop("First-After") { try load("v47-first"); try tap("onboardNext"); try require("onboardSavingAmount") }
         stop("First-After-Setup") { try load("v47-after"); try tap("setupFirstSalary"); try require("paydaySetupSheet") }
         stop("First-After-Deferred") { try load("v47-after"); try tap("deferFirstSalary"); try require("entriesScroll") }
         stop("First-After-Income") { try load("v47-after-income"); try require("firstSalaryCard") }
@@ -866,7 +866,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Single-Card") { try load("v47-topup-queue"); try require("savingsTopupCard"); try tap("savingsTopupDecline"); try require("renewalCard") }
         stop("Home-Payday") { try load("v46-leftover"); try require("leftoverKeep") }
         stop("Payday-Amount") { try load("v46-payday"); try tap("paydayArrived"); try keys("8510"); try require("paydayExtraToSavings") }
-        stop("First") { try load("v46-empty"); try require("firstOpenScene"); try require("firstOpenEmptyAmount") }
+        stop("First") { try load("v46-empty"); try require("onboardScene") }
         stop("Home-Bill") { try load("v46-bill"); try require("billDuePaid") }
         stop("Home-Gap") { try load("v46-gap"); try require("openReconcile") }
         stop("Recon") {
@@ -1162,7 +1162,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("13-empty-07-memories") { dismissNativeSheet(in: app); try root("yubai"); try tap("openMemories"); try require("emptyMemories") }
         stop("13-empty-08-import-history") { try launch("gallery-empty"); try settings("openImportHistory"); try require("emptyImportHistory") }
         stop("13-empty-09-accounts") { try launch("gallery-empty"); try settings("openAccounts"); try tap("addAccount"); try require("accountName") }
-        stop("13-empty-10-first-use") { try launch("empty"); try require("firstOpenScene") }
+        stop("13-empty-10-first-use") { try launch("empty"); try require("onboardScene") }
         stop("13-empty-11-first-entry-keyboard") { try tap("addEntry"); try type(longName, into: "entryPurpose"); try requireKeyboard() }
         stop("13-empty-12-privacy") { try launch("empty"); try settings("openIntelligencePrivacy"); try require("intelligencePrivacyPage") }
         stop("13-empty-13-fixed-bills") { try launch("manual"); try settings("openFixedFlows"); try require("fixedFlowsScroll") }

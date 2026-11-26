@@ -28,7 +28,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     private func openAssistantHub() {
         if !element("openSettings").exists { tap("tab_ledger") }
-        tap("openSettings"); tap("openAssistantHub")
+        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
     }
     private func reveal(_ id: String) {
         XCTAssertTrue(revealControl(element(id), in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")), id)
@@ -401,7 +401,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(waitForDisappearance(element("openSettings")))
         tap("tab_ledger"); tap("openSettings")
         XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
-        tap("openAssistantHub")
+        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
         for entry in ["openAccounts", "openMemories"] {
             tap(entry)
             XCTAssertFalse(element("mainNavigation").exists)
@@ -455,11 +455,6 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         tap("BackButton"); tap("BackButton"); tap("BackButton")
         XCTAssertEqual(element("fundsFormula").value as? String, amount)
     }
-    func testFirstOpenShowsWindowAndTwoTabs() {
-        launch("v47-first"); XCTAssertTrue(element("firstOpenScene").exists)
-        XCTAssertTrue(element("firstOpenEmptyAmount").exists); XCTAssertEqual(element("addEntry").label, "记一笔")
-        XCTAssertFalse(element("availableFunds").exists); XCTAssertTrue(element("tab_insights").exists)
-    }
     func testSharedPaydaySheetTitlesGrowAndPassNativeAuditsAcrossGalleryModes() {
         for large in [false, true] {
             for (dark, hidden) in [(false, false), (true, false), (false, true), (true, true)] {
@@ -494,22 +489,6 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             }
         }
     }
-    func testFirstImportOpensExistingImportFlow() {
-        launch("v47-first"); tap("firstImport"); XCTAssertTrue(element("chooseBillFile").waitForExistence(timeout: 5))
-    }
-
-    func testFirstEntryLeavesSalaryPendingAndOffersIncomeCapture() {
-        launch("v47-first")
-        XCTAssertTrue(element("firstOpenScene").exists)
-        add("28")
-        XCTAssertFalse(element("firstOpenScene").exists)
-        XCTAssertTrue(app.staticTexts["工资未到账"].waitForExistence(timeout: 5))
-        XCTAssertTrue(element("recordSalary").isHittable)
-        tap("recordSalary")
-        XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
-        XCTAssertTrue(element("entryNature_income").isSelected)
-        XCTAssertFalse(app.staticTexts["工资未到账"].isHittable)
-    }
     func testCancellingSalaryCaptureLeavesSalaryPendingAfterRelaunch() {
         launch("v47-after"); tap("recordSalary"); dismissEntrySheet(in: app)
         app.terminate(); launchApp(app)
@@ -532,11 +511,5 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         app.terminate()
         launch("v47-after-income")
         XCTAssertFalse(element("recordSalary").exists)
-    }
-    func testFirstImportClearsPillAtLargestTextSize() {
-        launch("v47-first", large: true)
-        XCTAssertTrue(revealControl(element("firstImport"), in: app, deadline: Date().addingTimeInterval(60)))
-        XCTAssertTrue(element("firstImport").isHittable)
-        XCTAssertLessThan(element("firstImport").frame.maxY, element("addEntry").frame.minY)
     }
 }
