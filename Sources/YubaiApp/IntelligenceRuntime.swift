@@ -268,6 +268,10 @@ private struct FeatureCloudTransport: ChatTransport {
 }
 
 @MainActor extension AppStore {
+    /// One reason for 「AI 未连接」 everywhere: cloud off, or on without a key.
+    func aiAvailability(for feature: AIFeature = .answers) -> ModelAvailability {
+        DeepSeekProvider.status(preferences: preferences, feature: feature, keyConfigured: IntelligenceRuntime.isConfigured)
+    }
     func assistantTransport(for snapshot: Ledger, feature: AIFeature = .answers, reportingLedgerChanges: Bool = false, preparedRedactor: Redactor? = nil) -> (any ChatTransport)? {
         let revision = ledgerRevision
         let continuingOrganization = reportingLedgerChanges && organizationContinuesInBackground
@@ -286,14 +290,20 @@ private struct FeatureCloudTransport: ChatTransport {
         let redactor = preparedRedactor ?? Redactor(ledger: snapshot)
         let live = FeatureCloudTransport { [weak self] in
             guard let self, self.preferences.isAIEnabled(for: feature), !self.locked || (continuingOrganization && self.organizationContinuesInBackground) else { return nil }
+            // Every cloud request goes through the router so the 「云端能看到」 switches apply.
+            let preferences = self.preferences
+            func routed(_ configuration: DeepSeekConfiguration) -> any ChatTransport {
+                ModelRouter.configured(preferences: preferences, feature: feature, ledger: snapshot,
+                                       transport: CloudBackend(client: DeepSeekClient(configuration: configuration, redactor: redactor)))
+            }
             #if os(iOS)
             if continuingOrganization && UIApplication.shared.applicationState != .active {
                 guard let authorized = self.organizationExecution?.configurationForTransport() else { return nil }
-                return CloudBackend(client: DeepSeekClient(configuration: authorized, redactor: redactor))
+                return routed(authorized)
             }
             #endif
             guard let configuration = IntelligenceRuntime.cloud.configuration else { return nil }
-            return CloudBackend(client: DeepSeekClient(configuration: configuration, redactor: redactor))
+            return routed(configuration)
         }
         return ActiveLedgerTransport(base: live, model: reportingLedgerChanges ? nil : configuration.model, staleMessage: reportingLedgerChanges ? ImportOrganizer.ledgerChangedMessage : nil) {
             let configuration = continuingOrganization ? self.organizationExecution?.configurationForTransport() : IntelligenceRuntime.cloud.configuration

@@ -1,6 +1,6 @@
 import Foundation
 
-/// How the assistant speaks. Stored now; prompts read it in a later batch.
+/// How the assistant speaks. `AskYubai.prompt(now:tone:)` reads it.
 public enum AssistantTone: String, Codable, CaseIterable, Sendable { case gentle, direct }
 
 /// When the weekly review is sent. `weekday` is 1 (Monday) … 7 (Sunday).
@@ -11,6 +11,18 @@ public struct WeeklyReviewTime: Codable, Equatable, Sendable {
     public init(weekday: Int, hour: Int, minute: Int) { self.weekday = weekday; self.hour = hour; self.minute = minute }
     public static let standard = WeeklyReviewTime(weekday: 7, hour: 21, minute: 0)
     public var isValid: Bool { (1...7).contains(weekday) && (0...23).contains(hour) && (0...59).contains(minute) }
+
+    /// The repeating trigger. Foundation counts Sunday as 1, this type counts Monday as 1.
+    public var dateComponents: DateComponents {
+        var value = DateComponents()
+        value.weekday = weekday % 7 + 1; value.hour = hour; value.minute = minute
+        return value
+    }
+
+    /// The first moment strictly after `date` that matches this weekday and time.
+    public func nextFire(after date: Date, calendar: Calendar = Dates.calendar) -> Date? {
+        calendar.nextDate(after: date, matching: dateComponents, matchingPolicy: .nextTime)
+    }
 }
 
 extension Preferences {

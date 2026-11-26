@@ -1620,13 +1620,14 @@ private struct ButlerRefreshTask: ViewModifier {
 private struct WeeklyPushTask: ViewModifier {
     @Environment(AppStore.self) private var store
     func body(content: Content) -> some View {
-        content.task(id: store.preferences.weeklyLetterPush) {
+        content.task(id: WeeklyPushKey(enabled: store.preferences.weeklyLetterPush, time: store.preferences.reviewTime)) {
             await store.waitForLedger()
             guard !Task.isCancelled else { return }
-            await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush)
+            await WeeklyPush.sync(enabled: store.preferences.weeklyLetterPush, time: store.preferences.reviewTime)
         }
     }
 }
+private struct WeeklyPushKey: Equatable { let enabled: Bool; let time: WeeklyReviewTime }
 private struct LedgerPrivacyCover: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase
