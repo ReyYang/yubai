@@ -168,7 +168,7 @@ struct OverviewSheet<Content: View>: View {
             .accessibilityAddTraits(.isModal)
             .accessibilityAction(.escape, dismiss)
             .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: close, tracksOverview: true))
-        }.ignoresSafeArea(edges: .bottom)
+        }.ignoresSafeArea(.container, edges: .bottom)
     }
 
     private func dismiss() { motion.close(reduced: reduced, onClose: close) }

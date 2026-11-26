@@ -375,8 +375,8 @@ struct FloorAmountSheet: View {
                 if store.update("底线存款", entryMotion: false, showToast: false, { try Reserve.setFloor(value, in: &$0, now: store.financialNow) }) { close() }
             }) {
                 SettingsAmountBox(label: "底线存款", value: hidden ? OverviewDisplay.money(0, hidden: true) : replace ? OverviewDisplay.money(amount, hidden: false) : keypad.groupedText)
-                if !chips.isEmpty || store.settingsFixture != nil {
-                    let values = chips.isEmpty ? [Int64(0), 0] : chips
+                if !chips.isEmpty {
+                    let values = chips
                     SettingsChips(chips: zip(titles, values).map { .init(id: $0.0, title: $0.0, selected: $0.1 == amount && $0.1 > 0) }) { id in
                         if let index = titles.firstIndex(of: id), values.indices.contains(index) { keypad = EntryKeypad(amount: values[index]); replace = true }
                     }.padding(.top, SettingsSpec.chipsTop)

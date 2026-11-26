@@ -98,7 +98,9 @@ enum AppSheet: Identifiable {
     /// A new ledger: nothing recorded and no account yet.
     var needsOnboarding: Bool {
         if case .onboard = settingsFixture { return true }
-        return !preferences.onboardingComplete && accounts.isEmpty && current.entries.isEmpty
+        // Settled ledgers stop at the first check and never observe entries.
+        guard !preferences.onboardingComplete, accounts.isEmpty else { return false }
+        return current.entries.isEmpty
     }
     var tabRouteRequest: TabRoute?
     private(set) var ledger = Ledger() {

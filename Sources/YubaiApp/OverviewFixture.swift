@@ -2,7 +2,7 @@ import Foundation
 import YubaiCore
 
 enum OverviewFixture {
-    case review, period, drill, assets, account, reconcile, invest
+    case review, period, drill, assets, account, reconcile, reconcileCredit, invest
 
     static let current: Self? = {
         #if DEBUG
@@ -15,6 +15,7 @@ enum OverviewFixture {
         if let index = args.firstIndex(of: "-YubaiAccountFixture") {
             switch args.dropFirst(index + 1).first {
             case "reconcile": return .reconcile
+            case "reconcile-credit": return .reconcileCredit
             case "invest": return .invest
             default: return .account
             }
@@ -42,7 +43,7 @@ enum OverviewFixture {
     func makeSeed() -> Seed {
         switch self {
         case .review, .period, .drill: reviewSeed()
-        case .assets, .account, .reconcile, .invest: accountSeed()
+        case .assets, .account, .reconcile, .reconcileCredit, .invest: accountSeed()
         }
     }
 
@@ -136,9 +137,10 @@ enum OverviewFixture {
                                     accountID: bank.id, title: "工资", category: "工资奖金")]
         }
         var seed = Seed(ledger: ledger, segment: .assets)
-        if self != .assets { seed.route = .accountDetail(bank.id) }
+        if self != .assets { seed.route = .accountDetail(self == .reconcileCredit ? credit.id : bank.id) }
         if self == .reconcile { seed.valuation = .reconcile(bank.id); seed.valuationAmount = 3_205_640 }
         if self == .invest { seed.valuation = .invest(fund.id); seed.valuationAmount = 4_201_850 }
+        if self == .reconcileCredit { seed.valuation = .reconcile(credit.id); seed.valuationAmount = -330_000 }
         return seed
     }
 

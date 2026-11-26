@@ -533,7 +533,7 @@ struct AccountEditView: View {
             .background(DS.Color.bg.ignoresSafeArea())
             .overlay {
                 if confirmingArchive {
-                    SettingsConfirm(title: "归档" + account.name + "？", consequence: "归档后不再出现在资产和记一笔里，账目保留。", action: "归档",
+                    SettingsConfirm(consequence: "归档后不再出现在资产和记一笔里，账目保留。", action: "归档",
                                     cancel: { confirmingArchive = false }) {
                         confirmingArchive = false
                         if store.update("归档账户", entryMotion: false, { try Accounts.archive(accountID, in: &$0, now: store.financialNow) }) { dismiss() }
@@ -564,9 +564,8 @@ struct AccountEditView: View {
     }
 }
 
-/// A destructive confirmation: title, one consequence line, the action and 取消.
+/// A destructive confirmation: one consequence line, the action and 取消.
 struct SettingsConfirm: View {
-    let title: String
     let consequence: String
     let action: String
     let cancel: () -> Void
@@ -578,10 +577,8 @@ struct SettingsConfirm: View {
         ZStack {
             DS.Color.scrim.ignoresSafeArea().onTapGesture(perform: cancel)
             VStack(spacing: DS.Space.s16) {
-                VStack(spacing: DS.Space.s8) {
-                    Text(title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).multilineTextAlignment(.center)
-                    Text(consequence).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).multilineTextAlignment(.center)
-                }
+                Text(consequence).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 VStack(spacing: DS.Space.s8) {
                     Button(action: confirm) {
                         Text(action).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.warnInk)

@@ -1057,7 +1057,7 @@ struct DSSwitch: View {
                     }
                     .frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .dsPressStyle()
             .opacity(enabled ? 1 : SettingsSpec.disabledOpacity)
             .animation(animationsEnabled && !(reduceMotionOverride ?? systemReduceMotion) ? DSMotion.snappyAnimation : nil, value: isOn)
         }

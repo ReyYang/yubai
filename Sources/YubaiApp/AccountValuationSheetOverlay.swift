@@ -39,7 +39,11 @@ struct AccountValuationSheetOverlay: View {
         let amount = initial ?? book
         _motion = State(initialValue: EntrySheetMotion(settled: initial != nil))
         // A credit card is typed as the amount owed and stored negative.
-        _keypad = State(initialValue: EntryKeypad(amount: account.kind == .credit ? max(0, -amount) : max(0, amount)))
+        let typed = account.kind == .credit && !target.isInvestment ? max(0, -amount) : max(0, amount)
+        var keypad = EntryKeypad()
+        // A fixture's value arrives as if typed, so the box shows 32,056.40 rather than 32,056.4.
+        if initial != nil { for key in Money.editableText(typed) { keypad.press(String(key)) } } else { keypad = EntryKeypad(amount: typed) }
+        _keypad = State(initialValue: keypad)
         _replace = State(initialValue: initial == nil)
     }
 
