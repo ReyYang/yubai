@@ -36,12 +36,14 @@ struct DesignSystemGalleryView: View {
         // Preserve the interactive gallery's specimen order.
         case listRow, budgetRow, accordion, hero, tabBar, entryPills, keypad, categoryPicker, effectLine
         case floatingCard, sheet, segmented, button, alertCard, donut, subCalendar, toggle
+        case balanceChart, stackedBar, periodOption
     }
     enum IsolatedComponent: String {
         case sheet = "Sheet", categoryPicker = "CategoryPicker", entryPills = "EntryPills"
         case hero = "Hero", dayBars = "DayBars", budgetRow = "BudgetRow", listRow = "ListRow"
         case tabBar = "TabBar", alertCard = "AlertCard", floatingCard = "FloatingCard", segmented = "Segmented"
         case effectLine = "EffectLine", keypad = "Keypad", icon = "Icon", categoryPanel = "CategoryPanel"
+        case balanceChart = "BalanceChart", stackedBar = "StackedBar", donut = "Donut", periodOption = "PeriodOption"
     }
     let section: Section?
     var isolatedComponent: IsolatedComponent?
@@ -71,6 +73,7 @@ struct DesignSystemGalleryView: View {
     @State private var menuShown = true
     @State private var allPlays = 0
     @State private var number = 42
+    @State private var reviewPeriod = "custom"
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
     @Environment(\.dsAnimationsEnabled) private var enabled
@@ -119,7 +122,11 @@ struct DesignSystemGalleryView: View {
         case .categoryPicker: categorySpecimen
         case .entryPills: entryPillSpecimens
         case .effectLine: effectSpecimens
-        case .keypad: DSKeypad(pressedKey: "5")
+        case .keypad: keypadSpecimens
+        case .balanceChart: balanceChartSpecimen.environment(\.dsAnimationsEnabled, false)
+        case .stackedBar: stackedBarSpecimens
+        case .donut: DSDonut(slices: Self.slices)
+        case .periodOption: periodSpecimen
         case .icon: iconSpecimens
         case .categoryPanel: EntryCategoryGallery()
         case .hero, .dayBars, .budgetRow, .listRow, .tabBar, .alertCard, .floatingCard, .segmented:
@@ -176,7 +183,6 @@ struct DesignSystemGalleryView: View {
             }.frame(maxWidth: HomeSpec.galleryContentWidth)
         case .segmented:
             DSSegmented(options: ["支出", "收入"], selection: $selectedSegment)
-                .frame(maxWidth: HomeSpec.galleryContentWidth)
         case .floatingCard:
             VStack(alignment: .trailing, spacing: DS.Space.s20) {
                 DSFloatingCard(name: "换手机", amount: "−6,999.00", impact: "走机动余钱 · 还剩",
@@ -433,7 +439,13 @@ struct DesignSystemGalleryView: View {
         case .entryPills:
             specimen("EntryPills") { entryPillSpecimens }
         case .keypad:
-            specimen("Keypad") { DSKeypad() }
+            specimen("Keypad") { if section != .componentsEntry { keypadSpecimens } else { DSKeypad() } }
+        case .balanceChart:
+            specimen("BalanceChart") { balanceChartSpecimen }
+        case .stackedBar:
+            specimen("StackedBar") { stackedBarSpecimens }
+        case .periodOption:
+            specimen("PeriodOption") { periodSpecimen }
         case .categoryPicker:
             specimen("CategoryPicker") { categorySpecimen }
         case .effectLine:
@@ -553,11 +565,52 @@ struct DesignSystemGalleryView: View {
         DSCategoryPicker.Category(id: "grocery", name: "买菜", icon: DS.Icon.catGrocery),
         DSCategoryPicker.Category(id: "all", name: "全部", icon: DS.Icon.catAll)
     ]
-    private static let slices = [
-        DSDonut.Slice(id: "housing", name: "居住", value: 40, amount: "2,800.00"),
-        DSDonut.Slice(id: "food", name: "吃饭", value: 26, amount: "1,264.00"),
-        DSDonut.Slice(id: "shopping", name: "购物", value: 18, amount: "1,318.00"),
-        DSDonut.Slice(id: "other", name: "其余", value: 16, amount: "1,463.60")
+    private var keypadSpecimens: some View {
+        VStack(spacing: DS.Space.s20) {
+            DSKeypad()
+            DSKeypad(variant: .digits)
+                .frame(height: OverviewSpec.valuationTrayHeight, alignment: .top)
+                .background(DS.Color.tray)
+        }
+    }
+
+    private var balanceChartSpecimen: some View {
+        DSBalanceChart(values: [30_200, 29_800, 29_650, 29_100, 28_900, 28_400, 27_800, 27_650, 27_200,
+                                26_900, 26_500, 26_200, 25_900, 25_600, 25_450, 25_100, 24_800, 43_300,
+                                38_300, 37_900, 37_400, 36_800, 36_500, 35_200, 34_800, 34_100, 33_600,
+                                33_200, 32_900, 32_600, 32_180],
+                       startLabel: "10.24", highlightLabel: "11.10 工资", highlightIndex: 17, endLabel: "今天")
+    }
+
+    private var stackedBarSpecimens: some View {
+        VStack(spacing: DS.Space.s12) {
+            DSStackedBar(segments: [
+                .init(id: "clothes", value: 899, color: DS.Color.warn),
+                .init(id: "electronics", value: 299, color: DS.Color.chart1),
+                .init(id: "supplies", value: 120, color: DS.Color.chart2),
+            ])
+            DSStackedBar(segments: [
+                .init(id: "floor", value: 50_000, color: DS.Color.accentInk),
+                .init(id: "reserve", value: 8_420, color: DS.Color.chart3),
+            ], kind: .assets)
+        }
+    }
+
+    private var periodSpecimen: some View {
+        DSPeriodOptionGroup(options: [
+            .init(id: "current", title: "本期", range: "11.10 – 12.09"),
+            .init(id: "previous", title: "上期", range: "10.10 – 11.09"),
+            .init(id: "custom", title: "自定义"),
+        ], selection: reviewPeriod) { reviewPeriod = $0 }
+    }
+
+    private static let slices: [DSDonut.Slice] = [
+        .init(id: "housing", name: "居住", value: 2000.10, amount: "2,000.10"),
+        .init(id: "shopping", name: "购物", value: 1318, amount: "1,318.00", isAnomaly: true, delta: "+68%"),
+        .init(id: "dining", name: "吃饭", value: 1264, amount: "1,264.00"),
+        .init(id: "grocery", name: "买菜", value: 980, amount: "980.00"),
+        .init(id: "other", name: "其他 4 类", value: 705.50, amount: "705.50"),
+        .init(id: "fun", name: "娱乐", value: 578, amount: "578.00"),
     ]
     // Brand colors are caller-owned data; this specimen uses DS colors to avoid introducing a palette.
     private static let brands: [Int: (name: String, color: Color)] = [
@@ -601,7 +654,7 @@ private struct EntryHeaderGallery: View {
         let outline = UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet,
                                              topTrailingRadius: DS.Radius.sheet, style: .continuous)
         VStack(spacing: DS.Space.s20) {
-            EntryTopHeaderView(model: model, close: {}, drag: EntryHeaderDrag(move: { _ in }, end: { _ in }))
+            EntryTopHeaderView(model: model, drag: EntryHeaderDrag(move: { _ in }, end: { _ in }))
             Text(EntrySpec.fixtureLunchAmount).dsText(DS.Font.nEntry).monospacedDigit()
                 .padding(.bottom, DS.Space.s20)
         }

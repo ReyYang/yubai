@@ -57,7 +57,11 @@ extension Savings {
         try next.validate(); ledger = next
     }
     static func nonFloorAdjustment(_ ledger: Ledger, from: Date, through: Date, floor: Int64) -> Int64 {
-        let net = ledger.entries.filter { $0.deletedAt == nil && $0.kind == .adjustment && $0.source == "对余额" && $0.date >= from && $0.date <= through }
+        let cashIDs = Set(ledger.accounts.filter { $0.kind == .cash || $0.kind == .bank }.map(\.id))
+        let net = ledger.entries.lazy.filter {
+            $0.deletedAt == nil && $0.kind == .adjustment && $0.source == "对余额"
+                && cashIDs.contains($0.accountID) && $0.date >= from && $0.date <= through
+        }
             .reduce(Int64(0)) { $0 + ($1.nature.inflow ? -$1.amount : $1.amount) }
         return max(0, net - floor)
     }

@@ -32,6 +32,7 @@ enum DSInteraction {
 /// Item counts describe composition, not geometry.
 enum DSLayout {
     static let keypadColumns = 4
+    static let digitKeypadColumns = 3
     static let categoryRow = 5
     static let heroBudgets = 3
     static let weekdays = 7

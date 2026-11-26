@@ -190,7 +190,7 @@ struct EntrySheetView: View {
 
     private var form: some View {
         VStack(spacing: .zero) {
-            EntryTopHeaderView(model: model, close: close, drag: drag)
+            EntryTopHeaderView(model: model, drag: drag)
             VStack(spacing: .zero) {
                 EntryAmountBlockView(model: model)
                     .padding(.bottom, EntrySpec.amountBottom)
@@ -236,7 +236,7 @@ struct EntrySheetView: View {
     }
 }
 
-private struct EntryGrabber: View {
+struct EntryGrabber: View {
     var body: some View {
         Capsule(style: .continuous).fill(DS.Color.grabber)
             .frame(width: EntrySpec.grabberWidth, height: EntrySpec.grabberHeight)
@@ -248,7 +248,6 @@ private struct EntryGrabber: View {
 
 struct EntryTopHeaderView: View {
     let model: EntrySheetViewModel
-    let close: () -> Void
     let drag: EntryHeaderDrag
     @Environment(\.accessibilityReduceMotion) private var reduced
 
@@ -258,15 +257,11 @@ struct EntryTopHeaderView: View {
                 .contentShape(Rectangle())
                 .gesture(dragGesture)
             HStack(spacing: .zero) {
-                Button(action: close) {
-                    DS.Icon.close.view(size: DS.Size.icon, color: DS.Color.ink3)
-                        .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
-                }
-                .buttonStyle(EntryTactileButtonStyle())
-                .accessibilityLabel("关闭记一笔")
-                .accessibilityHint("保留尚未记下的草稿")
-                .accessibilityIdentifier("cancelManualSheet")
-                .frame(maxWidth: EntrySpec.headerSide, alignment: .leading)
+                Color.clear
+                    .frame(width: EntrySpec.headerSide, height: DS.Size.tapMin)
+                    .contentShape(Rectangle())
+                    .gesture(dragGesture)
+                    .accessibilityHidden(true)
                 Spacer(minLength: .zero)
                 tabs
                 Spacer(minLength: .zero)
@@ -868,14 +863,21 @@ private struct EntryKeypadTrayView: View {
 }
 
 struct DSKeypad: View {
+    enum Variant { case entry, digits }
     var pressedKey: String?
     var canSave = true
     var onKey: (String) -> Void = { _ in }
+    var variant: Variant = .entry
     var onSave: () -> Void = {}
-    private let keys = ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
+    private var keys: [String] {
+        switch variant {
+        case .entry: ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
+        case .digits: ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"]
+        }
+    }
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: DSLayout.keypadColumns), spacing: DS.Space.s8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: variant == .entry ? DSLayout.keypadColumns : DSLayout.digitKeypadColumns), spacing: DS.Space.s8) {
             ForEach(keys, id: \.self) { key in
                 if key == "⌫" {
                     EntryBackspaceKey { onKey(key) }
@@ -1177,7 +1179,12 @@ private extension YubaiCore.Category {
         case "日用", "日用百货": .catDaily
         case "数码", "数码电器": .catDigital
         case "工资", "工资奖金": .acctWallet
-        case "退款": .reimburse
+        case "奖金": .acctBalance
+        case "投资收益": .acctInvest
+        case "礼金赠与": .saveFirst
+        case "兼职劳务": .edit
+        case "二手转卖": .transfer
+        case "退款", "报销": .reimburse
         default: iconForSymbol
         }
     }

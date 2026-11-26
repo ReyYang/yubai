@@ -153,7 +153,7 @@ private struct HomePage: View {
             .onChange(of: request, initial: true) { _, request in
                 guard let request else { return }
                 preset = request
-                if !request.search.isEmpty {
+                if !request.search.isEmpty || request.categories != nil {
                     query = request.search
                     searching = true
                 }
@@ -210,7 +210,8 @@ private struct HomePage: View {
             guard entry.date <= now, fixture?.shows(entry) ?? true else { return false }
             guard let preset else { return true }
             return (preset.entryIDs?.contains(entry.id) ?? true)
-                && (preset.interval?.contains(entry.date) ?? true)
+                && (preset.interval.map { $0.start <= entry.date && entry.date < $0.end } ?? true)
+                && (preset.categories?.contains(ledger.normalizedCategory(for: entry).category) ?? true)
                 && (preset.category.map { $0 == ledger.normalizedCategory(for: entry).category } ?? true)
         }.sorted(by: newestFirst)
         let groups = Dictionary(grouping: rows, by: { Dates.day($0.date) })
@@ -308,8 +309,15 @@ private struct HomePage: View {
 
     @ViewBuilder private var searchResults: some View {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !needle.isEmpty {
-            let results = ledger.searchBills(needle, now: now)
+        if needle.isEmpty, preset?.categories != nil {
+            billDays
+        } else if !needle.isEmpty {
+            let results = ledger.searchBills(needle, now: now).filter { entry in
+                guard let preset, let categories = preset.categories else { return true }
+                return (preset.entryIDs?.contains(entry.id) ?? true)
+                    && (preset.interval.map { $0.start <= entry.date && entry.date < $0.end } ?? true)
+                    && categories.contains(ledger.normalizedCategory(for: entry).category)
+            }
             let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
             let pending = pendingIDs
             Button {

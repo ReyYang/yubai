@@ -161,8 +161,13 @@ private struct EntryDiscardGuard: ViewModifier {
     @Binding var confirming: Bool
     func body(content: Content) -> some View {
         content.interactiveDismissDisabled(dirty)
+            .accessibilityAction(.escape) {
+                if dirty { confirming = true } else { dismiss() }
+            }
             #if os(iOS)
             .background { DismissAttempt(dirty: dirty) { confirming = true }.frame(width: YubaiSpace.none, height: YubaiSpace.none) }
+            #elseif os(macOS)
+            .onExitCommand { if dirty { confirming = true } else { dismiss() } }
             #endif
             .sheet(isPresented: $confirming) {
                 ConfirmationSheet(title: amount == 0 ? "放弃修改？" : "已经填了 \(Money.text(amount, currency: false)) 元") {

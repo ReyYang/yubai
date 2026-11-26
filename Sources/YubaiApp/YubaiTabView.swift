@@ -68,7 +68,14 @@ struct YubaiTabView: View {
             } accessory: { EmptyView() }
             ChipFlow {
                 ForEach(Array(suggestions.enumerated()), id: \.offset) { index, text in
-                    CategoryChoiceChip(title: text) { openQuestion(text) }
+                    CategoryChoiceChip(title: text) {
+                        if index == 0 {
+                            input = text
+                            focused = true
+                        } else {
+                            openQuestion(text)
+                        }
+                    }
                         .accessibilityIdentifier("askSuggestion_\(index)")
                 }
             }

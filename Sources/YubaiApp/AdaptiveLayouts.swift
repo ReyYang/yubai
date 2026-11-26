@@ -108,7 +108,9 @@ struct SheetHeaderLayout: Layout {
         guard subviews.count == 3 else { return (.zero, []) }
         let ideal = subviews.map { $0.sizeThatFits(.unspecified) }
         let side = YubaiSize.sheetHeaderActionWidth
-        let width = max(0, proposed.flatMap { $0.isFinite ? $0 : nil } ?? side * 2 + ideal[1].width)
+        let hasActions = ideal[0].width > 0 || ideal[2].width > 0
+        let reserved = hasActions ? side * 2 : 0
+        let width = max(0, proposed.flatMap { $0.isFinite ? $0 : nil } ?? reserved + ideal[1].width)
         func titleSize(at availableWidth: CGFloat) -> CGSize {
             let measured = subviews[1].sizeThatFits(ProposedViewSize(width: availableWidth, height: nil))
             // Give the title its own measured width, centered in its slot.
@@ -117,6 +119,12 @@ struct SheetHeaderLayout: Layout {
             let placedWidth = min(availableWidth, measured.width.rounded(.up))
             let placed = subviews[1].sizeThatFits(ProposedViewSize(width: placedWidth, height: nil))
             return CGSize(width: placedWidth, height: placed.height)
+        }
+        if !hasActions {
+            let title = titleSize(at: width)
+            return (CGSize(width: width, height: title.height), [
+                .zero, CGRect(x: (width - title.width) / 2, y: YubaiSpace.none, width: title.width, height: title.height), .zero
+            ])
         }
         if !stacked, ideal[0].width <= side, ideal[2].width <= side, ideal[1].width <= width - side * 2 {
             // Measure at the same width used for placement. An unspecified

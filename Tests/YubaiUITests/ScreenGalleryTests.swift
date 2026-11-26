@@ -403,13 +403,13 @@ final class ScreenGalleryTests: YubaiUITestCase {
         for _ in 0..<10 {
             guard waitForNativeTransition(in: app, deadline: stopDeadline) else { throw Miss(description: "Root transition did not finish") }
             if element("mainNavigation").exists && element("mainNavigation").isHittable { break }
-            if element("cancelManualSheet").exists && element("cancelManualSheet").isHittable {
-                try tap("cancelManualSheet")
-                if app.buttons["放弃这笔"].waitForExistence(timeout: 0.3) { try tap(app.buttons["放弃这笔"]) }
-            } else if element("closeSheet").exists && element("closeSheet").isHittable {
+            if element("closeSheet").exists && element("closeSheet").isHittable {
                 try tap("closeSheet")
-            } else if element("amountSheetCancel").exists && element("amountSheetCancel").isHittable {
-                try tap("amountSheetCancel")
+            } else if element("nativeSheetSurface").exists {
+                dismissNativeSheet(in: app)
+                if app.buttons["放弃这笔"].waitForExistence(timeout: 0.3) { try tap(app.buttons["放弃这笔"]) }
+            } else if element("entryKeypadAmount").exists {
+                dismissEntrySheet(in: app)
             } else { try back() }
         }
         guard element("mainNavigation").exists && element("mainNavigation").isHittable else {
@@ -437,7 +437,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         }
     }
     private func formula() throws { try root("ledger"); try tap("fundsFormula"); try destination("formulaPage") }
-    private func close(_ id: String = "cancelManualSheet") throws { try tap(id) }
+    private func close(_ id: String? = nil) throws {
+        if let id { try tap(id) } else { dismissCurrentSheet(in: app) }
+    }
     private func bill(_ title: String) throws -> XCUIElement {
         if !element("cycleBillsPage").exists { try formula(); try tap("formulaRow_bills") }
         let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'editFixedFlow_' AND label CONTAINS %@", title)).firstMatch
@@ -740,9 +742,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Hero-States-No-Income") { try load("v47r-no-income"); try require("availableFunds") }
         stop("Hero-States-Fallback") { try load("v47-after"); try require("firstSalaryCard") }
         stop("Ledger-Over") { try load("v47r-less"); try require("ledgerStatus"); try require("entriesScroll") }
-        stop("Ledger-Over-Deficit") { try load("v47r-deficit"); try require("deficitRescueCard") }
+        stop("Ledger-Over-Deficit") { try load("v47r-deficit"); try require("coverFromReserve") }
         stop("Ledger-Over-Rescued") { try load("v47r-deficit"); try tap("coverFromReserve"); try require("undoLastChange") }
-        stop("Ledger-Over-Undo") { try load("v47r-deficit"); try tap("coverFromReserve"); try tap("undoLastChange"); try require("deficitRescueCard") }
+        stop("Ledger-Over-Undo") { try load("v47r-deficit"); try tap("coverFromReserve"); try tap("undoLastChange"); try require("coverFromReserve") }
         stop("Butler-Cards-Topup") { try load("v47-topup"); try require("savingsTopupAll"); try require("savingsTopupDecline") }
         stop("Butler-Cards-Weekly-AI") { try load("v47r-weekly-ai"); try require("butlerAIAccept"); try require("butlerAIIncorrect") }
         stop("Butler-Cards-Long") { try load("v47r-weekly-ai-long"); if element("expandButlerHeadline").exists { try tap("expandButlerHeadline") }; try require("butlerAIAccept") }
@@ -1009,7 +1011,11 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("07-entry-10-transfer") { try launch(); try tap("addEntry"); try tap("entryNature_transfer"); try require("transferDestinationAccount") }
         stop("07-entry-11-big-purchase-hint") { try launch("v45-home"); try tap("addEntry"); try keys("1200"); try require("bigPurchaseDays") }
         stop("07-entry-12-big-from-reserve") { try tap("bigFromReserve"); try require("entrySavingHint") }
-        stop("07-entry-13-discard-confirmation") { try close(); try wait({ self.app.buttons["放弃这笔"].exists }, "Discard confirmation") }
+        stop("07-entry-13-discard-confirmation") {
+            try launch(); try root("insights"); try tap("overviewSegment_资产"); try tap("overviewAddAccount")
+            try type("临时账户\n", into: "accountName"); dismissNativeSheet(in: app)
+            try wait({ self.app.buttons["放弃这笔"].exists }, "Discard confirmation")
+        }
         stop("07-entry-14-saved-in-sheet") { try launch(); try tap("addEntry"); try tap("entryDate_yesterday"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try tap("entrySessionSummary"); try require("entryAddedList") }
         stop("07-entry-15-saved-receipt") { try launch(); try tap("addEntry"); try keys("0.01"); try type("合成一分钱\n", into: "entryPurpose"); try tap("entryCategory_餐饮"); try tap("saveQuickEntry"); try require("entrySessionSummary") }
         stop("07-entry-16-quick-repeat-menu") { try launch(); try longPress(element("addEntry")); try require("quickRepeatMenu") }
@@ -1153,7 +1159,7 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("13-empty-04-insights") { try tap("tab_insights"); try require("emptyState_ledger") }
         stop("13-empty-05-yubai") { try root("yubai"); try require("openProfile") }
         stop("13-empty-06-saving-target") { try savingPage(); try tap("setFirstSavingTarget"); try require("saveSavingsAmount") }
-        stop("13-empty-07-memories") { try close("amountSheetCancel"); try root("yubai"); try tap("openMemories"); try require("emptyMemories") }
+        stop("13-empty-07-memories") { dismissNativeSheet(in: app); try root("yubai"); try tap("openMemories"); try require("emptyMemories") }
         stop("13-empty-08-import-history") { try launch("gallery-empty"); try settings("openImportHistory"); try require("emptyImportHistory") }
         stop("13-empty-09-accounts") { try launch("gallery-empty"); try settings("openAccounts"); try tap("addAccount"); try require("accountName") }
         stop("13-empty-10-first-use") { try launch("empty"); try require("firstOpenScene") }
@@ -1243,14 +1249,14 @@ final class ScreenGalleryTests: YubaiUITestCase {
             try tap(buttonPrefix("editSessionEntry_")); try require("saveSessionEdit")
         }
         stop("Add-Delete-Undo") {
-            try tap("cancelManualSheet"); let row = buttonPrefix("editSessionEntry_"); try reveal(row); row.swipeLeft()
+            dismissCurrentSheet(in: app); let row = buttonPrefix("editSessionEntry_"); try reveal(row); row.swipeLeft()
             try tap(buttonPrefix("deleteSessionEntry_")); try toast(); try tap("undoLastChange"); try require("entryAddedList")
         }
         stop("Add-New-Category") {
             try load(); try tap("addEntry"); try tap("entryCategoryMore"); try tap("entryMoreAdd"); try require("categoryAdditionName")
         }
         stop("Add-Category-Manage") {
-            try tap("cancelManualSheet"); try tap("entryMoreManage"); try require("entryInlineCategoryManager")
+            dismissCurrentSheet(in: app); try tap("entryMoreManage"); try require("entryInlineCategoryManager")
         }
         stop("Add-Transfer-Accounts") {
             try load(); try tap("addEntry"); try tap("entryNature_transfer"); try keys("500"); try tap("transferDestinationAccount"); try require("entryInlineAccounts")

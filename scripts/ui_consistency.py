@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Domain/fixture/page files receive no blanket exceptions.
 SHARED = 'DesignSystem.swift'
 DS_FILES = {'DSTheme.swift', 'DSMotion.swift', 'DSStyle.swift', 'DSComponents.swift', 'DesignSystemGalleryView.swift', 'DSIconView.swift'}
-SPEC_FILES = {'EntrySpec.swift', 'HomeSpec.swift'}
+SPEC_FILES = {'EntrySpec.swift', 'HomeSpec.swift', 'OverviewSpec.swift'}
 OLD_NAMES = ('\u6211\u7684\u6d88\u8d39\u89c2', '\u5e38\u8bb0\u7684\u51e0\u7b14', '\u8fdb\u51fa\u8bb0\u5f55',
              '\u85cf\u8d77\u6765\u7684', '\u5206\u4e00\u5206', '\u4e00\u4e2a\u4e2a\u5206', '\u6309\u5bf9\u65b9\u5206',
              '\u4f59\u767d\u60f3\u8fd9\u6837\u6539', '\u6574\u7406\u597d\u4e86', '\u5f85\u5904\u7406')
@@ -180,7 +180,9 @@ def violations(name, source):
     reject(r'\bAnimation\s*\.\s*(?:easeIn|easeOut|easeInOut|linear)\b', 'animation curve: use DSMotion springs')
     reject(r'(?:\bwithAnimation|\.animation)\s*\(\s*\.(?:easeIn|easeOut|easeInOut|linear)\b', 'animation curve: use DSMotion springs')
     reject(r'\bAnimation\s*\??\s*=\s*\.(?:easeIn|easeOut|easeInOut|linear)\b', 'animation curve: use DSMotion springs')
-    reject(r'\.custom\s*\(', 'custom fonts: use the DS system font ramp')
+    # Date range enum cases also use .custom. Font overloads take size: or fixedSize:.
+    reject(r'\bFont\s*\.\s*custom\s*\(|\.\s*custom\s*\([^();]*\b(?:size|fixedSize)\s*:',
+           'custom fonts: use the DS system font ramp')
     for match in re.finditer(r'\.blur\s*\(\s*radius\s*:', code):
         line = code.count('\n', 0, match.start())
         original = source.splitlines()[line]

@@ -38,7 +38,7 @@ struct PaydaySetupSheet: View {
                     }
                 }
                 days
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
+            }.padding(.horizontal, YubaiSpace.insetPage)
                 .padding(.bottom, YubaiSpace.gapSection)
         }.paperBackground().accessibilityElement(children: .contain).accessibilityIdentifier("paydaySetupSheet")
             .onAppear { if accountID == nil { accountID = ManualBookkeeping.defaultAccount(in: store.current, nature: .income)?.id } }

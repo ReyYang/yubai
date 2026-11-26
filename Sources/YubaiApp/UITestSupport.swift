@@ -24,7 +24,7 @@ enum UITestMetricsPayload {
     static func dictionary(safeArea: [Double], transitioning: Bool, activeTransitions: [String],
                            focused: String, focusedAfterAppearance: Bool?, scrolls: [[String: Any]],
                            bamboo: [String: Any]?, bambooSurface: [String: Any]?,
-                           paperDiagnostics: String? = nil, inputFocusEvents: [String]? = nil, focusedHost: String? = nil) -> [String: Any] {
+                           paperDiagnostics: String? = nil, inputFocusEvents: [String]? = nil, focusedHost: String? = nil, nativeSheetFrame: [Double]? = nil) -> [String: Any] {
         var value: [String: Any] = ["safeArea": safeArea, "transitioning": transitioning,
             "activeTransitions": activeTransitions, "focused": focused, "scrolls": scrolls]
         if let focusedAfterAppearance { value["focusedAfterAppearance"] = focusedAfterAppearance }
@@ -33,6 +33,7 @@ enum UITestMetricsPayload {
         if let paperDiagnostics { value["paperDiagnostics"] = paperDiagnostics }
         if let inputFocusEvents { value["inputFocusEvents"] = inputFocusEvents }
         if let focusedHost { value["focusedHost"] = focusedHost }
+        if let nativeSheetFrame { value["nativeSheetFrame"] = nativeSheetFrame }
         return value
     }
     static func bamboo(ready: [String], pending: Int, pendingKeys: [String], failed: [String],
@@ -344,6 +345,7 @@ struct UITestWindowMetrics: UIViewRepresentable {
             }
             var controllers = windows.compactMap(\.rootViewController)
             var activeTransitions: [String] = []
+            var nativeSheetFrame: CGRect?
             var visited: Set<ObjectIdentifier> = []
             remaining = 128
             while remaining > 0, let controller = controllers.popLast() {
@@ -353,6 +355,11 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 if active || controller.isBeingPresented || controller.isBeingDismissed {
                     activeTransitions.append(String(describing: type(of: controller)) +
                         ":coordinator=\(active),presenting=\(controller.isBeingPresented),dismissing=\(controller.isBeingDismissed)")
+                }
+                if controller.presentedViewController == nil,
+                   let sheet = controller.presentationController as? UISheetPresentationController,
+                   let surface = sheet.presentedView, surface.window === window {
+                    nativeSheetFrame = surface.convert(surface.bounds, to: nil)
                 }
                 var children = controller.children
                 if let presented = controller.presentedViewController { children.append(presented) }
@@ -366,7 +373,8 @@ struct UITestWindowMetrics: UIViewRepresentable {
                 bamboo: BambooRasterCache.shared.diagnostics, bambooSurface: paper.value,
                 paperDiagnostics: paper.description + " " + UITestPaperSurface.Probe.diagnostics(in: window),
                 inputFocusEvents: UITestWindowMetrics.inputFocusEvents,
-                focusedHost: focused.isEmpty ? nil : ((focusedResponder as? UIView)?.superview as? NativeInputAppearance)?.focusHostIdentifier)
+                focusedHost: focused.isEmpty ? nil : ((focusedResponder as? UIView)?.superview as? NativeInputAppearance)?.focusHostIdentifier,
+                nativeSheetFrame: nativeSheetFrame.map(rect))
         }
         private func panPoints(in scroll: UIScrollView, window: UIWindow) -> [[Double]] {
             var viewport = scroll.convert(scroll.bounds, to: window).intersection(window.bounds)

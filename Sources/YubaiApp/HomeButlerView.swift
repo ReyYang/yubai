@@ -73,7 +73,7 @@ struct HomeTaskCard: View {
         let copy = HomeTaskCopy.make(.balanceMismatch(value), now: store.financialNow, hidden: hide)!
         return QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more, titleIdentifier: "mismatchText",
                             yesTitle: "对一下余额", noTitle: "", yesIdentifier: "openReconcile",
-                            yes: { store.sheet = .reconcileAll }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBalanceMismatch")
+                            yes: { store.openBalanceReconciliation() }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBalanceMismatch")
             .accessibilityIdentifier("balanceMismatchCard")
     }
     private func headsUpCard(_ value: Occurrence) -> some View {
@@ -83,15 +83,15 @@ struct HomeTaskCard: View {
         let cadence = frequency == .yearly || months == 12 ? "，一年一次" : "，一季一次"
         return QuestionCard(eyebrow: copy.kicker, title: copy.title + cadence, more: more, titleIdentifier: "billHeadsUpText",
                             yesTitle: "看这张账单", noTitle: "", yesIdentifier: "openBillHeadsUp", yes: {
-            store.answerHome(item)
             if let id = value.planID { store.tabRouteRequest = .billDetail(id) }
             else { store.tabRouteRequest = .billDate(value.date) }
+            store.answerHome(item)
         }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBillHeadsUp").accessibilityIdentifier("billHeadsUpCard")
     }
     private func weeklyCard(_ card: ButlerCard) -> some View {
         QuestionCard(eyebrow: NowFormat.monthDay(card.createdAt), title: HomeButler.privacyText(card.title, hidden: hide), more: more,
                      yesTitle: "每周来信", noTitle: "", yesIdentifier: "openWeeklyCard", yes: {
-            store.answerHome(item); store.tabRouteRequest = .weekly(card.id)
+            store.tabRouteRequest = .weekly(card.id); store.answerHome(item)
         }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissWeeklyCard")
             .accessibilityIdentifier("weeklyHomeCard")
     }
@@ -251,7 +251,6 @@ struct ButlerReceiptRow: View {
 
 struct TodoView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.yubaiReduceMotion) private var reduceMotion
     @State private var deck = ButlerDeck()
     private var items: [HomeTask] { store.inboxItems }
@@ -292,7 +291,6 @@ struct TodoView: View {
             .onChange(of: ids, initial: true) { _, value in
                 withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { deck.reconcile(value) }
                 if let focus = store.butlerFocusID { deck.focus(focus); store.butlerFocusID = nil }
-                if value.isEmpty { dismiss() }
             }
     }
     private func cycle(backwards: Bool = false) { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { deck.cycle(backwards: backwards) } }

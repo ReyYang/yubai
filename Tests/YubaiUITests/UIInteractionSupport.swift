@@ -106,7 +106,7 @@ class YubaiUITestCase: XCTestCase {
             ["fundsFormula", "openSaving", "openSettings", "toggleAmountVisibility", "openLedgerSearch", "openLedgerFilters", "entriesMonth", "entriesSearchCancel",
              "expandButlerHeadline", "butlerAIAccept", "butlerAIIncorrect", "butlerAIEvidence", "openIntelligencePrivacy", "ledgerJumpYear",
              "coverFromReserve", "deficitKeep", "saveMemory", "addEntry", "manageQuickRepeats", "takeSavings", "putBackSavings",
-             "confirmSavingsTransfer", "amountSheetCancel", "cancelBudgetKeypad", "deleteBudgetKeypad",
+             "confirmSavingsTransfer", "cancelBudgetKeypad", "deleteBudgetKeypad",
              "openAssistantHub", "openButlerInbox", "butlerAICorrectionSave"].contains(identifier) {
             query = app.buttons
         } else if ["butlerAIText", "ledgerStatus"].contains(identifier) { query = app.staticTexts }
@@ -114,7 +114,7 @@ class YubaiUITestCase: XCTestCase {
                  "transferSavedPreview", "transferAvailablePreview", "amountSheetAmount", "fixedBottomBar"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
         else if ["entriesSearch", "frequentEntryPurpose"].contains(identifier) { query = app.textFields }
         else if ["butlerAICorrectionText", "memoryText"].contains(identifier) { query = app.textViews }
-        else if ["entriesScroll", "formulaPage", "savingTabScroll", "whereCategoryPage", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
+        else if ["entriesScroll", "formulaPage", "savingTabScroll", "overviewScroll", "overviewDrillScroll", "overviewAccountScroll", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
             query = app.scrollViews
         } else { query = app.descendants(matching: .any) }
         let target = query.matching(identifier: identifier).firstMatch
@@ -211,6 +211,84 @@ class YubaiUITestCase: XCTestCase {
 
     func waitForDisappearance(_ target: XCUIElement, timeout: TimeInterval = 12) -> Bool {
         UIConditionWait.run(timeout: timeout, read: { !target.exists })
+    }
+
+    func dismissEntrySheet(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let nature = app.buttons["entryNature_expense"].firstMatch
+        let amount = app.descendants(matching: .any).matching(identifier: "entryKeypadAmount").firstMatch
+        let anchor = nature.waitForExistence(timeout: 3) ? nature : amount
+        guard anchor.waitForExistence(timeout: 5), waitForStableFrame(anchor) else {
+            XCTFail("Entry sheet missing before dismiss", file: file, line: line)
+            return
+        }
+        let window = app.windows.firstMatch
+        let frame = anchor.frame
+        if nature.exists && frame.minY > 140 {
+            window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.frame.midX - window.frame.minX,
+                                     dy: max(20, frame.minY - 60) - window.frame.minY))
+                .tap()
+        } else {
+            let start = window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.frame.midX - window.frame.minX,
+                                     dy: max(20, frame.minY - 6) - window.frame.minY))
+            let end = window.coordinate(withNormalizedOffset: .zero)
+                .withOffset(CGVector(dx: window.frame.midX - window.frame.minX,
+                                     dy: min(window.frame.maxY - 20, frame.minY + 460) - window.frame.minY))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+        XCTAssertTrue(waitForDisappearance(amount), "Entry sheet did not dismiss", file: file, line: line)
+    }
+
+    func dismissNativeSheet(in app: XCUIApplication, closing target: XCUIElement? = nil,
+                            file: StaticString = #filePath, line: UInt = #line) {
+        let window = app.windows.firstMatch
+        let safe = window.frame
+        let surface = control("nativeSheetSurface", in: app)
+        let header = control("nativeSheetHeader", in: app)
+        let metrics = windowMetrics(in: app)
+        var nativeFrame = metrics?.nativeSheetFrame.map(UIWindowMetrics.rectangle)
+        if nativeFrame == nil {
+            let anchor = surface.exists ? surface : header
+            guard anchor.waitForExistence(timeout: 5), waitForStableFrame(anchor) else {
+                XCTFail("Native sheet missing before downward drag", file: file, line: line)
+                return
+            }
+            nativeFrame = anchor.frame
+        }
+        guard let frame = nativeFrame, !frame.isEmpty else {
+            XCTFail("Native sheet has no usable frame", file: file, line: line)
+            return
+        }
+        func drag(from frame: CGRect) {
+            let startY = max(safe.minY + 12, frame.minY + 8)
+            let endY = min(safe.maxY - 18, startY + safe.height * 0.55)
+            let origin = window.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: startY - safe.minY))
+            let end = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: endY - safe.minY))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+
+        let keyboardWasVisible = app.keyboards.firstMatch.exists
+        drag(from: frame)
+        guard let target else { return }
+        if !waitForDisappearance(target, timeout: 2),
+           let updated = windowMetrics(in: app)?.nativeSheetFrame.map(UIWindowMetrics.rectangle),
+           keyboardWasVisible != app.keyboards.firstMatch.exists || abs(updated.minY - frame.minY) > 8 {
+            // UIKit can lower the detent or dismiss the keyboard before dismissing the sheet.
+            drag(from: updated)
+        }
+        XCTAssertTrue(waitForDisappearance(target, timeout: 5), "Native sheet did not dismiss", file: file, line: line)
+    }
+
+    func dismissCurrentSheet(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        if control("nativeSheetSurface", in: app).exists {
+            dismissNativeSheet(in: app, file: file, line: line)
+        } else if control("entryKeypadAmount", in: app).exists {
+            dismissEntrySheet(in: app, file: file, line: line)
+        } else {
+            tapControl(control("closeSheet", in: app), in: app, file: file, line: line)
+        }
     }
 
     /// Remember the frame already read by the settling helper. Everything else

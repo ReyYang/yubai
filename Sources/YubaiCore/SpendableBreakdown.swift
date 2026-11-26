@@ -82,6 +82,19 @@ extension Finance {
         return ledger.effectiveSavingTarget(rule, cycleStart: cycleStart, now: now)
     }
 
+    static func periodSpending(for entry: Entry, in ledger: Ledger, entriesByID: [UUID: Entry]) -> Int64? {
+        guard entry.deletedAt == nil, entry.kind != .adjustment,
+              entry.nature == .expense || entry.nature == .refund else { return nil }
+        let original = entry.relatedEntryID.flatMap { entriesByID[$0] } ?? entry
+        let source = entry.nature == .refund ? original : entry
+        guard !source.fromReserve else { return nil }
+        if entry.nature == .refund,
+           EntryRecovery.goesToReserve(entry, original: source, cycleStart: cycle(in: ledger, now: entry.date).start) {
+            return nil
+        }
+        return EntryRecovery.spendableAmount(entry, original: original, in: ledger)
+    }
+
     static func makeSpendableBreakdown(_ ledger: Ledger, now: Date, cycle: CycleInfo, commitments: [Occurrence]) -> SpendableBreakdown {
         let entries = ledger.entries.filter { $0.deletedAt == nil && $0.date >= cycle.start && $0.date <= now }
         let today = Dates.day(now)
@@ -96,17 +109,12 @@ extension Finance {
             return entry.date >= cycle.start && entry.date <= now
         }
         let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        let expenseEntries = entries.filter { entry in
-            guard entry.kind != .adjustment, entry.nature == .expense || entry.nature == .refund else { return false }
-            let source = entry.nature == .refund ? entry.relatedEntryID.flatMap { lookup[$0] } ?? entry : entry
-            return !source.fromReserve && !(entry.nature == .refund && EntryRecovery.goesToReserve(entry, original: source, cycleStart: Finance.cycle(in: ledger, now: entry.date).start))
-        }
         let income = incomeEntries.reduce(Int64(0)) { $0 + $1.amount }
         // Pending recoveries (待报销 / 待 AA) count full amount against 还能花 now (暂扣).
-        let spent = expenseEntries.reduce(Int64(0)) { total, entry in
-            let original = entry.relatedEntryID.flatMap { lookup[$0] } ?? entry
-            return total + EntryRecovery.spendableAmount(entry, original: original, in: ledger)
+        let expenseEntries = entries.compactMap { entry in
+            periodSpending(for: entry, in: ledger, entriesByID: lookup).map { (id: entry.id, amount: $0) }
         }
+        let spent = expenseEntries.reduce(Int64(0)) { $0 + $1.amount }
         let transfers = ledger.savingsTransfers.filter { $0.date >= cycle.start && $0.date <= now }
         let covers = ledger.cycleCovers.filter { $0.date >= cycle.start && $0.date <= now && $0.source == .fromReserve }
         let withdrawal = transfers.reduce(Int64(0)) { $0 + ($1.direction == .take ? $1.amount : -$1.amount) } + covers.reduce(0) { $0 + $1.amount }

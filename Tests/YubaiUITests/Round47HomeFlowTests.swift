@@ -298,10 +298,13 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "11.10", "12.09")).firstMatch.exists)
     }
     func testSelectedInsightsReturnsToItsPeriodControl() {
-        launch(large: true); tap("tab_insights")
-        XCTAssertTrue(revealControl(element("cashMonthCard"), in: app, deadline: Date().addingTimeInterval(60)))
+        launch("v47r-soft-lines", large: true); tap("tab_insights")
+        let period = element("overviewPeriod")
+        XCTAssertTrue(period.waitForExistence(timeout: 5))
+        let top = period.frame
+        element("overviewScroll").swipeUp()
         tap("tab_insights")
-        wait { self.element("insightsPeriod_这一期").isHittable }
+        wait { period.isHittable && abs(period.frame.minY - top.minY) < 2 }
         XCTAssertTrue(element("addEntry").exists)
     }
     func testOldestEntryIsHittableAndFullyAbovePillAtBothTextSizes() {
@@ -378,7 +381,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         // The calendar scrim temporarily takes the pill out of the AX tree.
         pillCenter.tap()
         XCTAssertTrue(waitForDisappearance(yesterday))
-        tap("cancelManualSheet")
+        dismissEntrySheet(in: app)
         XCTAssertTrue(element(key).waitForExistence(timeout: 5))
     }
     func testStageACalendarSelectsAPreviousMonthDate() {
@@ -407,12 +410,18 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         }
     }
     func testInsightsRangesAndCategoryDrillDown() {
-        launch(); tap("tab_insights")
-        XCTAssertTrue(element("insightsAmount_收入").waitForExistence(timeout: 5))
-        let current = element("insightsAmount_支出").label
-        tap("insightsPeriod_上一期"); wait { self.element("insightsAmount_支出").label != current }
-        tap("insightsPeriod_今年"); XCTAssertTrue(element("insightsPeriod_今年").isSelected)
-        tap("insightsPeriod_这一期"); tap("insightCategory_0")
+        launch("v47r-soft-lines"); tap("tab_insights")
+        let spent = element("overviewSpent")
+        XCTAssertTrue(spent.waitForExistence(timeout: 5))
+        let current = spent.label
+        tap("overviewPeriod"); tap("overviewPeriod_previous")
+        wait { spent.label != current }
+        tap("overviewPeriod"); tap("overviewPeriod_custom"); tap("overviewQuick_thisYear"); tap("overviewPeriodApply")
+        wait { self.element("overviewPeriod").label.contains("自定义") }
+        tap("overviewPeriod"); tap("overviewPeriod_current")
+        XCTAssertTrue(waitForDisappearance(element("reviewPeriodSheet")))
+        let category = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "overviewCategory_")).firstMatch
+        tapControl(category, in: app)
         XCTAssertTrue(element("whereCategoryEntries").waitForExistence(timeout: 5))
         XCTAssertFalse(element("addEntry").exists)
     }
@@ -422,7 +431,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         reveal("ledgerEntry_" + id(479999))
         XCTAssertTrue(element("ledgerEntry_" + id(479999)).isHittable)
         XCTAssertFalse(element("entriesScroll").label.contains("1,234,567.89"))
-        tap("tab_insights"); XCTAssertEqual(element("insightsAmount_收入").label, "金额已隐藏")
+        tap("tab_insights"); XCTAssertEqual(element("overviewSpent").label, "金额已隐藏")
     }
     func testImmediatePillTapOpensOneEntrySheetAtBothTextSizes() {
         for large in [false, true] {
@@ -431,7 +440,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
             XCTAssertTrue(element("entryPurpose").waitForExistence(timeout: 5))
             XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entryPurpose").count, 1)
             XCTAssertFalse(element("quickRepeatMenu").exists)
-            tap("cancelManualSheet")
+            dismissEntrySheet(in: app)
             XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 5))
             app.terminate()
         }
@@ -457,18 +466,17 @@ final class Round47HomeFlowTests: YubaiUITestCase {
                 launch("v47-after", large: large, hidden: hidden, dark: dark)
                 openAssistantHub(); tap("openPaydaySetup")
                 XCTAssertTrue(element("paydaySetupSheet").waitForExistence(timeout: 5))
-                for (title, cancelID) in [("哪天发工资", "paydaySetupCancel"), ("工资", "amountSheetCancel")] {
-                    if cancelID == "amountSheetCancel" { tap("paydaySetupAmount") }
-                    let text = app.staticTexts[title], cancel = element(cancelID)
+                for title in ["哪天发工资", "工资"] {
+                    if title == "工资" { tap("paydaySetupAmount") }
+                    let text = app.staticTexts[title]
                     XCTAssertTrue(waitForStableFrame(text))
                     XCTAssertEqual(text.label, title)
                     XCTAssertGreaterThan(text.frame.width, 0)
                     XCTAssertGreaterThanOrEqual(text.frame.minX, app.windows.firstMatch.frame.minX)
                     XCTAssertLessThanOrEqual(text.frame.maxX, app.windows.firstMatch.frame.maxX)
-                    if large {
-                        XCTAssertGreaterThan(text.frame.height, 22)
-                        XCTAssertLessThanOrEqual(text.frame.maxY, cancel.frame.minY)
-                    } else { XCTAssertEqual(text.frame.midY, cancel.frame.midY, accuracy: 0.5) }
+                    XCTAssertEqual(text.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 2)
+                    if large { XCTAssertGreaterThan(text.frame.height, 22) }
+                    XCTAssertFalse(app.buttons["取消"].exists)
                     XCTAssertNoThrow(try auditAppText(in: app, dynamicType: true) { issue in
                         XCTFail("Shared sheet titles must grow without clipping: " + issue.detailedDescription)
                         return true
@@ -477,9 +485,10 @@ final class Round47HomeFlowTests: YubaiUITestCase {
                     XCTAssertTrue(waitForNativeTransition(in: app, deadline: Date().addingTimeInterval(12)))
                     XCTAssertTrue(waitForStableFrame(text))
                     XCTAssertEqual(text.label, title)
-                    XCTAssertTrue(cancel.isHittable)
                 }
-                tap("amountSheetCancel"); tap("paydaySetupCancel")
+                dismissNativeSheet(in: app)
+                XCTAssertTrue(waitForDisappearance(element("paydaySetupAmountDone")))
+                dismissNativeSheet(in: app)
                 XCTAssertTrue(waitForDisappearance(element("paydaySetupSheet")))
                 app.terminate()
             }
@@ -502,7 +511,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertFalse(app.staticTexts["工资未到账"].isHittable)
     }
     func testCancellingSalaryCaptureLeavesSalaryPendingAfterRelaunch() {
-        launch("v47-after"); tap("recordSalary"); tap("cancelManualSheet")
+        launch("v47-after"); tap("recordSalary"); dismissEntrySheet(in: app)
         app.terminate(); launchApp(app)
         XCTAssertTrue(element("mainNavigation").waitForExistence(timeout: 10))
         XCTAssertTrue(element("recordSalary").exists)

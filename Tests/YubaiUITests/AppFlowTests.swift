@@ -168,7 +168,7 @@ final class AppFlowTests: YubaiUITestCase {
         XCTAssertEqual(app.textFields["fixedFlowTitle"].value as? String, "工资")
         XCTAssertEqual(app.buttons["fixedFlowAmount"].value as? String, "8,000.00")
         XCTAssertFalse(app.buttons["saveManualSheet"].isEnabled)
-        tap(app.buttons["cancelManualSheet"], in: app)
+        dismissCurrentSheet(in: app)
         assertGone(anyElement("fixedFlowSchedule", in: app))
         goBack(app)
         XCTAssertTrue(app.navigationBars["账单"].exists)
@@ -568,7 +568,7 @@ final class AppFlowTests: YubaiUITestCase {
         var container = scroll
         if container == nil && (element.exists || element.waitForExistence(timeout: 5)) && !element.isHittable && app.alerts.count == 0 {
             let identifier = element.identifier.isEmpty ? element.label : element.identifier
-            if !element.identifier.hasPrefix("tab_") && !["undoLastChange", "addEntry", "closeSheet", "cancelManualSheet"].contains(element.identifier) {
+            if !element.identifier.hasPrefix("tab_") && !["undoLastChange", "addEntry", "closeSheet"].contains(element.identifier) {
                 container = app.scrollViews.allElementsBoundByIndex.last { candidate in
                     candidate.isHittable && candidate.frame.height > 120 && candidate.descendants(matching: element.elementType).matching(identifier: identifier).count > 0
                 }
@@ -1129,7 +1129,7 @@ final class AppFlowTests: YubaiUITestCase {
         let app = application("v46-bills", keepingUndo: true); launchApp(app); openFixedBills(app); billCalendarDay(25, in: app)
         let row = app.buttons["editFixedFlow_" + billFixtureID(46424)]
         scrollToVisible(row, in: app); row.press(forDuration: 0.8); tap(app.buttons["billMenu_stop"], in: app)
-        tap(app.buttons["fixedFlowStopCancel"], in: app)
+        dismissNativeSheet(in: app)
         XCTAssertTrue(row.exists)
         row.press(forDuration: 0.8); tap(app.buttons["billMenu_stop"], in: app)
         tap(app.buttons["fixedFlowStopConfirm"], in: app)
@@ -1411,7 +1411,7 @@ final class AppFlowTests: YubaiUITestCase {
         let app = application("manual"); launchApp(app)
         openNewEntry(app)
         XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
-        tap(app.buttons["cancelManualSheet"], in: app)
+        dismissCurrentSheet(in: app)
         tap(app.buttons["tab_yubai"], in: app); openSettings(app)
         XCTAssertFalse(anyElement("mainNavigation", in: app).exists)
         dragBack(app, to: 0.95); assertSelectedTab("tab_yubai", in: app)
@@ -1451,7 +1451,7 @@ final class AppFlowTests: YubaiUITestCase {
         backToRoot(app); assertSelectedTab("tab_yubai", in: app)
         openNewEntry(app); tap(app.buttons["importFromEntry"], in: app)
         XCTAssertTrue(app.buttons["chooseBillFile"].waitForExistence(timeout: 5))
-        tap(app.buttons["cancelManualSheet"], in: app)
+        dismissCurrentSheet(in: app)
         assertSelectedTab("tab_ledger", in: app)
         tap(app.buttons["tab_ledger"], in: app)
         assertCurrentTab("tab_ledger", content: "entriesScroll", in: app)
@@ -1530,7 +1530,7 @@ final class AppFlowTests: YubaiUITestCase {
         assertSelectedTab("tab_ledger", in: app)
         openLedgerEditor(row, in: app)
         XCTAssertTrue(anyElement("editEntryAmount", in: app).waitForExistence(timeout: 5))
-        tap(app.buttons["cancelManualSheet"], in: app)
+        dismissCurrentSheet(in: app)
         openNewEntry(app)
         XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
     }
@@ -1611,7 +1611,7 @@ final class AppFlowTests: YubaiUITestCase {
         let app = application("ask"); launchApp(app)
         openNewEntry(app)
         XCTAssertTrue(app.buttons["saveQuickEntry"].waitForExistence(timeout: 5))
-        tap(app.buttons["cancelManualSheet"], in: app); assertSelectedTab("tab_ledger", in: app)
+        dismissCurrentSheet(in: app); assertSelectedTab("tab_ledger", in: app)
         ask("咖啡共花了多少钱？", in: app)
         XCTAssertTrue(app.staticTexts["askAnswer"].waitForExistence(timeout: 10))
         backToRoot(app); assertSelectedTab("tab_yubai", in: app)
@@ -1700,27 +1700,30 @@ final class AppFlowTests: YubaiUITestCase {
         assertGone(answers.firstMatch); assertGone(app.buttons["clearAskConversation"])
     }
 
-    func testEntryDiscardDialogContinuesOrDiscards() {
+    func testEntryDismissalRetainsDraftAndDirtyNativeFormCanContinueOrDiscard() {
         let app = application("manual"); launchApp(app); openNewEntry(app)
-        pressAmount("32", in: app); tap(app.buttons["cancelManualSheet"], in: app)
-        XCTAssertTrue(app.buttons["放弃这笔"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts["已经填了 32.00 元"].exists)
-        tap(app.buttons["cancelConfirmation"], in: app)
-        XCTAssertEqual(app.buttons["entryKeypadAmount"].value as? String, "32.00")
-        tap(app.buttons["cancelManualSheet"], in: app); tap(app.buttons["放弃这笔"], in: app)
-        assertGone(app.buttons["saveQuickEntry"])
-        openNewEntry(app); tap(app.buttons["cancelManualSheet"], in: app)
-        assertGone(app.buttons["saveQuickEntry"])
-        for choice in ["entryCategory_交通", "entryNature_income", "entryDate_yesterday"] {
-            openNewEntry(app); tap(app.buttons[choice], in: app)
-            tap(app.buttons["cancelManualSheet"], in: app); assertGone(app.buttons["saveQuickEntry"])
-        }
+        pressAmount("32", in: app)
+        dismissEntrySheet(in: app)
         openNewEntry(app)
-        let purpose = app.textFields["entryPurpose"]
-        tap(purpose, in: app); purpose.typeText("合成用途\n")
-        tap(app.buttons["cancelManualSheet"], in: app)
-        XCTAssertTrue(app.buttons["放弃这笔"].waitForExistence(timeout: 5)); XCTAssertTrue(app.staticTexts["放弃修改？"].exists)
-        tap(app.buttons["放弃这笔"], in: app); assertGone(app.buttons["saveQuickEntry"])
+        XCTAssertEqual(anyElement("entryKeypadAmount", in: app).value as? String, "32.00")
+        dismissEntrySheet(in: app)
+
+        tap(app.buttons["tab_insights"], in: app)
+        tap(app.buttons["overviewSegment_资产"], in: app)
+        tap(app.buttons["overviewAddAccount"], in: app)
+        let field = app.textFields["accountName"]
+        typeIntoField("临时账户\n", identifier: "accountName", in: app)
+        dismissNativeSheet(in: app)
+        let discard = app.buttons["放弃这笔"]
+        XCTAssertTrue(discard.waitForExistence(timeout: 5))
+        dismissNativeSheet(in: app)
+        XCTAssertTrue(waitForDisappearance(discard))
+        XCTAssertEqual(field.value as? String, "临时账户")
+        dismissNativeSheet(in: app)
+        XCTAssertTrue(discard.waitForExistence(timeout: 5))
+        tap(discard, in: app)
+        XCTAssertTrue(waitForDisappearance(field))
+        XCTAssertFalse(app.buttons["overviewAccount_临时账户"].exists)
     }
 
     func testEntrySearchIncludesOtherMonths() {
@@ -1750,7 +1753,7 @@ final class AppFlowTests: YubaiUITestCase {
         let summary = app.buttons["entrySessionSummary"]
         XCTAssertTrue(summary.waitForExistence(timeout: 5))
         XCTAssertTrue(anyElement("entrySavedReceipt", in: app).exists)
-        tap(app.buttons["cancelManualSheet"], in: app)
+        dismissCurrentSheet(in: app)
         assertGone(summary)
     }
 
@@ -1828,7 +1831,7 @@ final class AppFlowTests: YubaiUITestCase {
         let app = application("manual"); launchApp(app); openNewEntry(app)
         var scroll = openEntryMore(app)
         tap(app.buttons["entryMoreAdd"], in: app, scroll: scroll)
-        tap(app.buttons["cancelManualSheet"], in: app)
+        dismissCurrentSheet(in: app)
         XCTAssertTrue(scroll.waitForExistence(timeout: 5)); tap(app.buttons["entryMoreCancel"], in: app)
         scroll = openEntryMore(app); tap(app.buttons["entryMoreAdd"], in: app, scroll: scroll)
         tap(app.buttons["categoryAdditionParent_餐饮"], in: app)
@@ -1858,10 +1861,10 @@ final class AppFlowTests: YubaiUITestCase {
         app.buttons["keypad_⌫"].press(forDuration: 1.2)
         XCTAssertEqual(amount.value as? String, "0.00")
         XCTAssertFalse(app.buttons["saveEditedEntry"].isEnabled)
-        tap(app.buttons["cancelManualSheet"], in: app)
-        XCTAssertTrue(app.buttons["cancelConfirmation"].waitForExistence(timeout: 5))
+        dismissCurrentSheet(in: app)
+        XCTAssertTrue(app.buttons["放弃这笔"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["放弃修改？"].exists); XCTAssertFalse(app.staticTexts["已经填了 0.00 元"].exists)
-        tap(app.buttons["cancelConfirmation"], in: app)
+        dismissNativeSheet(in: app)
         tap(app.buttons["keypad_8"], in: app)
         XCTAssertEqual(amount.value as? String, "8.00")
         tap(app.buttons["saveEditedEntry"], in: app)
@@ -1917,7 +1920,7 @@ final class AppFlowTests: YubaiUITestCase {
         openLedgerEditor(ledgerRows(app).firstMatch, in: app)
         XCTAssertEqual(app.buttons["editEntryAmount"].value as? String, "500.00")
         XCTAssertTrue(natureButton("转账", in: app).isSelected)
-        tap(app.buttons["cancelManualSheet"], in: app)
+        dismissCurrentSheet(in: app)
         openNewEntry(app); tap(natureButton("转账", in: app), in: app)
         XCTAssertTrue((app.buttons["transferDestinationAccount"].value as? String ?? "").contains("UI Transfer Bank"))
         XCTAssertFalse(addAccount.exists)
@@ -2067,7 +2070,7 @@ final class AppFlowTests: YubaiUITestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [updated], timeout: 5), .completed)
         tap(natureButton("支出", in: app), in: app); assertGone(chip)
         tap(natureButton("收入", in: app), in: app); XCTAssertFalse(chip.isSelected)
-        tap(app.buttons["cancelManualSheet"], in: app); tap(app.buttons["放弃这笔"], in: app)
+        dismissCurrentSheet(in: app); tap(app.buttons["放弃这笔"], in: app)
     }
 
 

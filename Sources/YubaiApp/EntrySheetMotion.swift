@@ -28,6 +28,7 @@ struct SpringFlight {
     @ObservationIgnored private var sealed = false
     @ObservationIgnored private var height: CGFloat = 0
     @ObservationIgnored private var started: Bool
+    @ObservationIgnored private var pendingCompletion: (() -> Void)?
     @ObservationIgnored private var fadeTask: Task<Void, Never>?
 
     init(settled: Bool) {
@@ -60,6 +61,7 @@ struct SpringFlight {
         if dragOrigin == nil {
             EntryRenderDiagnostics.mark("drag")
             fadeTask?.cancel()
+            pendingCompletion = nil
             if opacity != 1 { withAnimation(nil) { opacity = 1 } }
             let current = position(at: .now)
             dragOrigin = current
@@ -95,12 +97,14 @@ struct SpringFlight {
         dragOrigin = nil
         closing = true
         self.sealed = sealed
+        pendingCompletion = onClose
         if reduced {
+            flight = nil
             withAnimation(DSMotion.reduceMotionAnimation.speed(EntrySpec.fadeSpeed)) { opacity = 0 }
-            fadeTask = Task {
+            fadeTask = Task { [weak self] in
                 do { try await Task.sleep(for: .seconds(EntrySpec.reduceMotionDuration)) }
                 catch { return }
-                onClose()
+                self?.completeClose()
             }
         } else {
             spring(to: height + EntrySpec.dismissOvershoot, velocity: velocity)
@@ -115,7 +119,13 @@ struct SpringFlight {
         guard flight?.date == current.date else { return }
         offset = current.target
         flight = nil
-        if closing { onClose() }
+        if closing { completeClose(fallback: onClose) }
+    }
+
+    private func completeClose(fallback: () -> Void = {}) {
+        let action = pendingCompletion
+        pendingCompletion = nil
+        if let action { action() } else { fallback() }
     }
 
     private func spring(to target: CGFloat, velocity: CGFloat) {
@@ -146,10 +156,12 @@ struct EntrySheetPositionModifier: ViewModifier {
     let motion: EntrySheetMotion
     let reduced: Bool
     let onClose: () -> Void
+    var tracksOverview = false
 
     func body(content: Content) -> some View {
         TimelineView(.animation(paused: motion.flight == nil)) { tick in
             let _ = EntryRenderDiagnostics.hit(.sheetTransform)
+            let _ = tracksOverview ? OverviewRenderCounts.hit("overviewSheetTransform") : ()
             let y = motion.position(at: tick.date)
             content
                 .offset(y: y)

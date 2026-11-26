@@ -23,6 +23,7 @@ private struct UnitemizedSplitEditor: View {
     @State private var hint: CategoryAssignment?
     @State private var date: Date
     @State private var pickingDate = false
+    @State private var draftDate = Dates.now
     @State private var pickingCategory = false
     @State private var confirmingDiscard = false
     @FocusState private var purposeFocused: Bool
@@ -63,7 +64,7 @@ private struct UnitemizedSplitEditor: View {
     private var tray: some View {
         EntryKeyboardTray(purpose: $purpose, purposeIdentifier: "splitUnitemizedPurpose", focus: $purposeFocused) {
             ChipFlow {
-                Button { purposeFocused = false; pickingDate = true } label: {
+                Button { purposeFocused = false; draftDate = date; pickingDate = true } label: {
                     Label(ManualBookkeeping.dayLabel(date), systemImage: "calendar").yubaiFont(YubaiFont.callout)
                         .padding(.horizontal, YubaiSpace.gapGroup).frame(minHeight: YubaiSize.tapMin)
                         .background(YubaiColor.keyFn, in: Capsule())
@@ -106,8 +107,8 @@ private struct UnitemizedSplitEditor: View {
         ScrollView {
             VStack(spacing: YubaiSpace.space8) {
                 ManualSheetHeader(title: "日期", actionTitle: "好", actionIdentifier: "splitUnitemizedDateDone", cancelIdentifier: "splitUnitemizedDateCancel",
-                                  cancel: { pickingDate = false }, action: { pickingDate = false })
-                EntryCalendarView(selection: $date, today: store.financialNow, bounds: range, identifier: "splitUnitemizedCalendar")
+                                  cancel: { pickingDate = false }, action: { date = draftDate; pickingDate = false })
+                EntryCalendarView(selection: $draftDate, today: store.financialNow, bounds: range, identifier: "splitUnitemizedCalendar")
             }.padding(.horizontal, YubaiSpace.insetPage)
         }.yubaiSheetBackground()
             #if os(iOS)

@@ -822,7 +822,7 @@ private struct PaperBackground: ViewModifier {
     @Environment(\.yubaiRootSurface) private var rootSurface
     @Environment(\.yubaiSheetSurface) private var inSheet
     func body(content: Content) -> some View {
-        if rootSurface && !inSheet { content }
+        if rootSurface || inSheet { content }
         else { content.background { PaperCanvas() } }
     }
 }
@@ -1153,6 +1153,107 @@ private struct ChipSelection: ViewModifier {
     }
 }
 
+private struct LegacySheetDismissal: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    #if os(iOS)
+    @State private var dismissal = LegacySheetDismissalContext()
+    #endif
+
+    func body(content: Content) -> some View {
+        content
+            #if os(iOS)
+            .background { LegacySheetScrimTap(context: dismissal, dismiss: { dismiss() }).allowsHitTesting(false) }
+            #elseif os(macOS)
+            .onExitCommand { dismiss() }
+            #endif
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("nativeSheetSurface")
+            .accessibilityAction(.escape) {
+                #if os(iOS)
+                if let controller = dismissal.controller, controller.requestDismissal() { return }
+                #endif
+                dismiss()
+            }
+    }
+}
+
+#if os(iOS)
+@MainActor private final class LegacySheetDismissalContext {
+    weak var controller: LegacySheetScrimTap.Controller?
+}
+
+/// UIKit owns the detent, grabber and dimming view. Detect only touches outside
+/// the presented surface, and use the same dismissal delegate as a downward pan.
+private struct LegacySheetScrimTap: UIViewControllerRepresentable {
+    let context: LegacySheetDismissalContext
+    let dismiss: () -> Void
+
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ controller: Controller, context: Context) {
+        self.context.controller = controller
+        controller.dismiss = dismiss
+    }
+    static func dismantleUIViewController(_ controller: Controller, coordinator: ()) { controller.detach() }
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        var dismiss: () -> Void = {}
+        private weak var presentation: UIPresentationController?
+        private weak var host: UIViewController?
+        private lazy var tap: UITapGestureRecognizer = {
+            let gesture = UITapGestureRecognizer(target: self, action: #selector(scrimTapped))
+            gesture.name = "Yubai.LegacySheetScrim"
+            gesture.delegate = self
+            return gesture
+        }()
+
+        override func loadView() {
+            view = UIView()
+            view.isUserInteractionEnabled = false
+            view.accessibilityElementsHidden = true
+        }
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            var candidate = parent
+            while let controller = candidate {
+                if controller.presentingViewController != nil, let presentation = controller.presentationController {
+                    self.presentation = presentation
+                    host = controller
+                    if let container = presentation.containerView,
+                       container.gestureRecognizers?.contains(where: { $0.name == tap.name }) != true {
+                        container.addGestureRecognizer(tap)
+                    }
+                    return
+                }
+                candidate = controller.parent
+            }
+        }
+
+        func detach() { tap.view?.removeGestureRecognizer(tap) }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            guard let host, host.presentedViewController == nil,
+                  let presentation, let container = presentation.containerView,
+                  let surface = presentation.presentedView else { return false }
+            return !surface.bounds.contains(touch.location(in: surface))
+                && container.bounds.contains(touch.location(in: container))
+        }
+
+        @objc private func scrimTapped() { _ = requestDismissal() }
+
+        func requestDismissal() -> Bool {
+            guard let presentation, let host, host.presentedViewController == nil else { return false }
+            if presentation.delegate?.presentationControllerShouldDismiss?(presentation) == false || host.isModalInPresentation {
+                presentation.delegate?.presentationControllerDidAttemptToDismiss?(presentation)
+            } else {
+                dismiss()
+            }
+            return true
+        }
+    }
+}
+#endif
+
 extension View {
     func amountPrivacy(_ hidden: Bool) -> some View { contentTransition(.opacity).animation(YubaiMotion.quick, value: hidden) }
     func paperBackground() -> some View { modifier(PaperBackground()) }
@@ -1160,6 +1261,8 @@ extension View {
         environment(\.yubaiSheetSurface, true).environment(\.yubaiRootSurface, false)
             .environment(\.yubaiFormSurface, false)
             .presentationBackground { PaperCanvas() }
+            .presentationDragIndicator(.visible)
+            .modifier(LegacySheetDismissal())
             .modifier(SheetPresentationMetrics())
             .surfacePresentations()
             #if DEBUG && targetEnvironment(simulator) && os(iOS)
@@ -2693,7 +2796,7 @@ struct AmountSheetRow: Identifiable, Equatable {
     var id: String { label }
 }
 
-/// 半屏记金额：标题、取消、两颗现成数、大金额、最多两行结果、数字键盘。
+/// 半屏记金额：标题、两颗现成数、大金额、最多两行结果、数字键盘。
 /// 超支补法、发工资、账单付了、算式页就地改共用。金额状态由调用方的 `EntryKeypad` 持有。
 /// Numeric sheets keep the title and its monetary fact beside the keypad.
 struct AmountSheetHeader: View {
@@ -2702,7 +2805,7 @@ struct AmountSheetHeader: View {
     let cancel: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.space4) {
-            ManualSheetHeader(title: title, showsAction: false, cancelIdentifier: "amountSheetCancel", cancel: cancel, action: {}, preservesCancelIdentifier: true)
+            ManualSheetHeader(title: title, showsAction: false, cancel: cancel, action: {})
             if let subtitle { Text(subtitle).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
         }
     }
@@ -2724,15 +2827,17 @@ struct KeypadSheet<Content: View, Footer: View>: View {
             ScrollView {
                 content().fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, YubaiSpace.insetPage)
-                    .padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapGroup)
+                    .padding(.bottom, YubaiSpace.gapGroup)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { if TextInputMetrics.changed(from: contentHeight, to: $0) { contentHeight = $0 } }
             }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
             // Keep both subtrees mounted. A focus change must not recreate an
             // editor or change the sheet's selected height beneath UIKit.
+            // Hide the collapsed footer without clipping the tray's safe-area fill.
             footer().fixedSize(horizontal: false, vertical: true)
                 .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { if TextInputMetrics.changed(from: footerHeight, to: $0) { footerHeight = $0 } }
-                .frame(height: inputSession.isEditing ? 0 : nil).clipped()
+                .frame(height: inputSession.isEditing ? 0 : nil)
+                .opacity(inputSession.isEditing ? 0 : 1)
                 .allowsHitTesting(!inputSession.isEditing).accessibilityHidden(inputSession.isEditing)
                 .accessibilityElement(children: .contain).accessibilityIdentifier("fixedBottomBar")
         }.environment(\.yubaiRowInputSession, inputSession)
@@ -2993,11 +3098,12 @@ struct ManualSheetHeader: View {
             .fixedSize(horizontal: false, vertical: true)
     }
     private var cancelButton: some View {
-        Button(action: cancel) {
-            Text(cancelTitle).yubaiFont(YubaiFont.body).fixedSize()
+        let label = cancelTitle == "取消" ? "返回" : cancelTitle
+        return Button(action: cancel) {
+            Text(label).yubaiFont(YubaiFont.body).fixedSize()
                 .padding(.horizontal, 16).frame(minHeight: 36).background(YubaiColor.card, in: Capsule())
                 .frame(minHeight: 44).contentShape(Capsule())
-        }.accessibilityIdentifier(!preservesCancelIdentifier && cancelIdentifier == "cancelManualSheet" && cancelTitle != "取消" ? "closeSheet" : cancelIdentifier)
+        }.accessibilityIdentifier(!preservesCancelIdentifier && cancelIdentifier == "cancelManualSheet" ? "closeSheet" : cancelIdentifier)
     }
     @ViewBuilder private var actionButton: some View {
         if showsAction {
@@ -3010,16 +3116,20 @@ struct ManualSheetHeader: View {
                     .yubaiHitTarget()
             }.disabled(!enabled).opacity(enabled ? 1 : 0.4)
                 .accessibilityIdentifier(actionIdentifier ?? (actionTitle == "导入" ? "importFromEntry" : "saveManualSheet"))
-        } else { Color.clear.frame(width: 64, height: 36).accessibilityHidden(true) }
+        } else { Color.clear.frame(width: .zero, height: .zero).accessibilityHidden(true) }
     }
     var body: some View {
         SheetHeaderLayout(stacked: textSize.isAccessibilitySize) {
-            cancelButton
+            if !inSheet || cancelTitle != "取消" { cancelButton }
+            else { Color.clear.frame(width: .zero, height: .zero).accessibilityHidden(true) }
             titleView.multilineTextAlignment(.center)
             actionButton
-        }.frame(minHeight: 48).padding(.top, inSheet ? YubaiSpace.sheetHeaderTop : 0).buttonStyle(PressButtonStyle())
-            .background(YubaiColor.canvas)
-            .overlay(alignment: .bottom) { PageFade(edge: .top).offset(y: 24) }
+        }.frame(minHeight: 48)
+            .padding(.top, inSheet ? YubaiSpace.sheetHeaderTop : 0)
+            .buttonStyle(PressButtonStyle())
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier(inSheet ? "nativeSheetHeader" : "")
+            .accessibilityAction(.escape, cancel)
     }
 }
 
@@ -4196,11 +4306,9 @@ struct MoneyInputRow: View {
 
 /// All confirmation sheets use the same content-sized surface and amber action.
 struct ConfirmationSheet<Actions: View>: View {
-    @Environment(\.dismiss) private var dismiss
     @State private var measuredHeight: CGFloat = 300
     let title: String
     var consequence: String? = nil
-    var cancelIdentifier = "cancelConfirmation"
     @ViewBuilder let actions: Actions
     var body: some View {
         ScrollView {
@@ -4208,7 +4316,6 @@ struct ConfirmationSheet<Actions: View>: View {
                 Text(title).yubaiFont(YubaiFont.navTitle).fixedSize(horizontal: false, vertical: true)
                 if let consequence { Text(consequence).yubaiFont(YubaiFont.body).foregroundStyle(YubaiColor.labelSecondary) }
                 actions
-                Button("取消") { dismiss() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier(cancelIdentifier)
             }.fixedSize(horizontal: false, vertical: true).padding(YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if $0 > 0 { measuredHeight = $0 } }
         }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
@@ -4265,18 +4372,27 @@ private struct EntryDateSheet: View {
     let time: Bool
     let allowsFuture: Bool
     let latestDate: Date
+    @State private var draft: Date
+
+    init(date: Binding<Date>, time: Bool, allowsFuture: Bool, latestDate: Date) {
+        _date = date
+        _draft = State(initialValue: date.wrappedValue)
+        self.time = time
+        self.allowsFuture = allowsFuture
+        self.latestDate = latestDate
+    }
     var body: some View {
         ScrollView {
             Group {
                 if time {
-                    DatePicker("时间", selection: $date, in: Date.distantPast...(allowsFuture ? Date.distantFuture : latestDate), displayedComponents: .hourAndMinute)
+                    DatePicker("时间", selection: $draft, in: Date.distantPast...(allowsFuture ? Date.distantFuture : latestDate), displayedComponents: .hourAndMinute)
                         .labelsHidden().accessibilityIdentifier("entryTimePicker")
                 } else {
-                    EntryCalendarView(selection: $date, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
+                    EntryCalendarView(selection: $draft, today: latestDate, bounds: allowsFuture ? nil : Date.distantPast...latestDate)
                 }
             }.padding(.horizontal, YubaiSpace.insetCard).padding(.top, YubaiSpace.insetCard).padding(.bottom, YubaiSpace.gapSection)
         }.transaction { $0.animation = nil }
-            .manualSheetHeader(time ? "时间" : "日期", actionTitle: "好", actionIdentifier: "entryDateDone", cancel: { dismiss() }, action: { dismiss() })
+            .manualSheetHeader(time ? "时间" : "日期", actionTitle: "好", actionIdentifier: "entryDateDone", cancel: { dismiss() }, action: { date = draft; dismiss() })
             // 68 header + 16 + 44 month + 8 + 7 × 44 rows + 6 × 4 + 24 = 492 ≤ 520:
             // a six-week month's last row is never cut at the default text size.
             .yubaiSheetBackground().presentationDetents(time ? [.medium, .large] : [.height(YubaiSize.sheet520), .large])

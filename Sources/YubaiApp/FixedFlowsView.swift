@@ -50,7 +50,7 @@ private struct FixedFlowStopSheet: View {
         return pending.first.map { FixedFlowPresentation.monthDay($0.date) + "这期还没记。" }
     }
     var body: some View {
-        ConfirmationSheet(title: "停掉「\(title)」", consequence: message, cancelIdentifier: "fixedFlowStopCancel") {
+        ConfirmationSheet(title: "停掉「\(title)」", consequence: message) {
             if pending.isEmpty {
                 Button("停掉") { performStop() }.buttonStyle(DestructiveButtonStyle())
                     .accessibilityIdentifier("fixedFlowStopConfirm").accessibilityHint("只停以后的，已到期账单和付过的记录保留")
@@ -300,7 +300,7 @@ extension View {
     }
 }
 
-/// 账单弹窗的标题行：名字、一个小数、取消。
+/// 账单弹窗的标题和金额。
 private struct BillSheetHeader: View {
     @Environment(\.dismiss) private var dismiss
     let title: String
@@ -440,7 +440,7 @@ private struct BillMatchContent: View {
                 Text("账本里已经有一笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                 Card { BillEntryRow(entry: entry) }
                 if let row = resultRow { ResultBar(label: row.label, value: row.value, amber: row.amber) }
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop)
+            }.padding(.horizontal, YubaiSpace.insetPage)
         }.scrollBounceBehavior(.basedOnSize)
             .fixedBottomBar() {
                 VStack(spacing: YubaiSpace.space8) {
@@ -495,7 +495,7 @@ struct BillLinkSheet: View {
                             .buttonStyle(PressButtonStyle()).accessibilityIdentifier("billLink_" + entry.id.uuidString)
                     }
                 }
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapSection)
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
         }.paperBackground().accessibilityIdentifier("billLinkSheet")
             .task { candidates = Array(FixedFlows.linkCandidates(planID: planID, in: store.current, now: Dates.now).prefix(40)) }
             #if os(iOS)
@@ -524,7 +524,7 @@ private struct BillDayPicker: View {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 BillSheetHeader(title: "每月几号")
                 MonthDayChoices(selection: .constant(current), identifier: "billDay_") { value in pick(value); dismiss() }
-            }.padding(.horizontal, YubaiSpace.insetPage).padding(.top, YubaiSpace.sheetHeaderTop).padding(.bottom, YubaiSpace.gapSection)
+            }.padding(.horizontal, YubaiSpace.insetPage).padding(.bottom, YubaiSpace.gapSection)
         }.paperBackground()
             #if os(iOS)
             .presentationDetents([.medium, .large])

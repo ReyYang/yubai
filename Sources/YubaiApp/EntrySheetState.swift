@@ -123,7 +123,7 @@ struct EntrySheetDraft: Equatable {
         fixtureLedger = Ledger()
         settled = false
         isPrefilled = prefill != nil
-        fixtureNow = HomeFixture.current?.now
+        fixtureNow = store.overviewFixture?.now ?? HomeFixture.current?.now
         self.editingID = editingID
         self.categoryOnly = categoryOnly
         categoryPanel = categoryOnly
