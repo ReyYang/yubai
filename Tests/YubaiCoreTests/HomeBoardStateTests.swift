@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round47RevisionTests: XCTestCase {
+final class HomeBoardStateTests: XCTestCase {
     func d(_ text: String) -> Date { Dates.parse(text)! }
     var now: Date { d("2026-11-20 12:00") }
     func testInterfaceMonthDayUsesChineseUnitsAcrossCalendarBoundaries() {

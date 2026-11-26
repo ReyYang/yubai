@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round46PaydayCycleTests: XCTestCase {
+final class PaydayArrivalTests: XCTestCase {
     private func d(_ value: String) -> Date { Dates.parse(value)! }
     private func ledger() -> Ledger {
         var value = Ledger()

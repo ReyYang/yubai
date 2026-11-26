@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round46SavingInsightsTests: XCTestCase {
+final class SavingInsightsTests: XCTestCase {
     private let now = Dates.parse("2026-11-20")!.addingTimeInterval(12 * 3600)
     private func date(_ value: String) -> Date { Dates.parse(value)! }
     private func ledger() -> Ledger {

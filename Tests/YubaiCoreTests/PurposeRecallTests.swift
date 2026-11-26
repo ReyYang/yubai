@@ -1,7 +1,7 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round40Tests: XCTestCase {
+final class PurposeRecallTests: XCTestCase {
     let now = Dates.parse("2026-11-06 12:30:00")!
     func fixture() -> Ledger { var l = Ledger(); l.accounts = [Account(name: "卡")]; return l }
     func row(_ ledger: Ledger, _ date: String, _ title: String = "午饭", _ category: String = "餐饮", _ nature: Nature = .expense) -> Entry {
@@ -103,7 +103,7 @@ final class Round40Tests: XCTestCase {
 }
 
 
-extension Round40Tests {
+extension PurposeRecallTests {
     func testContinuousLedgerKeepsPreviousDayAtPaydayAndFiltersMonthTotals() {
         var l = fixture()
         let today = Dates.parse("2026-11-10 12:00")!

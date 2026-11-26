@@ -1,10 +1,10 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45ReserveTests: XCTestCase {
-    let now = Round45Fixture.now
+final class ReservePurchaseTests: XCTestCase {
+    let now = LedgerFixture.now
     func testReservePurchasePreviewSaveDeleteAndRefund() throws {
-        var l = Round45Fixture.ledger(); let original = l
+        var l = LedgerFixture.ledger(); let original = l
         let before = Finance.funds(l, now: now).available
         let change = try ManualBookkeeping.change(amount: 120_000, nature: .expense, accountID: l.accounts[0].id, day: now,
                                                   purpose: "Coat", category: "购物", now: now, fromReserve: true)
@@ -19,7 +19,7 @@ final class Round45ReserveTests: XCTestCase {
         var edited = purchase; edited.amount = 150_000
         XCTAssertEqual(try ManualBookkeeping.available(after: edited, in: l, now: now), before)
         try ManualBookkeeping.edit(edited, in: &l); XCTAssertEqual(l.fixedSavingsTotal(now: now), 350_000)
-        var refund = Round45Fixture.entry(l, amount: 30_000, date: "2026-11-20 12:00", nature: .refund)
+        var refund = LedgerFixture.entry(l, amount: 30_000, date: "2026-11-20 12:00", nature: .refund)
         refund.relatedEntryID = purchase.id; refund.recordedAt = now; l.entries.append(refund)
         XCTAssertEqual(l.fixedSavingsTotal(now: now), 380_000); XCTAssertEqual(Finance.funds(l, now: now).available, before)
         l.entries.removeAll { $0.id == purchase.id || $0.id == refund.id }
@@ -27,7 +27,7 @@ final class Round45ReserveTests: XCTestCase {
         l = original; XCTAssertEqual(l.fixedSavingsTotal(now: now), 500_000)
     }
     func testReserveInsufficiencyAndNatureInvariant() throws {
-        var l = Round45Fixture.ledger()
+        var l = LedgerFixture.ledger()
         let change = try ManualBookkeeping.change(amount: 500_001, nature: .expense, accountID: l.accounts[0].id, day: now,
                                                   purpose: "Coat", category: "购物", now: now, fromReserve: true)
         XCTAssertThrowsError(try change.apply(to: &l)) { XCTAssertEqual($0 as? YubaiError, .invalid("存着的钱不够。")) }
@@ -43,7 +43,7 @@ final class Round45ReserveTests: XCTestCase {
         draft.nature = .refund; XCTAssertFalse(draft.fromReserve)
     }
     func testNewPersistedFieldsAreOptionalAndFalseKeysAreOmitted() throws {
-        var l = Round45Fixture.ledger(); let baseline = l
+        var l = LedgerFixture.ledger(); let baseline = l
         let object = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(l)) as? [String: Any])
         XCTAssertNil(object["paydayConfirmSince"]); XCTAssertNil(object["cycleCovers"]); XCTAssertNil(object["reserveAdjustments"])
         for entry in try XCTUnwrap(object["entries"] as? [[String: Any]]) { XCTAssertNil(entry["fromReserve"]); XCTAssertNil(entry["spreadFrom"]) }
@@ -60,14 +60,14 @@ final class Round45ReserveTests: XCTestCase {
         XCTAssertEqual(l.schema, 4)
     }
     func overspent() -> Ledger {
-        var l = Round45Fixture.ledger(); l.entries = [Round45Fixture.entry(l, amount: 272_000, date: "2026-12-04")]
-        l.entries.append(Round45Fixture.entry(l, amount: 601_000, date: "2026-11-10", nature: .income))
-        l.plans[1].dueDate = Round45Fixture.date("2026-12-06")
-        l.accounts[0].anchorBalance = 1_029_000; l.accounts[0].anchorDate = Round45Fixture.date("2026-12-05 11:59")
+        var l = LedgerFixture.ledger(); l.entries = [LedgerFixture.entry(l, amount: 272_000, date: "2026-12-04")]
+        l.entries.append(LedgerFixture.entry(l, amount: 601_000, date: "2026-11-10", nature: .income))
+        l.plans[1].dueDate = LedgerFixture.date("2026-12-06")
+        l.accounts[0].anchorBalance = 1_029_000; l.accounts[0].anchorDate = LedgerFixture.date("2026-12-05 11:59")
         return l
     }
     func testOverspendBothRoutesAndCushion() throws {
-        let at = Round45Fixture.date("2026-12-05 12:00")
+        let at = LedgerFixture.date("2026-12-05 12:00")
         var l = overspent(); let options = try XCTUnwrap(Overspend.options(l, now: at))
         XCTAssertEqual(options.overBy, 32_000); XCTAssertEqual(options.daysLeft, 5)
         XCTAssertEqual(options.maxSaveLess, 0); XCTAssertEqual(options.maxFromReserve, 500_000)
@@ -78,7 +78,7 @@ final class Round45ReserveTests: XCTestCase {
         XCTAssertEqual(Overspend.options(l, now: at)?.overBy, 32_000)
     }
     func testOverspendLimitsInvalidAmountsAndZeroOptions() throws {
-        let at = Round45Fixture.date("2026-12-05 12:00")
+        let at = LedgerFixture.date("2026-12-05 12:00")
         var l = overspent()
         for amount in [-1 as Int64, 0, 200_001] { XCTAssertThrowsError(try Overspend.cover(&l, source: .saveLess, amount: amount, now: at)) }
         XCTAssertThrowsError(try Overspend.cover(&l, source: .fromReserve, amount: 500_001, now: at))
@@ -87,7 +87,7 @@ final class Round45ReserveTests: XCTestCase {
         XCTAssertEqual(options.maxSaveLess, 0); XCTAssertEqual(options.maxFromReserve, 0)
     }
     func testBigPurchaseNumbersThresholdsAndReserveLimit() throws {
-        var l = Round45Fixture.ledger(); let big = try XCTUnwrap(Finance.bigPurchase(l, amount: 120_000, now: now))
+        var l = LedgerFixture.ledger(); let big = try XCTUnwrap(Finance.bigPurchase(l, amount: 120_000, now: now))
         XCTAssertEqual(big.days, 15); XCTAssertEqual(big.availableAfter, 36_400); XCTAssertEqual(big.reserveAfter, 380_000)
         XCTAssertTrue(big.canUseReserve); XCTAssertTrue(big.tight)
         XCTAssertEqual(Finance.bigPurchase(l, amount: 189_900, now: now)?.days, 24)
@@ -95,11 +95,11 @@ final class Round45ReserveTests: XCTestCase {
         XCTAssertFalse(Finance.bigPurchase(l, amount: 500_001, now: now)!.canUseReserve)
         l.plans = []; l.cycleAnchor = nil
         XCTAssertNil(Finance.bigPurchase(l, amount: 120_000, now: now))
-        l.entries = (1...90).map { day in Round45Fixture.entry(l, amount: 1000, date: Dates.text(Dates.addDays(-day, to: now))) }
+        l.entries = (1...90).map { day in LedgerFixture.entry(l, amount: 1000, date: Dates.text(Dates.addDays(-day, to: now))) }
         XCTAssertEqual(Finance.bigPurchase(l, amount: 8000, now: now)?.days, 8)
     }
     func testReserveOverviewSignsDatesAdjustmentsAndSetAside() throws {
-        var l = Round45Fixture.ledger(); let initial = Reserve.overview(l, now: now)
+        var l = LedgerFixture.ledger(); let initial = Reserve.overview(l, now: now)
         XCTAssertEqual(initial.total, 700_000); XCTAssertEqual(initial.setAside, 200_000)
         Reserve.setTotal(600_000, in: &l, now: now)
         XCTAssertEqual(l.fixedSavingsTotal(now: now), 600_000); XCTAssertEqual(l.reserveAdjustments.last?.delta, 100_000)
@@ -112,12 +112,12 @@ final class Round45ReserveTests: XCTestCase {
         XCTAssertEqual(result.lines.reduce(0) { $0 + $1.amount } + 500_000, result.total)
         let before = l; Reserve.setTotal(480_000, in: &l, now: now); XCTAssertEqual(l, before)
         l.fixedSavings = 0
-        var income = Round45Fixture.entry(l, amount: 100_000, date: "2026-11-20 12:00", nature: .income); income.intoFixedSavings = true; income.recordedAt = now
+        var income = LedgerFixture.entry(l, amount: 100_000, date: "2026-11-20 12:00", nature: .income); income.intoFixedSavings = true; income.recordedAt = now
         l.entries = [income]; l.cycleCovers = []
         l.setFixedSavingsTotal(0, now: now); XCTAssertEqual(l.fixedSavingsTotal(now: now), 100_000)
     }
     func testFormulaIdentityWithDebtGoalUncertainAndReserve() throws {
-        var l = Round45Fixture.ledger()
+        var l = LedgerFixture.ledger()
         func check(_ ledger: Ledger) {
             let f = Finance.formula(ledger, now: now)
             XCTAssertEqual(f.available - f.deficit, f.available)
@@ -128,20 +128,20 @@ final class Round45ReserveTests: XCTestCase {
         XCTAssertEqual(f.income, 801_000); XCTAssertEqual(f.saving, 200_000); XCTAssertEqual(f.billsRest, 361_000); XCTAssertEqual(f.available, 156_400)
         l.accounts.append(Account(name: "Credit", kind: .credit, balance: -64_000, at: now))
         l.goals = [Goal(title: "Goal", target: 1000, reserved: 1000)]
-        var uncertain = Round45Fixture.entry(l, amount: 500, date: "2026-11-20 12:00", nature: .unknownIn); uncertain.recordedAt = now; l.entries.append(uncertain)
+        var uncertain = LedgerFixture.entry(l, amount: 500, date: "2026-11-20 12:00", nature: .unknownIn); uncertain.recordedAt = now; l.entries.append(uncertain)
         check(l)
         try Overspend.cover(&l, source: .saveLess, amount: 1000, now: now); check(l)
     }
 }
 
-extension Round45ReserveTests {
+extension ReservePurchaseTests {
     func testReserveEditsCannotBorrowFutureEarmarkedIncome() throws {
-        var l = Round45Fixture.ledger()
+        var l = LedgerFixture.ledger()
         let change = try ManualBookkeeping.change(amount: 120_000, nature: .expense, accountID: l.accounts[0].id, day: now,
                                                   purpose: "Coat", category: "购物", now: now, fromReserve: true)
         try change.apply(to: &l)
         let id = l.entries.last!.id
-        var future = Round45Fixture.entry(l, amount: 1_000_000, date: "2026-12-01", nature: .income)
+        var future = LedgerFixture.entry(l, amount: 1_000_000, date: "2026-12-01", nature: .income)
         future.intoFixedSavings = true; l.entries.append(future)
         var edited = l.entries.first { $0.id == id }!; edited.amount = 600_000
         XCTAssertThrowsError(try ManualBookkeeping.available(after: edited, in: l, now: now))
@@ -149,7 +149,7 @@ extension Round45ReserveTests {
         XCTAssertThrowsError(try ManualBookkeeping.edit(edited, in: &l))
     }
     func testReserveTrueAndSpreadKeysRoundTripAndShareCoverUsesEffectiveTarget() throws {
-        var l = Round45Fixture.ledger()
+        var l = LedgerFixture.ledger()
         l.savingRule = .share(20)
         let rule = Finance.funds(l, now: now).savingRuleTarget
         XCTAssertEqual(rule, 160_200)
@@ -164,7 +164,7 @@ extension Round45ReserveTests {
         XCTAssertEqual(decoded, l); XCTAssertTrue(decoded.entries.last!.fromReserve)
         let draft = EntryDraft(date: now, amount: 1000, accountID: l.accounts[0].id, title: "Test", fromReserve: true)
         XCTAssertEqual(try JSONDecoder().decode(EntryDraft.self, from: JSONEncoder().encode(draft)), draft)
-        let at = Round45Fixture.date("2026-12-05 12:00")
+        let at = LedgerFixture.date("2026-12-05 12:00")
         XCTAssertEqual(Reserve.overview(overspent(), now: at).setAside, 0)
     }
 }

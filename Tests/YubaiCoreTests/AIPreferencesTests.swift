@@ -1,9 +1,9 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45BPreferencesTests: XCTestCase {
-    let now = Round45BFixture.now
-    func d(_ text: String) -> Date { Round45BFixture.d(text) }
+final class AIPreferencesTests: XCTestCase {
+    let now = FutureLedgerFixture.now
+    func d(_ text: String) -> Date { FutureLedgerFixture.d(text) }
     func testAITogglesDefaultToMasterSwitchAndPersistIndependentOptOuts() throws {
         var preferences = Preferences()
         XCTAssertTrue(AIFeature.allCases.allSatisfy { !preferences.isAIEnabled(for: $0) })
@@ -25,7 +25,7 @@ final class Round45BPreferencesTests: XCTestCase {
         XCTAssertNil(CloudBackend.configured(preferences: preferences, feature: .answers, environment: [:]))
     }
     func testNewFalseFlagsAndEmptyCollectionsAreOmitted() throws {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         ledger.reservePaybacks = []; ledger.repeatPreferences = []
         ledger.preferences.weeklyAutoBackup = false; ledger.preferences.aiAnswersDisabled = false
         var plan = Plan(title: "电费", amount: 1000, dueDate: now); plan.occurrenceDateOverrides = [:]
@@ -36,7 +36,7 @@ final class Round45BPreferencesTests: XCTestCase {
         }
     }
     func testSchema4ArchiveWithoutNewKeysRetainsOldBehavior() throws {
-        let original = Round45Fixture.ledger()
+        let original = LedgerFixture.ledger()
         let bytes = try JSONEncoder().encode(original)
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: bytes) as? [String: Any])
         for key in ["reservePaybacks", "repeatPreferences"] { json.removeValue(forKey: key) }
@@ -60,10 +60,10 @@ final class Round45BPreferencesTests: XCTestCase {
         preferences.weeklyAutoBackup = nil; XCTAssertFalse(LedgerBackup.isAutoBackupDue(preferences, now: Dates.addDays(20, to: now)))
     }
     func testCSVHasBOMChineseHeaderExactCentsAndEscapedOriginalText() throws {
-        var ledger = Round45BFixture.ledger()
-        var row = Round45BFixture.entry(ledger, date: "2026-11-20", amount: 100, title: "商店,\"甲\"")
+        var ledger = FutureLedgerFixture.ledger()
+        var row = FutureLedgerFixture.entry(ledger, date: "2026-11-20", amount: 100, title: "商店,\"甲\"")
         row.note = "第一行\n第二行"; ledger.entries = [row]
-        ledger.entries.append(Round45BFixture.entry(ledger, date: "2026-12-20", amount: 1, nature: .income))
+        ledger.entries.append(FutureLedgerFixture.entry(ledger, date: "2026-12-20", amount: 1, nature: .income))
         var deleted = row; deleted.id = UUID(); deleted.deletedAt = now; ledger.entries.append(deleted)
         let csv = LedgerBackup.entriesCSV(ledger)
         XCTAssertTrue(csv.starts(with: [0xef, 0xbb, 0xbf]))
@@ -71,7 +71,7 @@ final class Round45BPreferencesTests: XCTestCase {
         XCTAssertEqual(table.count, 3); XCTAssertEqual(table[0][0], "日期")
         XCTAssertEqual(table[1][1], "1.00"); XCTAssertEqual(table[2][1], "0.01")
         XCTAssertEqual(table[1][3], row.title); XCTAssertEqual(table[1][8], row.note)
-        XCTAssertEqual(try CSV.parse(CSV.decode(LedgerBackup.entriesCSV(Round45BFixture.ledger()))).count, 1)
+        XCTAssertEqual(try CSV.parse(CSV.decode(LedgerBackup.entriesCSV(FutureLedgerFixture.ledger()))).count, 1)
     }
     func testPrincipleHoursThresholdStrictnessSpecificityAndFallback() {
         let principles = ["超过 2,000 等 48 小时", "超过 5,000 元等 7 天", "想克制一点"]
@@ -85,7 +85,7 @@ final class Round45BPreferencesTests: XCTestCase {
         XCTAssertTrue(Wishlist.cooldown(fromPrinciples: ["超过 -1 等 48 小时", "超过 0 等 1 天", "超过 200 等 0 小时", "超过 1 等 999999 天"]).isEmpty)
     }
     func testWishlistAddActuallyUsesHourPrinciple() throws {
-        var ledger = Round45BFixture.ledger(); ledger.profile.principles = ["超过 2,000 等 48 小时"]
+        var ledger = FutureLedgerFixture.ledger(); ledger.profile.principles = ["超过 2,000 等 48 小时"]
         let verdict = SubmittedPurchaseVerdict(verdict: .wait, reason: "先等等", need: .want, boundReason: "")
         let wish = try Wishlist.add(fromVerdict: verdict, title: "大衣", amount: 240_000, in: &ledger, now: now)
         XCTAssertEqual(wish.coolUntil, now.addingTimeInterval(48 * 3600))
@@ -93,10 +93,10 @@ final class Round45BPreferencesTests: XCTestCase {
         XCTAssertEqual(Wishlist.cooldownDue(ledger, now: now.addingTimeInterval(48 * 3600)).count, 1)
     }
     func testPinHideReorderAndUnpinRepeatsPersistAndInvalidateCache() throws {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         for name in ["午饭", "地铁", "咖啡"] {
             for day in ["2026-11-18", "2026-11-19"] {
-                var entry = Round45BFixture.entry(ledger, date: day, title: name); entry.recordedAt = entry.date
+                var entry = FutureLedgerFixture.entry(ledger, date: day, title: name); entry.recordedAt = entry.date
                 ledger.entries.append(entry)
             }
         }
@@ -173,7 +173,7 @@ final class Round45BPreferencesTests: XCTestCase {
         XCTAssertNil(ledger.repeatPreferences); XCTAssertTrue(EntryHistory.repeats(in: ledger, now: later).isEmpty)
     }
     func testLegacyHiddenDisplayRejectsMalformedIDsWithoutInventingEntries() {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         let ids = ["old-id", "999999999999999999999999:x:1:餐饮", "3:午饭:1000:餐饮", "1:午:1000:餐饮",
                    "6:午饭:0:餐饮", "6:午饭:-1:餐饮", "6:午饭:1.00:餐饮", "6:午饭:1000", "6:午饭:1000:",
                    "6:午饭:\(Money.limit + 1):餐饮"]
@@ -250,19 +250,19 @@ final class Round45BPreferencesTests: XCTestCase {
         }
     }
     private func frequentLedger(purpose: String = "午饭", amount: Int64 = 1000) -> Ledger {
-        var ledger = Round45BFixture.ledger()
+        var ledger = FutureLedgerFixture.ledger()
         for day in ["2026-11-18", "2026-11-19"] {
-            var entry = Round45BFixture.entry(ledger, date: day, amount: amount, title: purpose)
+            var entry = FutureLedgerFixture.entry(ledger, date: day, amount: amount, title: purpose)
             entry.recordedAt = entry.date; entry.subcategory = ledger.categories.first { $0.name == "餐饮" }?.subcategories.first
             ledger.entries.append(entry)
         }
         return ledger
     }
-    func testAssistantDescriptionUsesRound45WordsAndMoneyValuesAreUnchanged() throws {
+    func testAssistantDescriptionUsesInterfaceWordsAndMoneyValuesAreUnchanged() throws {
         let description = ReadOnlyTool.getFunds.description
         for word in ["要攒", "存下的钱", "这个周期", "本期已到账"] { XCTAssertTrue(description.contains(word), word) }
         for word in ["日均", "\u{5b58}\u{7740}\u{4e0d}\u{52a8}", "固定收付"] { XCTAssertFalse(description.contains(word)) }
-        let ledger = Round45BFixture.ledger(), funds = Finance.funds(ledger, now: now)
+        let ledger = FutureLedgerFixture.ledger(), funds = Finance.funds(ledger, now: now)
         let result = try ReadOnlyTool.getFunds.run(.object([:]), ToolContext(ledger: ledger, now: now))
         XCTAssertEqual(result["available"], .money(funds.available)); XCTAssertEqual(result["saving_target"], .money(funds.savingTarget))
     }

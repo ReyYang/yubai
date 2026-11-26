@@ -1,10 +1,10 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round46NoticeTests: XCTestCase {
+final class RenewalNoticeTests: XCTestCase {
     let now = Dates.parse("2026-11-20 12:00")!
     func ledger() -> Ledger {
-        var ledger = Round45Fixture.ledger()
+        var ledger = LedgerFixture.ledger()
         var prefs = ButlerNoticePreferences(); prefs.immediate = true; prefs.ordinary = true
         ledger.preferences.butlerNotices = prefs
         return ledger
@@ -12,7 +12,7 @@ final class Round46NoticeTests: XCTestCase {
     func testOldPreferencesKeepSystemNotificationsOptInAndHomeEnabled() throws {
         let value = try JSONDecoder().decode(ButlerNoticePreferences.self, from: Data("{}".utf8))
         XCTAssertFalse(value.immediate); XCTAssertFalse(value.ordinary); XCTAssertTrue(value.home)
-        XCTAssertTrue(ButlerNotices.planned(Round45Fixture.ledger(), now: now).isEmpty)
+        XCTAssertTrue(ButlerNotices.planned(LedgerFixture.ledger(), now: now).isEmpty)
     }
     func testRenewalNotificationUsesTheHomeCardsExactCopyAndKeepCancelsIt() throws {
         var value = ledger()

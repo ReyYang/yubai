@@ -1,19 +1,19 @@
 import XCTest
 @testable import YubaiCore
 
-final class Round45ReconcileTests: XCTestCase {
-    let now = Round45Fixture.now
+final class ReconcileTests: XCTestCase {
+    let now = LedgerFixture.now
     func fixture() -> Ledger {
-        var l = Round45Fixture.ledger()
-        l.accounts[0].anchorDate = Round45Fixture.date("2026-11-17 12:00"); l.accounts[0].anchorBalance = 921_400
-        l.entries = [Round45Fixture.entry(l, amount: 100, date: "2026-11-17 12:00")]
+        var l = LedgerFixture.ledger()
+        l.accounts[0].anchorDate = LedgerFixture.date("2026-11-17 12:00"); l.accounts[0].anchorBalance = 921_400
+        l.entries = [LedgerFixture.entry(l, amount: 100, date: "2026-11-17 12:00")]
         l.plans[1].amount = 51_000
         return l
     }
     func testReconBoardBalanceAvailableAndSpreadTail() throws {
         var l = fixture(); let account = l.accounts[0].id
         let gap = try XCTUnwrap(Reconciliation.gap(in: l, now: now))
-        XCTAssertEqual(gap.days, 3); XCTAssertEqual(gap.from, Round45Fixture.date("2026-11-18")); XCTAssertEqual(gap.through, Dates.day(now))
+        XCTAssertEqual(gap.days, 3); XCTAssertEqual(gap.from, LedgerFixture.date("2026-11-18")); XCTAssertEqual(gap.through, Dates.day(now))
         XCTAssertEqual(Finance.funds(l, now: now).available, 0)
         let result = Reconciliation.preview(l, actual: [account: 880_200], now: now)
         XCTAssertEqual(result.missing, 41_200); XCTAssertEqual(result.from, gap.from)
@@ -40,7 +40,7 @@ final class Round45ReconcileTests: XCTestCase {
         XCTAssertEqual(Finance.cashFlow(l, during: DateInterval(start: gap.from, end: Dates.addDays(1, to: now))).spendingByCategory.first?.category, nil)
     }
     func testSurplusIsAdjustmentAndMultiAccountNetDifference() throws {
-        var l = fixture(); l.accounts.append(Account(name: "Cash", kind: .cash, balance: 10_000, at: Round45Fixture.date("2026-11-17")))
+        var l = fixture(); l.accounts.append(Account(name: "Cash", kind: .cash, balance: 10_000, at: LedgerFixture.date("2026-11-17")))
         let bank = l.accounts[0].id, cash = l.accounts[1].id
         XCTAssertEqual(Reconciliation.preview(l, actual: [bank: 920_400, cash: 10_300], now: now).missing, 700)
         let ids = try Reconciliation.apply(&l, actual: [bank: 920_400, cash: 10_300], now: now)
@@ -72,10 +72,10 @@ final class Round45ReconcileTests: XCTestCase {
     }
 }
 
-extension Round45ReconcileTests {
+extension ReconcileTests {
     func testReconciliationLaterOnSameRecordingDaySuppressesThatGap() throws {
         var l = fixture()
-        l.accounts[0].anchorDate = Round45Fixture.date("2026-11-17 13:00")
+        l.accounts[0].anchorDate = LedgerFixture.date("2026-11-17 13:00")
         XCTAssertNil(Reconciliation.gap(in: l, now: now))
         l = fixture()
         try Reconciliation.apply(&l, actual: [l.accounts[0].id: 880_200], now: now)
