@@ -594,10 +594,12 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var aiWeeklyReviewDisabled: Bool?
     public var aiReceiptRecognitionDisabled: Bool?
     public var butlerSuggestionsEnabled: Bool?
+    /// 「云端能看到」 switches; nil means `CloudShareSettings.defaults`. Read through `cloudShareSettings`.
+    public var cloudShare: CloudShareSettings?
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case butlerNotices, billExchangeRates, lastBillCurrency, yearlyBillsSetAside, butlerSuggestionsEnabled
+        case butlerNotices, billExchangeRates, lastBillCurrency, yearlyBillsSetAside, butlerSuggestionsEnabled, cloudShare
         case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
         case appearance, purchaseValues, colorTheme, cloudAIEnabled, onboardingComplete, profileColdStartDone, weeklyLetterPush, quickCapture, lastBackupAt, categoryOrder
@@ -635,6 +637,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         aiWeeklyReviewDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiWeeklyReviewDisabled)
         aiReceiptRecognitionDisabled = try values.decodeIfPresent(Bool.self, forKey: .aiReceiptRecognitionDisabled)
         butlerSuggestionsEnabled = try values.decodeIfPresent(Bool.self, forKey: .butlerSuggestionsEnabled)
+        cloudShare = try values.decodeIfPresent(CloudShareSettings.self, forKey: .cloudShare)
     }
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -656,6 +659,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         if aiWeeklyReviewDisabled == true { try c.encode(true, forKey: .aiWeeklyReviewDisabled) }
         if aiReceiptRecognitionDisabled == true { try c.encode(true, forKey: .aiReceiptRecognitionDisabled) }
         try c.encodeIfPresent(butlerSuggestionsEnabled, forKey: .butlerSuggestionsEnabled)
+        try c.encodeIfPresent(cloudShare, forKey: .cloudShare)
     }
 }
 public struct AdviceRecord: Codable, Identifiable, Equatable, Sendable {
