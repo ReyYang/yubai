@@ -74,8 +74,6 @@ enum SettingsSpec {
     static let amountVertical: CGFloat = 14 // canvas SettingsMore.dc.html: amount box padding
     static let nameFieldInset: CGFloat = 10 // canvas SettingsMore.dc.html: subscription name field
     static let chipsTop: CGFloat = 12 // canvas SettingsMore.dc.html: chips and split bar top
-    static let tenPercent: Int64 = 10 // canvas SettingsMore.dc.html: 10 % chip
-    static let twentyPercent: Int64 = 20 // canvas SettingsMore.dc.html: 20 % chip
 
     // 币种
     static let symbolColumn: CGFloat = 32 // canvas SettingsMore.dc.html: currency symbol column
