@@ -1,5 +1,6 @@
 #if DEBUG
 import SwiftUI
+import YubaiCore
 
 private enum GallerySample {
     static let barHeights: [CGFloat] = [12, 14, 10, 22, 12, 8, 16, 16, 12, 26, 10, 12, 6, 3]
@@ -33,19 +34,31 @@ struct DesignSystemGalleryView: View {
     }
     private enum Component: CaseIterable, Hashable {
         // Preserve the interactive gallery's specimen order.
-        case listRow, budgetRow, accordion, hero, tabBar, entryPills, keypad, categoryPicker, resultStrip
+        case listRow, budgetRow, accordion, hero, tabBar, entryPills, keypad, categoryPicker, effectLine
         case floatingCard, sheet, segmented, button, alertCard, donut, subCalendar, toggle
     }
+    enum IsolatedComponent: String {
+        case sheet = "Sheet", categoryPicker = "CategoryPicker", entryPills = "EntryPills"
+        case effectLine = "EffectLine", keypad = "Keypad", icon = "Icon", categoryPanel = "CategoryPanel"
+    }
     let section: Section?
-    init(section: Section? = nil) { self.section = section }
+    var isolatedComponent: IsolatedComponent?
+    init(section: Section? = nil, isolatedComponent: IsolatedComponent? = nil) {
+        self.section = section
+        self.isolatedComponent = isolatedComponent
+    }
     @State private var sheetPresented = false
     @State private var expanded: String? = "shopping"
     @State private var motionExpanded: String?
     @State private var selectedSegment = "支出"
     @State private var selectedSegment2 = "收入"
     @State private var tab = DSTabBar.Tab.home
-    @State private var time = DSEntryPills.Time.today
-    @State private var timeExpanded = false
+    @State private var calendarPreviewOpen = true
+    @State private var calendarPreviewDate = EntrySpec.fixtureCalendarSelection
+    @State private var calendarPreviewMonth = DSCalendarPopover.initialMonth(
+        for: EntrySpec.fixtureCalendarSelection, now: EntrySpec.fixtureToday)
+    @State private var calendarPreviewRepeats = false
+    @State private var calendarPreviewException = DSEntryPills.Exception.none
     @State private var repeats = false
     @State private var exception = DSEntryPills.Exception.none
     @State private var category = "food"
@@ -63,7 +76,11 @@ struct DesignSystemGalleryView: View {
 
     var body: some View {
         Group {
-            if let section {
+            if let isolatedComponent {
+                ScrollView { isolated(isolatedComponent).padding(DS.Space.s20) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(DS.Color.bg.ignoresSafeArea())
+            } else if let section {
                 // No scroll clipping: hosted snapshots measure the complete section at 393pt.
                 sectionView(section).padding(DS.Space.s20).fixedSize(horizontal: false, vertical: true)
             } else {
@@ -94,6 +111,124 @@ struct DesignSystemGalleryView: View {
             #endif
     }
 
+    @ViewBuilder private func isolated(_ component: IsolatedComponent) -> some View {
+        switch component {
+        case .sheet: EntryHeaderGallery()
+        case .categoryPicker: categorySpecimen
+        case .entryPills: entryPillSpecimens
+        case .effectLine: effectSpecimens
+        case .keypad: DSKeypad(pressedKey: "5")
+        case .icon: iconSpecimens
+        case .categoryPanel: EntryCategoryGallery()
+        }
+    }
+
+    private var categorySpecimen: some View {
+        DSCategoryPicker(categories: Self.categories, subcategories: ["午餐", "早餐", "晚餐", "夜宵"],
+                         selectedID: $category, selectedSubcategory: $subcategory)
+    }
+
+    private var entryPillSpecimens: some View {
+        VStack(spacing: DS.Space.s16) {
+            DSEntryPills(account: "招行储蓄", repeats: $repeats, exception: $exception,
+                         repeatDay: EntrySpec.galleryRepeatDay)
+            interactiveCalendarSpecimen
+            DSEntryPills(account: "招行储蓄", repeats: .constant(true),
+                         exception: .constant(.none), repeatDay: EntrySpec.galleryRepeatDay)
+            DSEntryPills(account: "招行储蓄", repeats: .constant(false),
+                         exception: .constant(.reserve), repeatDay: EntrySpec.galleryRepeatDay)
+        }.frame(maxWidth: .infinity)
+    }
+
+    private var interactiveCalendarSpecimen: some View {
+        VStack(spacing: DS.Space.s8) {
+            if calendarPreviewOpen {
+                DSCalendarPopover(date: calendarPreviewDate, now: EntrySpec.fixtureToday,
+                                  displayedMonth: $calendarPreviewMonth, repeats: calendarPreviewRepeats,
+                                  canRepeat: calendarPreviewException == .none, onSelect: { date in
+                    calendarPreviewDate = date
+                    calendarPreviewOpen = false
+                }, onRepeat: {
+                    calendarPreviewRepeats.toggle()
+                    calendarPreviewOpen = false
+                })
+            }
+            DSEntryPills(account: "招行储蓄", day: EntrySheetDraft.dayLabel(for: calendarPreviewDate, now: EntrySpec.fixtureToday),
+                         calendarOpen: calendarPreviewOpen, repeats: $calendarPreviewRepeats,
+                         exception: $calendarPreviewException,
+                         repeatDay: Dates.calendar.component(.day, from: calendarPreviewDate),
+                         onCalendar: {
+                if !calendarPreviewOpen {
+                    calendarPreviewMonth = DSCalendarPopover.initialMonth(for: calendarPreviewDate, now: EntrySpec.fixtureToday)
+                }
+                calendarPreviewOpen.toggle()
+            })
+        }
+    }
+
+    private var effectSpecimens: some View {
+        VStack(spacing: DS.Space.s12) {
+            DSEffectLine(effect: .reserve(142_100))
+            DSEffectLine(effect: .monthly(5_800))
+            DSEffectLine(effect: .split(5_200))
+            DSEffectLine(effect: .reimbursement(15_580))
+        }
+    }
+
+    private var iconSpecimens: some View {
+        VStack(alignment: .leading, spacing: DS.Space.s12) {
+            iconGroup("分类", [.catFood, .catCoffee, .catTransport, .catGrocery, .catShopping, .catHousing,
+                               .catFun, .catDaily, .catDigital, .catOther, .catAll])
+            iconGroup("账户与钱", [.acctDebit, .acctCredit, .acctWallet, .acctCash, .acctBalance, .acctInvest,
+                                 .saveFirst, .floor, .subscription, .cycle, .transfer, .reimburse])
+            iconGroup("余白", [.tabHome, .tabOverview, .ai, .memory, .screenshot, .voice, .cloud, .export, .settings])
+            iconGroup("操作", [.add, .edit, .delete, .duplicate, .recategorize, .done, .close, .more, .time,
+                               .search, .backspace, .chevron, .chevronDown, .back])
+            Text("用的时候").dsText(DS.Font.tLabelStrong)
+            FlowLayout(centered: false) {
+                iconUsage("列表 20 · icon-quiet", .catFood, size: DS.Size.icon, color: DS.Color.iconQuiet)
+                iconUsage("分类圆 22", .catFood, size: EntrySpec.categoryIcon, category: true, color: DS.Color.accentInk)
+                iconUsage("胶囊 15", .edit, size: DS.Font.tLabel.size)
+                iconUsage("箭头 16", .chevron, size: EntrySpec.galleryChevron, color: DS.Color.chevron)
+            }
+        }
+    }
+
+    private func iconGroup(_ title: String, _ icons: [DS.Icon]) -> some View {
+        VStack(alignment: .leading, spacing: DS.Space.s8) {
+            Text(title).dsText(DS.Font.tLabelStrong)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s4),
+                                    count: EntrySpec.galleryIconColumns), spacing: DS.Space.s8) {
+                ForEach(icons) { icon in
+                    VStack(spacing: DS.Space.s4) {
+                        icon.view(size: EntrySpec.galleryIconLarge, color: DS.Color.ink2)
+                            .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
+                            .dsSurface(DS.Color.surface, radius: DS.Radius.s)
+                        Text(icon.rawValue).dsText(DS.Font.tTag).fontWeight(.regular).lineLimit(1)
+                            .foregroundStyle(DS.Color.ink3)
+                            .minimumScaleFactor(EntrySpec.amountMinimumScale)
+                            .padding(.horizontal, DS.Space.s4)
+                    }.frame(maxWidth: .infinity)
+                }
+            }
+        }
+    }
+
+    private func iconUsage(_ title: String, _ icon: DS.Icon, size: CGFloat, category: Bool = false,
+                           color: Color = DS.Color.ink2) -> some View {
+        HStack(spacing: DS.Space.s4) {
+            if category {
+                icon.view(size: size, color: color)
+                    .frame(width: DS.Size.catCircle, height: DS.Size.catCircle)
+                    .background(DS.Color.accentSoft, in: Circle())
+            } else {
+                icon.view(size: size, color: color)
+            }
+            Text(title).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
     private func sectionView(_ section: Section) -> some View {
         VStack(alignment: .leading, spacing: DS.Space.s16) {
             Text(section.title).dsText(DS.Font.tTitle).accessibilityAddTraits(.isHeader)
@@ -106,7 +241,7 @@ struct DesignSystemGalleryView: View {
             case .components: components(Component.allCases)
             case .componentsSkeleton: components([.listRow, .accordion, .tabBar])
             case .componentsNumbers: components([.hero, .budgetRow, .alertCard, .donut, .subCalendar])
-            case .componentsEntry: components([.entryPills, .keypad, .categoryPicker, .resultStrip])
+            case .componentsEntry: components([.entryPills, .keypad, .categoryPicker, .effectLine])
             case .componentsOverlayControls: components([.floatingCard, .sheet, .segmented, .button, .toggle])
             case .motion: motion
             }
@@ -236,30 +371,13 @@ struct DesignSystemGalleryView: View {
                 }
             }
         case .entryPills:
-            specimen("EntryPills") {
-                VStack(spacing: DS.Space.s12) {
-                    DSEntryPills(account: "招行储蓄", time: $time, timeExpanded: $timeExpanded, repeats: $repeats,
-                                 exception: $exception, repeatDay: 23)
-                    DSEntryPills(account: "招行储蓄", time: .constant(.today), timeExpanded: .constant(true),
-                                 repeats: .constant(false), exception: .constant(.none), repeatDay: 23)
-                    DSEntryPills(account: "招行储蓄", time: .constant(.today), timeExpanded: .constant(false),
-                                 repeats: .constant(true), exception: .constant(.none), repeatDay: 23)
-                }
-            }
+            specimen("EntryPills") { entryPillSpecimens }
         case .keypad:
             specimen("Keypad") { DSKeypad() }
         case .categoryPicker:
-            specimen("CategoryPicker") {
-                DSCategoryPicker(categories: Self.categories, subcategories: ["午餐", "早餐", "晚餐", "夜宵"],
-                                 selectedID: $category, selectedSubcategory: $subcategory)
-            }
-        case .resultStrip:
-            specimen("ResultStrip") {
-                VStack(spacing: DS.Space.s12) {
-                    DSResultStrip(title: "记下后还能花", detail: "吃饭剩 1,194.00", value: "¥6,226.40")
-                    DSResultStrip(title: "还能花", detail: "", value: "不变", unchanged: true)
-                }
-            }
+            specimen("CategoryPicker") { categorySpecimen }
+        case .effectLine:
+            specimen("EffectLine") { effectSpecimens }
         case .floatingCard:
             specimen("FloatingCard · Menu") {
                 DSFloatingCard(name: "换手机", amount: "−6,999.00", impact: "走机动余钱 · 还剩 1,421.00",
@@ -271,7 +389,7 @@ struct DesignSystemGalleryView: View {
         case .sheet:
             specimen("Sheet") {
                 VStack(spacing: DS.Space.s12) {
-                    DSSheet(title: "记一笔") { Text("42.00").dsText(DS.Font.nEntry) }
+                    DSSheet(title: "记一笔") { Text(EntrySpec.fixtureLunchAmount).dsText(DS.Font.nEntry) }
                     if section != nil { sheetButton }
                 }
             }
@@ -328,8 +446,8 @@ struct DesignSystemGalleryView: View {
             DSButton("全部播放") { allPlays += 1 }.accessibilityIdentifier("ds-motion-all")
             DSButton("按压", kind: .secondary) {}.accessibilityIdentifier("ds-motion-press")
             HStack(spacing: DS.Space.s16) {
-                Image(systemName: DS.Icon.ai).font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.nav))
-                    .foregroundStyle(DS.Color.accentInk).dsBreathe().accessibilityLabel("读取中")
+                DSIconView(icon: .ai, size: DS.Size.icon, color: DS.Color.accentInk)
+                    .dsBreathe().accessibilityLabel("读取中")
                 Text(" ").frame(maxWidth: .infinity, minHeight: DS.Size.askH)
                     .dsSurface(DS.Color.surface, radius: DS.Radius.s).dsShimmer().accessibilityLabel("读取中")
             }
@@ -349,7 +467,7 @@ struct DesignSystemGalleryView: View {
     private var sheetContent: some View {
         DSSheet(title: "记一笔") {
             VStack(spacing: DS.Space.s16) {
-                Text("42.00").dsText(DS.Font.nEntry).accessibilityIdentifier("ds-gallery-sheet-amount")
+                Text(EntrySpec.fixtureLunchAmount).dsText(DS.Font.nEntry).accessibilityIdentifier("ds-gallery-sheet-amount")
                 DSKeypad()
             }
         }.accessibilityElement(children: .contain).accessibilityIdentifier("ds-gallery-sheet")
@@ -373,7 +491,7 @@ struct DesignSystemGalleryView: View {
         DSCategoryPicker.Category(id: "coffee", name: "咖啡", icon: DS.Icon.catCoffee, suggested: true),
         DSCategoryPicker.Category(id: "transport", name: "交通", icon: DS.Icon.catTransport),
         DSCategoryPicker.Category(id: "grocery", name: "买菜", icon: DS.Icon.catGrocery),
-        DSCategoryPicker.Category(id: "all", name: "全部", icon: DS.Icon.catShopping)
+        DSCategoryPicker.Category(id: "all", name: "全部", icon: DS.Icon.catAll)
     ]
     private static let slices = [
         DSDonut.Slice(id: "housing", name: "居住", value: 40, amount: "2,800.00"),
@@ -416,4 +534,28 @@ private struct DSGallerySpringRow: View {
         }.onChange(of: playAll) { _, _ in atEnd.toggle() }
     }
 }
+private struct EntryHeaderGallery: View {
+    @State private var model = EntryFixture.expense.makeModel()
+
+    var body: some View {
+        let outline = UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet,
+                                             topTrailingRadius: DS.Radius.sheet, style: .continuous)
+        VStack(spacing: DS.Space.s20) {
+            EntryTopHeaderView(model: model, close: {}, drag: EntryHeaderDrag(move: { _ in }, end: { _ in }))
+            Text(EntrySpec.fixtureLunchAmount).dsText(DS.Font.nEntry).monospacedDigit()
+                .padding(.bottom, DS.Space.s20)
+        }
+        .background(DS.Color.bg, in: outline)
+        .overlay { outline.strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline).allowsHitTesting(false) }
+    }
+}
+
+private struct EntryCategoryGallery: View {
+    @State private var model = EntryFixture.cats.makeModel(includeDigital: true)
+
+    var body: some View {
+        EntryCategoryPanelView(model: model, safeBottom: .zero, maxHeight: EntrySpec.categoryPanelHeight)
+    }
+}
+
 #endif

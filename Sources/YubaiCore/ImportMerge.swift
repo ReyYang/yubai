@@ -24,6 +24,8 @@ extension BillImporter {
         entry.subcategoryUserEdited = manual.subcategoryUserEdited
         entry.nature = manual.nature; entry.partID = manual.partID
         entry.fromReserve = manual.fromReserve; entry.intoFixedSavings = manual.intoFixedSavings
+        entry.pendingRecovery = manual.pendingRecovery; entry.countsFromCycleStart = manual.countsFromCycleStart
+        entry.originalCurrency = manual.originalCurrency; entry.originalAmount = manual.originalAmount
         entry.planID = manual.planID; entry.occurrence = manual.occurrence
         entry.rentID = manual.rentID; entry.rentPeriod = manual.rentPeriod; entry.personalExpense = manual.personalExpense
         entry.userEdited = true; entry.classificationReason = manual.classificationReason

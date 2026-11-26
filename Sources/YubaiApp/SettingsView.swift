@@ -495,7 +495,7 @@ struct RecentlyDeletedView: View {
     var body: some View {
         let rows = RecentlyDeleted.entries(in: store.current)
         Page(spacing: YubaiSpace.gapSection) {
-            if rows.isEmpty { EmptyState("trash", "最近删除里没有账目", action: "记一笔", onAction: { store.sheet = .addEntry }) }
+            if rows.isEmpty { EmptyState("trash", "最近删除里没有账目", action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) }) }
             group("今天", rows: rows.filter { Dates.calendar.isDate($0.deletedAt!, inSameDayAs: Dates.now) })
             group("更早", rows: rows.filter { !Dates.calendar.isDate($0.deletedAt!, inSameDayAs: Dates.now) })
             if !rows.isEmpty {

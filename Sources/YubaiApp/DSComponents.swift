@@ -1,4 +1,5 @@
 import SwiftUI
+import YubaiCore
 
 struct DSInlineTag {
     enum Tone { case warning, positive }
@@ -7,7 +8,7 @@ struct DSInlineTag {
 }
 
 struct DSListRow: View {
-    let icon: String
+    let icon: DS.Icon
     let name: String
     let amount: String
     var detail: String? = nil
@@ -17,10 +18,7 @@ struct DSListRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: DS.Space.s12) {
-                Image(systemName: icon)
-                    .font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.list))
-                    .foregroundStyle(DS.Color.iconQuiet).frame(width: DS.Size.icon)
-                    .accessibilityHidden(true)
+                DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.iconQuiet)
                 HStack(spacing: DS.Space.s4) {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
                     if let tag {
@@ -132,7 +130,7 @@ struct DSAmberTile: View {
 struct DSAccordion: View {
     struct Item: Identifiable {
         let id: String
-        let icon: String
+        let icon: DS.Icon
         let title: String
         let subitems: [String]
     }
@@ -152,16 +150,14 @@ struct DSAccordion: View {
                 VStack(spacing: 0) {
                     Button { expandedID = expanded ? nil : item.id } label: {
                         HStack(spacing: DS.Space.s12) {
-                            Image(systemName: item.icon)
-                                .font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.list))
-                                .foregroundStyle(expanded ? DS.Color.accentInk : DS.Color.ink2)
+                            DSIconView(icon: item.icon, size: DS.Size.icon,
+                                       color: expanded ? DS.Color.accentInk : DS.Color.ink2)
                                 .frame(width: DS.Size.iconTile, height: DS.Size.iconTile)
                                 .dsSurface(expanded ? DS.Color.accentSoft : DS.Color.surface, radius: DS.Radius.s)
                             Text(item.title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).dsFillWidth()
                             Text("\(item.subitems.count) 个小类").dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink3)
-                            Image(systemName: DS.Icon.chevron)
-                                .font(.system(size: DS.Font.tPill.size, weight: DS.Icon.Weight.chevron))
-                                .foregroundStyle(expanded ? DS.Color.ink : DS.Color.chevron)
+                            DSIconView(icon: .chevron, size: DS.Font.tPill.size,
+                                       color: expanded ? DS.Color.ink : DS.Color.chevron)
                                 .rotationEffect(.radians(expanded ? .pi / 2 : 0))
                                 .animation(enabled ? DSMotion.animation(.chevronRotate, reduceMotion: reduceMotion) : nil, value: expanded)
                         }.padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.rowCat)
@@ -177,8 +173,9 @@ struct DSAccordion: View {
                                 }.dsPressStyle()
                             }
                             Button { onAdd(item.id) } label: {
-                                Label("添加小类", systemImage: DS.Icon.add).dsText(DS.Font.tLabelStrong)
-                                    .foregroundStyle(DS.Color.accentInk).dsFillWidth().frame(minHeight: DS.Size.rowSub)
+                                Label { Text("添加小类").dsText(DS.Font.tLabelStrong) } icon: {
+                                    DSIconView(icon: .add, size: DS.Font.tLabelStrong.size)
+                                }.foregroundStyle(DS.Color.accentInk).dsFillWidth().frame(minHeight: DS.Size.rowSub)
                                     .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
                             }.dsPressStyle()
                         }.padding(.leading, DS.Space.s12 + DS.Size.iconTile + DS.Space.s12)
@@ -233,7 +230,7 @@ struct DSHero: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: DS.Space.s4) {
                             Text("还能花").dsText(DS.Font.tSub)
-                            Image(systemName: DS.Icon.chevron).font(.system(size: DS.Font.tCaption.size, weight: DS.Icon.Weight.chevron))
+                            DSIconView(icon: .chevron, size: DS.Font.tCaption.size)
                         }.foregroundStyle(DS.Color.ink3)
                         Text(amount).dsText(DS.Font.nHero).foregroundStyle(DS.Color.ink).lineLimit(1)
                     }.dsFillWidth()
@@ -275,8 +272,9 @@ struct DSTabBar: View {
         HStack(spacing: DS.Space.s12) {
             tab(.home, title: "首页", icon: DS.Icon.tabHome)
             Button(action: onEntry) {
-                Label("记一笔", systemImage: DS.Icon.add).dsText(DS.Font.tTitle)
-                    .labelStyle(.titleAndIcon).lineLimit(1).fixedSize(horizontal: true, vertical: false)
+                Label { Text("记一笔").dsText(DS.Font.tTitle) } icon: {
+                    DSIconView(icon: .add, size: DS.Font.tTitle.size)
+                }.labelStyle(.titleAndIcon).lineLimit(1).fixedSize(horizontal: true, vertical: false)
                     .foregroundStyle(DS.Color.onAccent).padding(.horizontal, DS.Space.s28)
                     .frame(minHeight: DS.Size.ctaH).dsPill(DS.Color.accent)
             }.dsPressStyle()
@@ -284,10 +282,11 @@ struct DSTabBar: View {
         }.padding(.horizontal, DS.Space.s12).padding(.vertical, DS.Space.s12)
             .dsFillWidth().dsBarMaterial(in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
     }
-    private func tab(_ tab: Tab, title: String, icon: String) -> some View {
+    private func tab(_ tab: Tab, title: String, icon: DS.Icon) -> some View {
         Button { selection = tab } label: {
             VStack(spacing: 0) {
-                Image(systemName: icon).font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.nav))
+                DSIconView(icon: icon, size: DS.Size.icon,
+                           color: selection == tab ? DS.Color.accentInk : DS.Color.ink3)
                 Text(title).dsText(DS.Font.tTab)
             }.foregroundStyle(selection == tab ? DS.Color.accentInk : DS.Color.ink3)
                 .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin)
@@ -302,14 +301,15 @@ struct DSAskBar: View {
         HStack(spacing: DS.Space.s8) {
             Button(action: onAsk) {
                 HStack(spacing: DS.Space.s8) {
-                    Image(systemName: DS.Icon.search)
+                    DSIconView(icon: .search, size: DS.Size.icon, color: DS.Color.ink3)
                     Text("问余白 · 搜账单").dsText(DS.Font.tLabel).lineLimit(1).dsFillWidth()
                 }.frame(minHeight: DS.Size.askH)
             }.dsPressStyle()
             Button(action: onVoice) {
-                Image(systemName: DS.Icon.voice).frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
+                DSIconView(icon: .voice, size: DS.Size.icon, color: DS.Color.ink3)
+                    .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
             }.dsPressStyle().accessibilityLabel("语音记账")
-        }.font(.system(size: DS.Size.icon, weight: DS.Icon.Weight.list))
+        }
             .foregroundStyle(DS.Color.ink3).padding(.leading, DS.Space.s16)
             .dsPill(DS.Color.raised)
             .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
@@ -317,70 +317,53 @@ struct DSAskBar: View {
 }
 
 struct DSEntryPills: View {
-    enum Time: String, CaseIterable { case today = "今天", yesterday = "昨天", dayBefore = "前天" }
     enum Exception: String, CaseIterable { case none = "", reserve = "走机动余钱", reimburse = "待报销", split = "待 AA" }
     let account: String
-    @Binding var time: Time
-    @Binding var timeExpanded: Bool
+    var day = "今天"
+    var calendarOpen = false
     @Binding var repeats: Bool
     @Binding var exception: Exception
     var repeatDay: Int
     var onAccount: () -> Void = {}
     var onCalendar: () -> Void = {}
-    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
-    @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
 
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            pillRow
-            ScrollView(.horizontal) { pillRow }
-                .scrollIndicators(.hidden).fixedSize(horizontal: false, vertical: true)
-        }.frame(maxWidth: .infinity)
-            .animation(DSMotion.animation(.accordion, reduceMotion: reduceMotionOverride ?? systemReduceMotion), value: timeExpanded)
-    }
-    private var pillRow: some View {
-        HStack(spacing: DS.Space.s8) {
-            if timeExpanded {
-                ForEach(Time.allCases, id: \.self) { option in
-                    pill(option.rawValue, icon: nil, selected: time == option) { time = option; timeExpanded = false }
-                }
-                pill("日历", icon: DS.Icon.cycle, iconOnly: true, action: onCalendar)
-                pill("每月", icon: DS.Icon.subscription, selected: repeats) {
-                    repeats.toggle(); exception = .none; timeExpanded = false
-                }
-            } else {
-                pill(account, icon: DS.Icon.acctDebit, action: onAccount)
-                pill(repeats && exception == .none ? "\(time.rawValue) · 每月 \(repeatDay) 日" : time.rawValue,
-                     icon: repeats && exception == .none ? DS.Icon.subscription : DS.Icon.time,
-                     selected: repeats && exception == .none) { timeExpanded = true }
-                pill(exception == .none ? "更多" : exception.rawValue, icon: DS.Icon.more,
-                     selected: exception != .none, iconOnly: exception == .none) {
-                    let all = Exception.allCases
-                    let next = ((all.firstIndex(of: exception) ?? 0) + 1) % all.count
-                    exception = all[next]
-                    if exception != .none { repeats = false }
-                }
+        FlowLayout {
+            pill(account, icon: .acctDebit, action: onAccount)
+            pill(repeats ? "\(day) · 每月 \(repeatDay) 日" : day,
+                 icon: repeats ? .subscription : .time, selected: calendarOpen, strong: repeats, action: onCalendar)
+            pill(exception == .none ? "更多" : exception.rawValue, icon: .more,
+                 strong: exception != .none, iconOnly: exception == .none) {
+                let all = Exception.allCases
+                exception = all[((all.firstIndex(of: exception) ?? 0) + 1) % all.count]
+                if exception != .none { repeats = false }
             }
-        }.fixedSize(horizontal: true, vertical: false)
+        }
     }
-    private func pill(_ title: String, icon: String?, selected: Bool = false, iconOnly: Bool = false,
-                      action: @escaping () -> Void) -> some View {
+
+    private func pill(_ title: String, icon: DS.Icon, selected: Bool = false, strong: Bool = false,
+                      iconOnly: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: DS.Space.s4) {
-                if let icon {
-                    Image(systemName: icon).font(.system(size: DS.Font.tLabel.size, weight: DS.Icon.Weight.list))
-                        .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink3)
+                icon.view(size: DS.Font.tLabel.size, color: DS.Color.ink3)
+                if !iconOnly {
+                    Text(title).dsText(DS.Font.tPill).monospacedDigit()
+                        .fontWeight(selected || strong ? .semibold : .regular)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
-                if !iconOnly { Text(title).dsText(DS.Font.tPill).fontWeight(selected ? .semibold : .regular) }
-            }.lineLimit(1).fixedSize(horizontal: true, vertical: false)
-                .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink2)
-                .padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.pillH)
-                .dsPill(selected ? DS.Color.selected : DS.Color.surface)
+            }
+            .lineLimit(1)
+            .foregroundStyle(selected || strong ? DS.Color.ink : DS.Color.ink2)
+            .padding(.leading, iconOnly ? EntrySpec.iconOnlyPadding : EntrySpec.pillLeading)
+            .padding(.trailing, iconOnly ? EntrySpec.iconOnlyPadding : EntrySpec.trailingPadding)
+            .frame(minWidth: DS.Size.pillH, minHeight: DS.Size.pillH)
+            .dsPill(selected ? DS.Color.selected : DS.Color.surface)
         }.dsPressStyle().accessibilityLabel(title).accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
 struct DSKeypad: View {
+    var pressedKey: String?
     var onKey: (String) -> Void = { _ in }
     private let keys = ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
     @State private var saves = 0
@@ -391,12 +374,20 @@ struct DSKeypad: View {
                     onKey(key)
                     if key == "记下" { saves += 1 }
                 } label: {
-                    Text(key).dsText(key == "记下" ? DS.Font.tTitle : DS.Font.nKey)
-                        .foregroundStyle(key == "记下" ? DS.Color.onAccent : DS.Color.ink)
+                    Group {
+                        if key == "⌫" {
+                            DSIconView(icon: .backspace, size: 24, color: DS.Color.ink)
+                        } else {
+                            Text(key).dsText(key == "记下" ? DS.Font.tTitle : DS.Font.nKey)
+                                .foregroundStyle(key == "记下" ? DS.Color.onAccent : DS.Color.ink)
+                        }
+                    }
                         .frame(maxWidth: .infinity, minHeight: DS.Size.keyH)
                         .dsSurface(key == "记下" ? DS.Color.accent : (["⌫", "+", "−"].contains(key) ? DS.Color.keyFn : DS.Color.key), radius: DS.Radius.s)
                         .dsShadow(DS.Shadow.key)
-                }.dsPressStyle().accessibilityLabel(key == "⌫" ? "退格" : key)
+                }.dsPressStyle()
+                    .scaleEffect(key == pressedKey ? DSMotion.Press.scale : 1)
+                    .accessibilityLabel(key == "⌫" ? "退格" : key)
             }
         }.padding(DS.Space.s8).background(DS.Color.tray).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
             .sensoryFeedback(DSMotion.Haptic.save, trigger: saves)
@@ -407,7 +398,7 @@ struct DSCategoryPicker: View {
     struct Category: Identifiable {
         let id: String
         let name: String
-        let icon: String
+        let icon: DS.Icon
         var suggested = false
     }
     let categories: [Category]
@@ -426,14 +417,16 @@ struct DSCategoryPicker: View {
                         else { selectedID = category.id; selectedSubcategory = nil }
                     } label: {
                         VStack(spacing: DS.Space.s4) {
-                            Image(systemName: category.icon)
-                                .font(.system(size: DS.Font.nKey.size, weight: DS.Icon.Weight.list))
-                                .foregroundStyle(selected ? DS.Color.accentInk : DS.Color.ink2)
+                            DSIconView(icon: category.icon, size: EntrySpec.categoryIcon,
+                                       color: selected ? DS.Color.accentInk : DS.Color.ink2)
                                 .frame(width: DS.Size.catCircle, height: DS.Size.catCircle)
                                 .dsPill(selected ? DS.Color.accentSoft : DS.Color.surface)
                                 .overlay(alignment: .topTrailing) {
-                                    if category.suggested {
+                                    if category.suggested && !selected {
                                         Circle().fill(DS.Color.accent).frame(width: DS.Space.s8, height: DS.Space.s8)
+                                            .padding(EntrySpec.guessRing)
+                                            .background(DS.Color.bg, in: Circle())
+                                            .padding(max(0, EntrySpec.guessInset - EntrySpec.guessRing))
                                     }
                                 }
                             Text(category.name).dsText(DS.Font.tCaption).fontWeight(selected ? .semibold : .regular)
@@ -455,7 +448,7 @@ struct DSCategoryPicker: View {
                         }.dsPressStyle().accessibilityAddTraits(selected ? .isSelected : [])
                     }
                     Button(action: onAdd) {
-                        Image(systemName: DS.Icon.add).foregroundStyle(DS.Color.ink2)
+                        DSIconView(icon: .add, size: DS.Font.tCaption.size, color: DS.Color.ink2)
                             .frame(width: DS.Size.chipH, height: DS.Size.chipH).dsPill()
                     }.dsPressStyle().accessibilityLabel("添加小类")
                 }
@@ -464,32 +457,18 @@ struct DSCategoryPicker: View {
     }
 }
 
-struct DSResultStrip: View {
-    let title: String
-    let detail: String
-    let value: String
-    var unchanged = false
+struct DSEffectLine: View {
+    let effect: EntryEffect
+    var hidesAmount = false
+
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
-                labels
-                Text(value).dsText(DS.Font.nKey).fontWeight(.semibold).fixedSize()
-                    .foregroundStyle(unchanged ? DS.Color.ink : DS.Color.accentInk)
-            }
-            VStack(alignment: .leading, spacing: DS.Space.s4) {
-                labels
-                Text(value).dsText(DS.Font.nKey).fontWeight(.semibold)
-                    .foregroundStyle(unchanged ? DS.Color.ink : DS.Color.accentInk)
-            }
-        }.dsFillWidth().dsSurface(DS.Color.surface, radius: DS.Radius.m,
-                                 padding: EdgeInsets(top: DS.Space.s8, leading: DS.Space.s16, bottom: DS.Space.s8, trailing: DS.Space.s16))
-            .accessibilityElement(children: .combine)
-    }
-    private var labels: some View {
-        HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
-            Text(title).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2)
-            Text(detail).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).dsFillWidth()
-        }
+        Text(effect.displayText(hidesAmount: hidesAmount))
+            .dsText(DS.Font.tSub).monospacedDigit()
+            .foregroundStyle(effect.warning ? DS.Color.warnInk : DS.Color.ink3)
+            .lineLimit(1).truncationMode(.tail)
+            .frame(maxWidth: .infinity)
+            .accessibilityLabel(hidesAmount ? "连带影响" : effect.text)
+            .accessibilityValue(hidesAmount ? "金额已隐藏" : "")
     }
 }
 
@@ -509,9 +488,11 @@ struct DSFloatingMenu: View {
         }.padding(.vertical, DS.Space.s4).frame(width: DS.Size.menuW)
             .background(DS.Color.raised).clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous)).dsShadow(DS.Shadow.float)
     }
-    private func item(_ title: String, icon: String, warning: Bool = false, action: @escaping () -> Void) -> some View {
+    private func item(_ title: String, icon: DS.Icon, warning: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Label(title, systemImage: icon).dsText(DS.Font.tBody)
+            Label { Text(title).dsText(DS.Font.tBody) } icon: {
+                DSIconView(icon: icon, size: DS.Size.icon)
+            }
                 .foregroundStyle(warning ? DS.Color.warnInk : DS.Color.ink)
                 .dsFillWidth().frame(minHeight: DS.Size.tapMin).padding(.horizontal, DS.Space.s16)
         }.dsPressStyle()
@@ -546,7 +527,7 @@ struct DSFloatingCard: View {
                     HStack {
                         Spacer(minLength: 0)
                         Button(action: onMore) {
-                            Image(systemName: DS.Icon.more).foregroundStyle(DS.Color.ink3)
+                            DSIconView(icon: .more, size: DS.Size.icon, color: DS.Color.ink3)
                                 .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
                         }.dsPressStyle().accessibilityLabel("更多操作")
                     }
@@ -560,7 +541,11 @@ struct DSFloatingCard: View {
                             .dsFillWidth().dsSurface(DS.Color.warnSoft, radius: DS.Radius.m,
                                                     padding: EdgeInsets(top: DS.Space.s12, leading: DS.Space.s16, bottom: DS.Space.s12, trailing: DS.Space.s16))
                     }
-                    if let note { Label(note, systemImage: DS.Icon.edit).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2) }
+                    if let note {
+                        Label { Text(note).dsText(DS.Font.tLabel) } icon: {
+                            DSIconView(icon: .edit, size: DS.Font.tLabel.size)
+                        }.foregroundStyle(DS.Color.ink2)
+                    }
                     Text(metadata).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3).padding(.top, DS.Space.s12)
                     DSButton("完成", kind: .secondary, action: onDone).padding(.top, DS.Space.s4)
                 }.padding(.horizontal, DS.Space.s20).padding(.bottom, DS.Space.s20)
@@ -588,7 +573,7 @@ struct DSSheet<Content: View>: View {
                 Text(title).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
                 HStack {
                     Button { dismiss() } label: {
-                        Image(systemName: DS.Icon.close).foregroundStyle(DS.Color.ink3)
+                        DSIconView(icon: .close, size: DS.Size.icon, color: DS.Color.ink3)
                             .frame(width: DS.Size.tapMin, height: DS.Size.tapMin)
                     }.dsPressStyle().accessibilityLabel("关闭")
                     Spacer(minLength: 0)
@@ -697,7 +682,7 @@ struct DSAlertCard: View {
                 }.dsFillWidth()
                 Text(value).dsText(tone == .positive ? DS.Font.nSpine : DS.Font.tLabel).monospacedDigit().fixedSize()
                 if tone == .warning {
-                    Image(systemName: DS.Icon.chevron).font(.system(size: DS.Font.tCaption.size, weight: DS.Icon.Weight.chevron))
+                    DSIconView(icon: .chevron, size: DS.Font.tCaption.size, color: DS.Color.warnInk)
                 }
             }.foregroundStyle(tone == .warning ? DS.Color.warnInk : DS.Color.accentInk)
                 .frame(minHeight: DS.Size.tapMin)
@@ -804,5 +789,196 @@ struct DSSwitch: View {
         Toggle(title, isOn: $isOn).toggleStyle(.switch).tint(DS.Color.accent)
             .dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).frame(minHeight: DS.Size.tapMin)
             .sensoryFeedback(DSMotion.Haptic.toggle, trigger: isOn)
+    }
+}
+
+struct DSInlineTextField: View {
+    let title: String
+    @Binding var text: String
+    var decimal = false
+    var autoFocus = true
+    var secure = false
+    var embedded = false
+    var previewCaretSize: CGSize?
+    var onSubmit: () -> Void = {}
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        Group {
+            if embedded {
+                field.dsText(DS.Font.tPill)
+                    .overlay(alignment: .leading) {
+                        if let previewCaretSize, !focused, !text.isEmpty {
+                            HStack(spacing: DS.Space.s4) {
+                                Text(text).dsText(DS.Font.tPill).hidden()
+                                Capsule(style: .continuous).fill(DS.Color.accent)
+                                    .frame(width: previewCaretSize.width, height: previewCaretSize.height)
+                            }
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                        }
+                    }
+            } else {
+                field.dsText(DS.Font.tBody)
+                    .padding(.horizontal, DS.Space.s12)
+                    .frame(minHeight: DS.Size.tapMin)
+                    .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
+                    .overlay {
+                        if focused {
+                            RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous)
+                                .strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus)
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
+        }
+        .onAppear { if autoFocus { focused = true } }
+    }
+
+    private var field: some View {
+        let prompt = Text(title).foregroundStyle(DS.Color.ink3)
+        return Group {
+            if secure {
+                SecureField("", text: $text, prompt: prompt)
+            } else {
+                TextField("", text: $text, prompt: prompt)
+            }
+        }
+            .accessibilityLabel(title)
+            #if os(iOS)
+            .keyboardType(decimal ? .decimalPad : .default)
+            #endif
+            .tint(DS.Color.accent)
+            .textFieldStyle(.plain)
+            .foregroundStyle(DS.Color.ink)
+            .focused($focused)
+            .onSubmit(onSubmit)
+    }
+}
+
+struct DSCalendarPopover: View {
+    let date: Date
+    let now: Date
+    @Binding var displayedMonth: Date
+    var repeats = false
+    var canRepeat = true
+    var onSelect: (Date) -> Void = { _ in }
+    var onRepeat: () -> Void = {}
+
+    static func initialMonth(for date: Date, now: Date) -> Date {
+        monthStart(for: min(date, now))
+    }
+
+    private static func monthStart(for date: Date) -> Date {
+        Dates.calendar.dateInterval(of: .month, for: date)?.start ?? date
+    }
+
+    private var calendar: Calendar { Dates.calendar }
+    private var currentMonth: Date { Self.monthStart(for: now) }
+    private var month: Date { displayedMonth }
+    private var monthTitle: String {
+        "\(calendar.component(.year, from: month))年\(calendar.component(.month, from: month))月"
+    }
+
+    var body: some View {
+        VStack(spacing: .zero) {
+            HStack(spacing: .zero) {
+                Text(monthTitle).dsText(DS.Font.tBody).fontWeight(.semibold).accessibilityAddTraits(.isHeader)
+                Spacer(minLength: .zero)
+                arrow(.back, offset: -1, label: "上个月")
+                arrow(.chevron, offset: 1, label: "下个月")
+            }
+            .padding(.horizontal, DS.Space.s4)
+            .frame(minHeight: EntrySpec.calendarHeader)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: .zero), count: DSLayout.weekdays), spacing: .zero) {
+                ForEach(["日", "一", "二", "三", "四", "五", "六"], id: \.self) {
+                    Text($0).dsText(DS.Font.tTag).fontWeight(.regular)
+                        .foregroundStyle(DS.Color.ink3).frame(minHeight: DS.Space.s20)
+                }
+                ForEach(0..<(calendar.component(.weekday, from: month) - 1), id: \.self) { _ in
+                    Color.clear.frame(height: EntrySpec.calendarDay).accessibilityHidden(true)
+                }
+                ForEach(calendar.range(of: .day, in: .month, for: month) ?? (1..<1), id: \.self) { day in
+                    dayCell(day, date: Dates.addDays(day - 1, to: month))
+                }
+            }
+            .padding(.top, DS.Space.s4)
+
+            DS.Color.separator.frame(height: DS.Stroke.hairline)
+                .padding(.top, DS.Space.s8)
+            HStack(spacing: DS.Space.s8) {
+                quick("今天", offset: 0)
+                quick("昨天", offset: -1)
+                Spacer(minLength: .zero)
+                if canRepeat {
+                    chip("每月", icon: .subscription, selected: repeats, action: onRepeat)
+                }
+            }
+            .padding(.top, EntrySpec.calendarGap)
+        }
+        .padding(.top, DS.Space.s12)
+        .padding(.horizontal, EntrySpec.trailingPadding)
+        .padding(.bottom, EntrySpec.trailingPadding)
+        .frame(maxWidth: EntrySpec.calendarWidth)
+        .dsSurface(DS.Color.raised, radius: DS.Radius.m)
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("日历")
+    }
+
+    private func arrow(_ icon: DS.Icon, offset: Int, label: String) -> some View {
+        let disabled = offset > 0 && month >= currentMonth
+        return Button {
+            if let next = calendar.date(byAdding: .month, value: offset, to: month) {
+                displayedMonth = next
+            }
+        } label: {
+            icon.view(size: EntrySpec.routeIcon, color: disabled ? DS.Color.chevron : DS.Color.ink3)
+                .frame(width: DS.Size.tapMin, height: EntrySpec.calendarHeader)
+                .contentShape(Rectangle())
+        }.buttonStyle(EntryTactileButtonStyle()).disabled(disabled).accessibilityLabel(label)
+    }
+
+    private func dayCell(_ day: Int, date value: Date) -> some View {
+        let selected = calendar.isDate(value, inSameDayAs: date)
+        let today = calendar.isDate(value, inSameDayAs: now)
+        let future = Dates.day(value) > Dates.day(now)
+        return Button { onSelect(value) } label: {
+            Text(day.formatted()).dsText(DS.Font.tLabel).monospacedDigit()
+                .fontWeight(selected || today ? .semibold : .regular)
+                .frame(width: DS.Size.chipH, height: DS.Size.chipH)
+                .foregroundStyle(future ? DS.Color.chevron : selected ? DS.Color.raised : DS.Color.ink)
+                .background(selected && !future ? DS.Color.ink : .clear, in: Circle())
+                .frame(maxWidth: .infinity, minHeight: EntrySpec.calendarDay)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(EntryTactileButtonStyle())
+        .disabled(future)
+        .accessibilityLabel(monthTitle + "\(day)日")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private func quick(_ title: String, offset: Int) -> some View {
+        let value = Dates.addDays(offset, to: Dates.day(now))
+        return chip(title, selected: calendar.isDate(date, inSameDayAs: value)) { onSelect(value) }
+            .accessibilityIdentifier("entryQuick_" + title)
+    }
+
+    private func chip(_ title: String, icon: DS.Icon? = nil, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: EntrySpec.gap) {
+                if let icon { icon.view(size: DS.Font.tLabel.size, color: selected ? DS.Color.ink : DS.Color.ink3) }
+                Text(title).dsText(DS.Font.tPill).fontWeight(selected ? .semibold : .regular)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink2)
+            .padding(.leading, icon == nil ? DS.Space.s12 : EntrySpec.compactPadding)
+            .padding(.trailing, DS.Space.s12)
+            .frame(minHeight: DS.Size.chipH)
+            .dsPill(selected ? DS.Color.selected : DS.Color.surface)
+        }
+        .buttonStyle(EntryTactileButtonStyle())
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }

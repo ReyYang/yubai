@@ -78,7 +78,6 @@ private struct PurchaseOptionChip: View {
 
 struct SavingPurchaseCard: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.surfacePresentations) private var presentations
     let purchase: PurchaseJudgment
     let verdict: SubmittedPurchaseVerdict?
     let evidence: [UUID]
@@ -159,12 +158,8 @@ struct SavingPurchaseCard: View {
         }
     }
     private func record(fromReserve: Bool) {
-        presentations.presentSheet {
-            NavigationStack {
-                QuickEntryView(prefill: QuickEntryPrefill(category: purchase.category, amount: purchase.amount, purpose: purchase.title,
-                                                          fromReserve: fromReserve))
-            }.environment(store).appErrors().yubaiSheetBackground()
-        }
+        store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: purchase.category, amount: purchase.amount,
+            purpose: purchase.title, subcategory: purchase.subcategory, fromReserve: fromReserve)))
     }
     private func saveWish() {
         guard wishID == nil else { return }

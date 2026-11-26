@@ -59,12 +59,6 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         tap("reconcileField_招行储蓄卡"); keys(actual)
         tap("reconcileField_招行储蓄卡Done")
     }
-    private func enter(_ purpose: String, amount: String) {
-        tap("addEntry")
-        XCTAssertTrue(element("entryKeypadAmount").waitForExistence(timeout: 5))
-        typeIntoField(purpose + "\n", identifier: "entryPurpose", in: app)
-        keys(amount)
-    }
     func testNormalHeroAndFormulaShareExactAmount() {
         launch(); expect("availableFunds", contains: "¥1,864.00"); formula(); expect("formulaResult", contains: "¥1,864.00")
         XCTAssertFalse(element("formulaRow_carry").exists); XCTAssertFalse(element("formulaRow_withdrawal").exists); XCTAssertFalse(element("formulaRow_balanceGap").exists)
@@ -388,20 +382,6 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         launch(); formula(); XCTAssertFalse(element("softLineWatches").exists)
         tap("addSoftLine"); tap("entryMoreCategory_购物"); keys("800"); tap("saveSoftLine")
         XCTAssertTrue(element("softLineWatches").waitForExistence(timeout: 5)); XCTAssertFalse(app.alerts.firstMatch.exists)
-    }
-    func testEntryStripPreviewsRemainingLiveAndStillSavesWhenExceeded() {
-        launch("v47r-soft-lines"); enter("外卖", amount: "38")
-        expect("entrySavingHint", contains: "282.00")
-        tap("keypad_0"); expect("entrySavingHint", contains: "超出")
-        XCTAssertTrue(element("saveQuickEntry").isEnabled); tap("saveQuickEntry"); expect("entrySessionSummary", contains: "1 笔")
-    }
-    func testEntryCountAndUnwatchedStrip() {
-        launch("v47r-soft-count"); enter("咖啡", amount: "18"); expect("entrySavingHint", contains: "咖啡还剩"); expect("entrySavingHint", contains: "3 次")
-        launch("v47r-soft-lines"); tap("addEntry"); tap("entryCategory_购物"); keys("38"); expect("entrySavingHint", contains: "还能花")
-    }
-    func testEntryStripExceededBy18() {
-        launch("v47r-soft-lines"); enter("外卖", amount: "338"); expect("entrySavingHint", contains: "外卖超出"); expect("entrySavingHint", contains: "18.00")
-        XCTAssertTrue(element("saveQuickEntry").isEnabled)
     }
     func testInsightsCategoryStatusAndCountEditingUseSameWatches() {
         launch("v47r-soft-lines"); tap("tab_insights"); expect("insightSoftLine_" + watch(478201), contains: "外卖还剩 320.00")

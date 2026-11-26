@@ -106,6 +106,14 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
     public var categoryIncome: Bool { self != .refund && inflow }
     public var inflow: Bool { [.income, .borrow, .loanRecovery, .refund, .contribution, .investSell, .adjustmentIn, .unknownIn].contains(self) }
     public var paired: Bool { [.transfer, .repayment, .investBuy, .investSell, .borrow, .lend, .loanReturn, .loanRecovery].contains(self) }
+    var requiredPairedDestination: AccountKind? {
+        switch self {
+        case .borrow, .loanReturn, .repayment: .credit
+        case .lend, .loanRecovery: .receivable
+        case .investBuy, .investSell: .investment
+        default: nil
+        }
+    }
     public var uncertain: Bool { self == .unknownIn || self == .unknownOut }
     public var symbol: String {
         switch self { case .income: "arrow.down.left"; case .expense: "arrow.up.right"; case .refund: "arrow.uturn.backward"; case .contribution: "person.2"; default: paired ? "arrow.left.arrow.right" : "circle.dotted" }
@@ -114,13 +122,28 @@ public enum Nature: String, Codable, CaseIterable, Identifiable, Sendable {
 
 public enum EntryKind: String, Sendable { case transaction, adjustment }
 
+public enum PendingRecovery: String, Codable, CaseIterable, Equatable, Sendable {
+    case reimbursement
+    case split
+}
+
 public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64
     public var kind: EntryKind { nature == .adjustmentIn || nature == .adjustmentOut ? .adjustment : .transaction }
     public var recordedAt: Date? // In-app recording time; imports and old ledgers keep nil.
-    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false }; if nature != .expense { fromReserve = false } } }
-    public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var nature: Nature {
+        didSet {
+            if nature != .income && nature != .transfer { intoFixedSavings = false }
+            if nature != .expense { fromReserve = false; pendingRecovery = nil }
+            if nature != .income { countsFromCycleStart = nil }
+        }
+    }
+    public var intoFixedSavings = false { didSet { if nature != .income && nature != .transfer { intoFixedSavings = false } } }
     public var fromReserve = false { didSet { if nature != .expense { fromReserve = false } } }
+    public var pendingRecovery: PendingRecovery? { didSet { if nature != .expense { pendingRecovery = nil } } }
+    public var countsFromCycleStart: Date? { didSet { if nature != .income { countsFromCycleStart = nil } } }
+    public var originalCurrency: BillCurrency?
+    public var originalAmount: Int64?
     public var spreadFrom: Date?
     public var isUnitemized: Bool { spreadFrom != nil }
     public var accountID: UUID; public var otherAccountID: UUID?
@@ -141,10 +164,10 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var otherDate: Date?; public var mergedIntoID: UUID?; public var personalExpense: Int64?
     public init(date: Date = Dates.now, amount: Int64, nature: Nature = .expense, accountID: UUID, title: String, category: String = Classification.pendingCategory, intoFixedSavings: Bool = false, fromReserve: Bool = false) {
         self.date = date; self.amount = amount; self.nature = nature; self.accountID = accountID; self.title = title; self.category = category
-        self.intoFixedSavings = nature == .income && intoFixedSavings
+        self.intoFixedSavings = (nature == .income || nature == .transfer) && intoFixedSavings
         self.fromReserve = nature == .expense && fromReserve
     }
-    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
+    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, pendingRecovery, countsFromCycleStart, originalCurrency, originalAmount, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -153,9 +176,13 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         recordedAt = try c.decodeIfPresent(Date.self, forKey: .recordedAt)
         nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
-        intoFixedSavings = nature == .income && intoFixed
+        intoFixedSavings = (nature == .income || nature == .transfer) && intoFixed
         let reserve = try c.decodeIfPresent(Bool.self, forKey: .fromReserve) ?? false
         fromReserve = nature == .expense && reserve
+        pendingRecovery = nature == .expense ? try c.decodeIfPresent(PendingRecovery.self, forKey: .pendingRecovery) : nil
+        countsFromCycleStart = nature == .income ? try c.decodeIfPresent(Date.self, forKey: .countsFromCycleStart) : nil
+        originalCurrency = try c.decodeIfPresent(BillCurrency.self, forKey: .originalCurrency)
+        originalAmount = try c.decodeIfPresent(Int64.self, forKey: .originalAmount)
         spreadFrom = try c.decodeIfPresent(Date.self, forKey: .spreadFrom)
         accountID = try c.decode(UUID.self, forKey: .accountID)
         otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
@@ -215,6 +242,10 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         if classificationReason != "手动选择" { try c.encode(classificationReason, forKey: .classificationReason) }
         try c.encodeIfPresent(otherDate, forKey: .otherDate); try c.encodeIfPresent(mergedIntoID, forKey: .mergedIntoID)
         try c.encodeIfPresent(personalExpense, forKey: .personalExpense)
+        try c.encodeIfPresent(pendingRecovery, forKey: .pendingRecovery)
+        try c.encodeIfPresent(countsFromCycleStart, forKey: .countsFromCycleStart)
+        try c.encodeIfPresent(originalCurrency, forKey: .originalCurrency)
+        try c.encodeIfPresent(originalAmount, forKey: .originalAmount)
     }
     public func delta(for account: UUID) -> Int64 {
         if accountID == account { return nature.inflow ? amount : -amount }
@@ -240,6 +271,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
     public var yearlyReserveSince: Date?
     public var inflow: Bool { didSet { if !inflow { intoFixedSavings = false } } }
     public var accountID: UUID?
+    public var otherAccountID: UUID? = nil
     public var category: String
     public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false } } }
     public var intoFixedSavings = false { didSet { if nature != .income || !inflow { intoFixedSavings = false } } }
@@ -264,7 +296,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         self.intoFixedSavings = nature == .income && inflow && intoFixedSavings
         if frequency == .yearly { yearlyReserveSince = Dates.day(Dates.now) }
     }
-    private enum CodingKeys: String, CodingKey { case currency, yearlyReserveSince, occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
+    private enum CodingKeys: String, CodingKey { case currency, yearlyReserveSince, occurrenceDateOverrides, intoFixedSavings, id, title, amount, dueDate, frequency, inflow, accountID, otherAccountID, category, nature, active, endDate, stoppedAt, note, autoPay, autoPaySince, installments, estimated, skippedOccurrences, monthlyDay, previousOccurrences, settledOccurrences, estimatedAmountSince }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decode(UUID.self, forKey: .id); title = try c.decode(String.self, forKey: .title)
@@ -273,6 +305,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         currency = try c.decodeIfPresent(BillCurrency.self, forKey: .currency) ?? .cny
         yearlyReserveSince = try c.decodeIfPresent(Date.self, forKey: .yearlyReserveSince) ?? (frequency == .yearly ? Dates.day(Dates.now) : nil)
         accountID = try c.decodeIfPresent(UUID.self, forKey: .accountID)
+        otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
         category = try c.decode(String.self, forKey: .category); nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
         intoFixedSavings = nature == .income && inflow && intoFixed
@@ -296,7 +329,7 @@ public struct Plan: Codable, Identifiable, Equatable, Sendable {
         try c.encode(dueDate, forKey: .dueDate); try c.encode(frequency, forKey: .frequency); try c.encode(inflow, forKey: .inflow)
         if currency != .cny { try c.encode(currency, forKey: .currency) }
         try c.encodeIfPresent(yearlyReserveSince, forKey: .yearlyReserveSince)
-        try c.encodeIfPresent(accountID, forKey: .accountID); try c.encode(category, forKey: .category); try c.encode(nature, forKey: .nature)
+        try c.encodeIfPresent(accountID, forKey: .accountID); try c.encodeIfPresent(otherAccountID, forKey: .otherAccountID); try c.encode(category, forKey: .category); try c.encode(nature, forKey: .nature)
         try c.encode(intoFixedSavings, forKey: .intoFixedSavings); try c.encode(active, forKey: .active)
         try c.encodeIfPresent(endDate, forKey: .endDate); try c.encodeIfPresent(stoppedAt, forKey: .stoppedAt); try c.encode(note, forKey: .note)
         try c.encode(autoPay, forKey: .autoPay); try c.encodeIfPresent(autoPaySince, forKey: .autoPaySince)
@@ -1232,12 +1265,14 @@ public struct Ledger: Codable, Equatable, Sendable {
             guard ids.contains(e.accountID), e.amount > 0, e.amount <= Money.limit, !e.title.isEmpty,
                   dateValid(e.date), e.recordedAt.map(dateValid) ?? true, e.otherDate.map(dateValid) ?? true,
                   e.occurrence.map(dateValid) ?? true, e.rentPeriod.map(dateValid) ?? true,
+                  e.countsFromCycleStart.map(dateValid) ?? true,
+                  e.originalAmount.map({ (1...Money.limit).contains($0) }) ?? true,
                   e.spreadFrom.map({ dateValid($0) && Dates.day($0) <= Dates.day(e.date) }) ?? true,
                   e.subcategory.map({ !$0.isEmpty && $0.count <= 200 && !$0.contains("/") }) ?? true,
                   (e.purpose?.count ?? 0) <= 4000 else { throw YubaiError.invalid("交易金额、日期或账户无效。") }
             if let other = e.otherAccountID { guard ids.contains(other), other != e.accountID, e.nature.paired else { throw YubaiError.invalid("转账的两个账户必须不同且存在。") } }
-            if e.nature.paired, let other = e.otherAccountID, let kind = accounts.first(where: { $0.id == other })?.kind, e.nature != .transfer {
-                let required: AccountKind = [.borrow, .loanReturn, .repayment].contains(e.nature) ? .credit : ([.lend, .loanRecovery].contains(e.nature) ? .receivable : .investment)
+            if let required = e.nature.requiredPairedDestination, let other = e.otherAccountID,
+               let kind = accounts.first(where: { $0.id == other })?.kind {
                 guard kind == required, accounts.contains(where: { $0.id == e.accountID && ($0.kind == .cash || $0.kind == .bank) }) else { throw YubaiError.invalid("\(e.nature.label)需要把收付款账户关联到“\(required.label)”账户，请核对两边账户类型。") }
             }
             if e.mergedIntoID != nil && e.deletedAt == nil { throw YubaiError.invalid("已合并的转账证据不能单独恢复，否则会重复记账。请撤销合并或恢复合并前版本。") }

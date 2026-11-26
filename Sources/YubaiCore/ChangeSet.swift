@@ -9,9 +9,20 @@ public enum ProfileChange: Codable, Equatable, Sendable {
 }
 public struct EntryDraft: Codable, Equatable, Sendable {
     public var id = UUID(); public var date: Date; public var amount: Int64; public var amountConfirmed: Bool
-    public var nature: Nature { didSet { if nature != .income { intoFixedSavings = false }; if nature != .expense { fromReserve = false } } }
-    public var intoFixedSavings = false { didSet { if nature != .income { intoFixedSavings = false } } }
+    public var nature: Nature {
+        didSet {
+            if nature != .income && nature != .transfer { intoFixedSavings = false }
+            if nature != .expense { fromReserve = false; pendingRecovery = nil; personalExpense = nil }
+            if nature != .income { countsFromCycleStart = nil }
+        }
+    }
+    public var intoFixedSavings = false { didSet { if nature != .income && nature != .transfer { intoFixedSavings = false } } }
     public var fromReserve = false { didSet { if nature != .expense { fromReserve = false } } }
+    public var pendingRecovery: PendingRecovery? { didSet { if nature != .expense { pendingRecovery = nil } } }
+    public var personalExpense: Int64? { didSet { if nature != .expense { personalExpense = nil } } }
+    public var countsFromCycleStart: Date? { didSet { if nature != .income { countsFromCycleStart = nil } } }
+    public var originalCurrency: BillCurrency?
+    public var originalAmount: Int64?
     public var accountID: UUID; public var title: String; public var category: String
     public var partID: UUID?
     public var purpose: String?
@@ -21,15 +32,20 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var otherAccountID: UUID?
     public var planID: UUID?; public var occurrence: Date?
     public init(date: Date, amount: Int64, amountConfirmed: Bool = false, nature: Nature = .expense,
-                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil, intoFixedSavings: Bool = false, fromReserve: Bool = false) {
+                accountID: UUID, title: String, category: String = Classification.pendingCategory, subcategory: String? = nil, purpose: String? = nil, planID: UUID? = nil, occurrence: Date? = nil, intoFixedSavings: Bool = false, fromReserve: Bool = false, pendingRecovery: PendingRecovery? = nil, personalExpense: Int64? = nil, countsFromCycleStart: Date? = nil, originalCurrency: BillCurrency? = nil, originalAmount: Int64? = nil) {
         self.date = date; self.amount = amount; self.amountConfirmed = amountConfirmed; self.nature = nature
         self.accountID = accountID; self.title = title; self.category = category; self.subcategory = subcategory; self.purpose = purpose
         self.planID = planID; self.occurrence = occurrence
-        self.intoFixedSavings = nature == .income && intoFixedSavings
+        self.intoFixedSavings = (nature == .income || nature == .transfer) && intoFixedSavings
         self.fromReserve = nature == .expense && fromReserve
+        self.pendingRecovery = nature == .expense ? pendingRecovery : nil
+        self.personalExpense = nature == .expense ? personalExpense : nil
+        self.countsFromCycleStart = nature == .income ? countsFromCycleStart : nil
+        self.originalCurrency = originalCurrency
+        self.originalAmount = originalAmount
     }
     private enum CodingKeys: String, CodingKey {
-        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
+        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, pendingRecovery, personalExpense, countsFromCycleStart, originalCurrency, originalAmount, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -37,9 +53,14 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         amount = try c.decode(Int64.self, forKey: .amount); amountConfirmed = try c.decode(Bool.self, forKey: .amountConfirmed)
         nature = try c.decode(Nature.self, forKey: .nature)
         let intoFixed = try c.decodeIfPresent(Bool.self, forKey: .intoFixedSavings) ?? false
-        intoFixedSavings = nature == .income && intoFixed
+        intoFixedSavings = (nature == .income || nature == .transfer) && intoFixed
         let reserve = try c.decodeIfPresent(Bool.self, forKey: .fromReserve) ?? false
         fromReserve = nature == .expense && reserve
+        pendingRecovery = nature == .expense ? try c.decodeIfPresent(PendingRecovery.self, forKey: .pendingRecovery) : nil
+        personalExpense = nature == .expense ? try c.decodeIfPresent(Int64.self, forKey: .personalExpense) : nil
+        countsFromCycleStart = nature == .income ? try c.decodeIfPresent(Date.self, forKey: .countsFromCycleStart) : nil
+        originalCurrency = try c.decodeIfPresent(BillCurrency.self, forKey: .originalCurrency)
+        originalAmount = try c.decodeIfPresent(Int64.self, forKey: .originalAmount)
         accountID = try c.decode(UUID.self, forKey: .accountID); title = try c.decode(String.self, forKey: .title)
         category = try c.decode(String.self, forKey: .category); partID = try c.decodeIfPresent(UUID.self, forKey: .partID)
         purpose = try c.decodeIfPresent(String.self, forKey: .purpose); subcategory = try c.decodeIfPresent(String.self, forKey: .subcategory)
@@ -54,6 +75,11 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         try c.encode(nature, forKey: .nature)
         if intoFixedSavings { try c.encode(true, forKey: .intoFixedSavings) }
         if fromReserve { try c.encode(true, forKey: .fromReserve) }
+        try c.encodeIfPresent(pendingRecovery, forKey: .pendingRecovery)
+        try c.encodeIfPresent(personalExpense, forKey: .personalExpense)
+        try c.encodeIfPresent(countsFromCycleStart, forKey: .countsFromCycleStart)
+        try c.encodeIfPresent(originalCurrency, forKey: .originalCurrency)
+        try c.encodeIfPresent(originalAmount, forKey: .originalAmount)
         try c.encode(accountID, forKey: .accountID); try c.encode(title, forKey: .title); try c.encode(category, forKey: .category)
         try c.encodeIfPresent(partID, forKey: .partID); try c.encodeIfPresent(purpose, forKey: .purpose)
         try c.encodeIfPresent(subcategory, forKey: .subcategory); try c.encodeIfPresent(categoryUserEdited, forKey: .categoryUserEdited)
@@ -272,7 +298,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 guard validDate(occurrence) else { throw YubaiError.invalid("安排发生日无效。") }
                 guard let i = active(id), let p = next.plans.first(where: { $0.id == plan }) else { skip(position); continue }
                 guard next.entries[i].planID == nil, next.entries[i].rentID == nil, next.entries[i].relatedEntryID == nil else { skip(position); continue }
-                guard next.entries[i].nature == p.nature, p.accountID == nil || p.accountID == next.entries[i].accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
+                guard next.entries[i].nature == p.nature, p.accountID == nil || p.accountID == next.entries[i].accountID,
+                      p.otherAccountID == nil || p.otherAccountID == next.entries[i].otherAccountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
                 guard p.occurrenceIndex(on: occurrence) != nil, !p.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
                 next.entries[i].planID = plan; next.entries[i].occurrence = Dates.day(occurrence); touch(i)
             case .linkRent(let id, let rent, let period):
@@ -417,12 +444,18 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 var e = Entry(date: draft.date, amount: draft.amount, nature: draft.nature, accountID: draft.accountID, title: draft.title, category: draft.category)
                 e.intoFixedSavings = draft.intoFixedSavings
                 e.fromReserve = draft.fromReserve
+                e.pendingRecovery = draft.pendingRecovery
+                if e.nature == .expense, let personal = draft.personalExpense { e.personalExpense = personal }
+                e.countsFromCycleStart = draft.countsFromCycleStart
+                e.originalCurrency = draft.originalCurrency
+                e.originalAmount = draft.originalAmount
                 if e.fromReserve, e.amount > next.fixedSavingsTotal(now: createdAt) { throw YubaiError.invalid("存着的钱不够。") }
                 e.partID = draft.partID; e.id = draft.id; e.subcategoryUserEdited = draft.categoryUserEdited == true; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
                     guard validDate(occurrence), let plan = next.plans.first(where: { $0.id == id }), plan.occurrenceIndex(on: occurrence) != nil,
                           !plan.isSkipped(on: occurrence) else { throw YubaiError.invalid("关联日期不是这个资金安排的有效发生日。") }
-                    guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
+                    guard e.nature == plan.nature, plan.accountID == nil || plan.accountID == e.accountID,
+                          plan.otherAccountID == nil || plan.otherAccountID == e.otherAccountID else { throw YubaiError.invalid("记录性质或账户与资金安排不符。") }
                     e.planID = id; e.occurrence = Dates.day(occurrence)
                 } else if draft.planID != nil || draft.occurrence != nil { throw YubaiError.invalid("请同时指定固定收付和发生日。") }
                 e.source = source; e.classificationReason = stamp; e.userEdited = true
@@ -441,7 +474,8 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
               let index = ledger.plans.firstIndex(where: { $0.id == id && Payday.isSalaryPlan($0) }),
               Finance.anchorPlan(in: ledger, now: entry.date)?.id == id else { return }
         Payday.recordReceipt(entry, planIndex: index, in: &ledger)
-        guard entry.date <= createdAt, Finance.cycleInfo(in: ledger, now: createdAt).start == Dates.day(entry.date) else { return }
+        let effective = entry.countsFromCycleStart ?? entry.date
+        guard effective <= createdAt, Finance.cycleInfo(in: ledger, now: createdAt).start == Dates.day(effective) else { return }
         Savings.closeCycles(&ledger, now: createdAt)
     }
     private static func month(_ date: Date) -> Date { Dates.calendar.dateInterval(of: .month, for: date)?.start ?? Dates.day(date) }

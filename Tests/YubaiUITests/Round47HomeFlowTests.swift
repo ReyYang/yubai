@@ -35,7 +35,8 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 6), .completed)
     }
     private func add(_ amount: String) {
-        tap("addEntry"); keys(amount); tap("entryCategory_餐饮"); tap("saveQuickEntry"); tap("cancelManualSheet")
+        tap("addEntry"); keys(amount); tap("entryCategory_餐饮"); tap("saveQuickEntry")
+        XCTAssertTrue(waitForDisappearance(element("saveQuickEntry")))
         XCTAssertTrue(element("entriesScroll").waitForExistence(timeout: 6))
     }
     func testLedgerIsRootAndOnlyLedgerHasTheEntryPill() {
@@ -433,7 +434,15 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         tap("cancelManualSheet")
         let yesterday = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'addEntryOnDay_' AND label CONTAINS '11月19日'")).firstMatch
         tapControl(yesterday, in: app)
-        XCTAssertTrue(element("entryDate_yesterday").isSelected)
+        let time = element("entryTimePill")
+        XCTAssertTrue(time.waitForExistence(timeout: 5))
+        XCTAssertEqual(time.label, "昨天")
+        tap("entryTimePill")
+        let shortcut = element("entryQuick_昨天")
+        XCTAssertTrue(shortcut.waitForExistence(timeout: 5))
+        XCTAssertTrue(shortcut.isSelected)
+        tap("entryQuick_昨天")
+        XCTAssertTrue(waitForDisappearance(shortcut))
     }
     func testMonthJumpUsesMonthGrid() {
         launch(); tap("entriesMonth"); tap("ledgerJumpMonth_8")

@@ -174,7 +174,7 @@ struct ReceiptCapturePage: View {
             .accessibilityValue(label).accessibilityIdentifier("receiptCategory_\(id)")
     }
     private func categoryPicker(_ target: ReceiptCategorySelection) -> some View {
-        AddEntryCategories(income: target.income, selection: choices[target.id] ?? .init(category: target.suggested ?? ""),
+        ReceiptEntryCategories(income: target.income, selection: choices[target.id] ?? .init(category: target.suggested ?? ""),
                            suggested: nil, cancel: { editingCategory = nil }) { assignment in
             if let assignment { choices[target.id] = assignment }
             editingCategory = nil
@@ -300,3 +300,83 @@ private struct ReceiptCamera: UIViewControllerRepresentable {
     }
 }
 #endif
+
+private struct ReceiptEntryCategories: View {
+    @Environment(AppStore.self) private var store
+    let income: Bool
+    let selection: CategoryAssignment
+    let suggested: String?
+    let cancel: () -> Void
+    let choose: (CategoryAssignment?) -> Void
+    @State private var adding = false
+    @State private var parent: String?
+    @State private var managing = false
+    private var rows: [YubaiCore.Category] { store.current.orderedCategories(income: income) }
+    var body: some View {
+        Group {
+            if adding {
+                CategoryAdditionSheet(income: income, parent: parent, cancel: { adding = false }) { addition in
+                    guard store.update("添加分类", entryMotion: false, showToast: false, { try addition.apply(to: &$0) }) else { return false }
+                    choose(addition.assignment); return true
+                }
+            } else if managing { manager }
+            else { picker }
+        }.accessibilityElement(children: .contain).accessibilityIdentifier("entryCategoryPicker")
+    }
+    private var picker: some View {
+        VStack(spacing: YubaiSpace.none) {
+            ManualSheetHeader(title: "选分类", actionTitle: "管理", primary: false, cancelTitle: "返回",
+                              actionIdentifier: "entryMoreManage", cancelIdentifier: "entryMoreCancel",
+                              cancel: cancel, action: { managing = true }).padding(.horizontal, YubaiSpace.insetPage)
+            Page(topPadding: YubaiSpace.space8) {
+                CategoryPicker(income: income, selected: selection.category.isEmpty ? nil : selection, suggested: suggested,
+                               identifier: "entryMore", style: .entry, addInline: { target in parent = target; adding = true }) { assignment, _ in
+                    choose(assignment); return true
+                }
+            }
+        }
+    }
+    private var manager: some View {
+        VStack(spacing: YubaiSpace.none) {
+            ManualSheetHeader(title: "分类", actionTitle: "新分类", primary: false, cancelTitle: "返回",
+                              actionIdentifier: "addMainCategory", cancelIdentifier: "entryCategoryManageBack",
+                              cancel: { managing = false }, action: { parent = nil; adding = true })
+                .padding(.horizontal, YubaiSpace.insetPage)
+            List {
+                ForEach(rows) { row in
+                    HStack {
+                        Text(row.name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1)
+                        Spacer(minLength: YubaiSpace.space8)
+                        if !row.isCatchAll {
+                            Button("不显示") { hide(row, true) }.yubaiFont(YubaiFont.callout).frame(minHeight: YubaiSize.tapMin)
+                                .accessibilityIdentifier("entryHideCategory_" + row.name)
+                        }
+                    }.listRowBackground(YubaiColor.paperSheet)
+                }.onMove(perform: move)
+                let hidden = store.current.orderedCategories(income: income, hidden: true)
+                if !hidden.isEmpty {
+                    Section("已隐藏") {
+                        ForEach(hidden) { row in
+                            HStack {
+                                Text(row.name).lineLimit(1); Spacer()
+                                Button("放回去") { hide(row, false) }.frame(minHeight: YubaiSize.tapMin)
+                                    .accessibilityIdentifier("entryUnhideCategory_" + row.name)
+                            }.listRowBackground(YubaiColor.paperSheet)
+                        }
+                    }
+                }
+            }.listStyle(.plain).scrollContentBackground(.hidden)
+                #if os(iOS)
+                .environment(\.editMode, .constant(.active))
+                #endif
+                .accessibilityIdentifier("entryInlineCategoryManager")
+        }
+    }
+    private func hide(_ row: YubaiCore.Category, _ hidden: Bool) {
+        store.update("分类", entryMotion: false, showToast: false) { try CategoryModel.setHidden(hidden, category: row.name, income: income, in: &$0) }
+    }
+    private func move(_ offsets: IndexSet, to target: Int) {
+        var names = rows.map(\.name); names.move(fromOffsets: offsets, toOffset: target)
+        store.update("分类", entryMotion: false, showToast: false) { try CategoryModel.setOrder(names, income: income, in: &$0) }
+    }
+}
