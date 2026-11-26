@@ -94,7 +94,7 @@ struct GapCard: View {
                      yesTitle: "补记一笔", noTitle: "对一下余额", yesIdentifier: "addEntryFromGap", noIdentifier: "openReconcile",
                      yes: { store.requestCaptureSheet(.prefilledEntry(QuickEntryPrefill(category: nil, amount: nil, purpose: nil,
                                                                                         date: Dates.addDays(1, to: gap.lastRecorded)))) },
-                     no: { store.sheetSource = nil; store.sheet = .reconcileAll })
+                     no: { store.openBalanceReconciliation() })
             .accessibilityIdentifier("gapCard")
     }
 }

@@ -236,7 +236,7 @@ struct EntrySheetView: View {
     }
 }
 
-private struct EntryGrabber: View {
+struct EntryGrabber: View {
     var body: some View {
         Capsule(style: .continuous).fill(DS.Color.grabber)
             .frame(width: EntrySpec.grabberWidth, height: EntrySpec.grabberHeight)
@@ -863,14 +863,21 @@ private struct EntryKeypadTrayView: View {
 }
 
 struct DSKeypad: View {
+    enum Variant { case entry, digits }
     var pressedKey: String?
     var canSave = true
     var onKey: (String) -> Void = { _ in }
+    var variant: Variant = .entry
     var onSave: () -> Void = {}
-    private let keys = ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
+    private var keys: [String] {
+        switch variant {
+        case .entry: ["1", "2", "3", "⌫", "4", "5", "6", "+", "7", "8", "9", "−", ".", "0", "00", "记下"]
+        case .digits: ["1", "2", "3", "4", "5", "6", "7", "8", "9", ".", "0", "⌫"]
+        }
+    }
 
     var body: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: DSLayout.keypadColumns), spacing: DS.Space.s8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: variant == .entry ? DSLayout.keypadColumns : DSLayout.digitKeypadColumns), spacing: DS.Space.s8) {
             ForEach(keys, id: \.self) { key in
                 if key == "⌫" {
                     EntryBackspaceKey { onKey(key) }

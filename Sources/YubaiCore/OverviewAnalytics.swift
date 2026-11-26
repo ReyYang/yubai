@@ -68,15 +68,19 @@ public struct OverviewCategoryDrill: Equatable, Sendable {
     public let window: OverviewPeriodWindow
 }
 
+public extension Account {
+    var lastReconciledAt: Date? {
+        reconciled && anchorDate.timeIntervalSince1970 != -2_208_988_800 ? anchorDate : nil
+    }
+}
+
 public struct OverviewAssetsSnapshot: Equatable, Sendable {
     public struct Balance: Equatable, Sendable, Identifiable {
         public var id: UUID { account.id }
         public let account: Account
         public let amount: Int64
         public var updatedAt: Date { account.anchorDate }
-        public var lastReconciledAt: Date? {
-            account.reconciled && account.anchorDate.timeIntervalSince1970 != -2_208_988_800 ? account.anchorDate : nil
-        }
+        public var lastReconciledAt: Date? { account.lastReconciledAt }
     }
     public let floorAmount: Int64
     public let reserveAmount: Int64

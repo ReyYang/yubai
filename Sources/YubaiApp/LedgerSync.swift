@@ -83,7 +83,7 @@ extension AppStore {
     }
     func persist(_ next: Ledger, reason: String, restoring: Bool = false, preservingRecovery: Bool = true) throws -> Ledger {
         try next.validate()
-        if HomeFixture.current != nil { return next }
+        if isDesignFixture { return next }
         let repository = localRepository, location = ledgerLocation
         let epoch = persistenceEpoch, revision = ledgerRevision &+ 1, id = UUID()
         let receipt = ledgerWriter.submit {

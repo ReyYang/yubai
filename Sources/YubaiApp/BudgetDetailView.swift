@@ -30,9 +30,9 @@ struct BudgetDetailView: View {
                         .id(target)
                 }
             }
+            .dsEdgeSwipeBack()
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
-            .background(BudgetEdgeSwipe().allowsHitTesting(false))
             #endif
             .onAppear {
                 guard !loaded else { return }
@@ -386,42 +386,6 @@ private struct BudgetKeypadOverlay: View {
     }
 }
 
-
-#if os(iOS)
-/// A hidden navigation bar drops the default gesture's eligibility check.
-private struct BudgetEdgeSwipe: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> Controller { Controller() }
-    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
-
-    final class Controller: UIViewController, UIGestureRecognizerDelegate {
-        private weak var edgeSwipe: UIGestureRecognizer?
-        private weak var originalDelegate: (any UIGestureRecognizerDelegate)?
-        private var wasEnabled = false
-
-        override func viewDidAppear(_ animated: Bool) {
-            super.viewDidAppear(animated)
-            guard let edge = navigationController?.interactivePopGestureRecognizer, edge.delegate !== self else { return }
-            edgeSwipe = edge
-            originalDelegate = edge.delegate
-            wasEnabled = edge.isEnabled
-            edge.delegate = self
-            edge.isEnabled = true
-        }
-
-        override func viewDidDisappear(_ animated: Bool) {
-            super.viewDidDisappear(animated)
-            guard let edgeSwipe, edgeSwipe.delegate === self else { return }
-            edgeSwipe.delegate = originalDelegate
-            edgeSwipe.isEnabled = wasEnabled
-        }
-
-        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-            guard let navigationController else { return false }
-            return navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
-        }
-    }
-}
-#endif
 
 #if DEBUG
 #Preview("还能花") {

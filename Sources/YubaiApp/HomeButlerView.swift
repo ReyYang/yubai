@@ -73,7 +73,7 @@ struct HomeTaskCard: View {
         let copy = HomeTaskCopy.make(.balanceMismatch(value), now: store.financialNow, hidden: hide)!
         return QuestionCard(eyebrow: copy.kicker, title: copy.title, more: more, titleIdentifier: "mismatchText",
                             yesTitle: "对一下余额", noTitle: "", yesIdentifier: "openReconcile",
-                            yes: { store.sheet = .reconcileAll }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBalanceMismatch")
+                            yes: { store.openBalanceReconciliation() }, no: {}, onDismiss: { store.answerHome(item) }, dismissIdentifier: "dismissBalanceMismatch")
             .accessibilityIdentifier("balanceMismatchCard")
     }
     private func headsUpCard(_ value: Occurrence) -> some View {

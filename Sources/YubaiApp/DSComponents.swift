@@ -1,5 +1,8 @@
 import SwiftUI
 import YubaiCore
+#if os(iOS)
+import UIKit
+#endif
 
 struct DSInlineTag {
     enum Tone { case warning, positive, quiet }
@@ -8,7 +11,7 @@ struct DSInlineTag {
 }
 
 struct DSListRow: View {
-    let icon: DS.Icon
+    let icon: DS.Icon?
     let name: String
     let amount: String
     var detail: String? = nil
@@ -18,10 +21,24 @@ struct DSListRow: View {
     var detailAmount: String? = nil
     var amountColor = DS.Color.ink
 
+    struct Inline {
+        let date: String
+        var swatch: Color? = nil
+    }
+    var inline: Inline? = nil
+
     var body: some View {
+        if let inline {
+            inlineContent(inline)
+        } else {
+            standardContent
+        }
+    }
+
+    private var standardContent: some View {
         VStack(alignment: .leading, spacing: HomeSpec.heroLabelGap) {
             HStack(spacing: DS.Space.s12) {
-                DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.iconQuiet)
+                if let icon { DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.iconQuiet) }
                 HStack(spacing: HomeSpec.gap6) {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
                     if let tag {
@@ -51,6 +68,24 @@ struct DSListRow: View {
                 Rectangle().fill(DS.Color.separator).frame(height: DS.Stroke.hairline)
                     .padding(.leading, DS.Size.icon + DS.Space.s12)
             }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func inlineContent(_ presentation: Inline) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
+            if let swatch = presentation.swatch {
+                DSOverviewSwatch(color: swatch).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
+            }
+            Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
+            Text(presentation.date).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3).fixedSize()
+            Spacer(minLength: .zero)
+            Text(amount).dsText(DS.Font.nSpine).foregroundStyle(amountColor)
+                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).layoutPriority(1)
+        }
+        .frame(minHeight: DS.Size.rowBill)
+        .overlay(alignment: .top) {
+            if separator { DS.Color.separator.frame(height: DS.Stroke.hairline) }
         }
         .accessibilityElement(children: .combine)
     }
@@ -780,12 +815,32 @@ struct DSButton: View {
 struct DSAlertCard: View {
     enum Tone { case warning, positive }
     let title: String
-    let detail: String
-    let value: String
+    var detail = ""
+    var value = ""
     var tone: Tone = .warning
+    var subtitle: String? = nil
     var onTap: () -> Void = {}
     var body: some View {
         Button(action: onTap) {
+            if let subtitle {
+                HStack(spacing: DS.Space.s12) {
+                    VStack(alignment: .leading, spacing: OverviewSpec.alertSubtitleGap) {
+                        Text(title).dsText(DS.Font.tLabelStrong).monospacedDigit()
+                        Text(subtitle).dsText(DS.Font.tSub).monospacedDigit()
+                    }.dsFillWidth()
+                    DSIconView(icon: .chevron, size: DS.Space.s16, color: DS.Color.warnInk)
+                }
+                .foregroundStyle(DS.Color.warnInk)
+                .padding(.leading, DS.Space.s16).padding(.trailing, DS.Space.s12)
+                .padding(.vertical, OverviewSpec.alertVertical)
+                .dsSurface(DS.Color.warnSoft, radius: DS.Radius.m)
+            } else {
+                singleLine
+            }
+        }.dsPressStyle()
+    }
+
+    private var singleLine: some View {
             HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
                 HStack(spacing: DS.Space.s8) {
                     Text(title).dsText(DS.Font.tLabelStrong).fixedSize()
@@ -800,7 +855,18 @@ struct DSAlertCard: View {
                 .padding(.horizontal, DS.Space.s16).padding(.vertical, tone == .warning ? HomeSpec.formulaTop : 0)
                 .background(tone == .warning ? DS.Color.warnSoft : DS.Color.accentSoft)
                 .clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
-        }.dsPressStyle()
+    }
+}
+
+enum DSChartPalette {
+    static func colors(anomalies: [Bool]) -> [Color] {
+        let palette = [DS.Color.chart1, DS.Color.chart2, DS.Color.chart3, DS.Color.chart4, DS.Color.chart5]
+        var index = 0
+        return anomalies.map { anomaly in
+            if anomaly { return DS.Color.warn }
+            defer { index += 1 }
+            return palette.indices.contains(index) ? palette[index] : DS.Color.track
+        }
     }
 }
 
@@ -810,55 +876,97 @@ struct DSDonut: View {
         let name: String
         let value: Double
         let amount: String
+        var isAnomaly = false
+        var delta: String? = nil
     }
     let slices: [Slice]
+    var identifierPrefix = "overviewCategory_"
+    var showsShares = true
     var onSelect: (String) -> Void = { _ in }
-    private let colors = [DS.Color.chart1, DS.Color.chart2, DS.Color.chart3, DS.Color.chart4, DS.Color.chart5]
-    private var sorted: [Slice] { Array(slices.sorted { $0.value > $1.value }.prefix(colors.count)) }
-    private var total: Double { sorted.reduce(0) { $0 + max(0, $1.value) } }
-    private func fraction(_ value: Double) -> Double { total > 0 ? max(0, value) / total : 0 }
+
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: DS.Space.s16) { ring; legend }
-            VStack(spacing: DS.Space.s16) { ring; legend }
-        }.dsFillWidth()
-    }
-    private var ring: some View {
-        GeometryReader { geometry in
-            let gap = Double(DS.Stroke.hairline / geometry.size.width)
+        let sorted = slices.filter { $0.value > 0 }.sorted { $0.value == $1.value ? $0.id < $1.id : $0.value > $1.value }
+        let total = sorted.reduce(0) { $0 + $1.value }
+        let colors = DSChartPalette.colors(anomalies: sorted.map(\.isAnomaly))
+        let ends = sorted.reduce(into: [0.0]) { $0.append(($0.last ?? 0) + $1.value / total) }
+        let gap = Double(OverviewSpec.donutGap / OverviewSpec.donutCenterline) / .pi
+
+        VStack(spacing: DS.Space.s8) {
             ZStack {
                 Circle().stroke(DS.Color.track, lineWidth: DS.Size.donutStroke)
                 ForEach(Array(sorted.enumerated()), id: \.element.id) { index, slice in
-                    let start = sorted.prefix(index).reduce(0) { $0 + fraction($1.value) }
-                    Circle().trim(from: CGFloat(start + min(gap, fraction(slice.value) / 2)),
-                                  to: CGFloat(max(start + min(gap, fraction(slice.value) / 2), start + fraction(slice.value) - gap)))
-                        .stroke(colors[index], style: StrokeStyle(lineWidth: DS.Size.donutStroke, lineCap: .butt))
+                    let start = ends[index]
+                    let end = ends[index + 1]
+                    let inset = sorted.count == 1 ? 0 : min(gap, (end - start) / 2)
+                    Circle().trim(from: start, to: end - inset)
+                        .stroke(colors[index], lineWidth: DS.Size.donutStroke)
                         .rotationEffect(.radians(-.pi / 2))
                 }
-                VStack(spacing: 0) {
-                    Text("最多").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-                    Text(sorted.first?.name ?? "—").dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
+                if let largest = sorted.first {
+                    VStack(spacing: .zero) {
+                        Text("最多").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
+                        Text(largest.name).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
+                            .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                    }.padding(DS.Space.s12)
                 }
-            }.padding(DS.Size.donutStroke / 2)
-        }.frame(width: DS.Size.donut, height: DS.Size.donut)
-            .accessibilityHidden(true)
+            }.padding(OverviewSpec.donutInset)
+                .frame(width: DS.Size.donut, height: DS.Size.donut)
+                .accessibilityHidden(true)
+            VStack(spacing: .zero) {
+                ForEach(Array(sorted.enumerated()), id: \.element.id) { index, slice in
+                    Button { onSelect(slice.id) } label: {
+                        DSOverviewLegendRow(name: slice.name, amount: slice.amount, color: colors[index],
+                                            share: showsShares ? (slice.value / total).formatted(.percent.precision(.fractionLength(0))) : nil,
+                                            delta: slice.delta, isAnomaly: slice.isAnomaly)
+                        .frame(minHeight: DS.Size.iconTile)
+                        .contentShape(Rectangle())
+                    }.dsPressStyle().accessibilityIdentifier(identifierPrefix + slice.id)
+                }
+            }.dsFillWidth()
+        }.frame(maxWidth: .infinity)
     }
-    private var legend: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(sorted.enumerated()), id: \.element.id) { index, slice in
-                Button { onSelect(slice.id) } label: {
-                    HStack(spacing: DS.Space.s4) {
-                        RoundedRectangle(cornerRadius: DS.Radius.xs, style: .continuous).fill(colors[index])
-                            .frame(width: DS.Size.legendSwatch, height: DS.Size.legendSwatch)
-                        Text(slice.name).dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink2)
-                        Text(fraction(slice.value).formatted(.percent.precision(.fractionLength(0))))
-                            .dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-                        Spacer(minLength: 0)
-                        Text(slice.amount).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink)
-                    }.frame(minHeight: DS.Size.iconTile).dsFillWidth()
-                }.dsPressStyle()
+}
+
+struct DSOverviewLegendRow: View {
+    let name: String
+    let amount: String
+    let color: Color
+    let share: String?
+    let delta: String?
+    let isAnomaly: Bool
+    var isDrill = false
+
+    var body: some View {
+        let ink = isAnomaly ? DS.Color.warnInk : DS.Color.ink
+        HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
+            DSOverviewSwatch(color: color).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
+            Text(name).dsText(isDrill ? DS.Font.tBody : DS.Font.tLabel)
+                .fontWeight(isAnomaly ? .semibold : .regular).foregroundStyle(ink).lineLimit(1)
+            if let share {
+                Text(share).dsText(isDrill ? DS.Font.tSub : DS.Font.tCaption)
+                    .monospacedDigit().foregroundStyle(DS.Color.ink3).fixedSize()
             }
-        }.dsFillWidth()
+            Spacer(minLength: .zero)
+            if let delta {
+                Text(delta).dsText(DS.Font.tCaption).monospacedDigit()
+                    .fontWeight(isAnomaly || !isDrill ? .semibold : .regular)
+                    .foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink3).fixedSize()
+            }
+            Text(amount).dsText(OverviewSpec.legendAmount).foregroundStyle(ink)
+                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                .frame(minWidth: OverviewSpec.legendAmountWidth, alignment: .trailing)
+        }.accessibilityElement(children: .combine)
+    }
+}
+
+struct DSOverviewSwatch: View {
+    let color: Color
+    var size = DS.Size.legendSwatch
+
+    var body: some View {
+        Rectangle().fill(color).frame(width: size, height: size)
+            .clipShape(.rect(cornerRadius: DS.Radius.xs, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 
@@ -1091,5 +1199,211 @@ struct DSCalendarPopover: View {
         }
         .buttonStyle(EntryTactileButtonStyle())
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+#if os(iOS)
+/// A hidden navigation bar drops the default gesture's eligibility check.
+private struct DSEdgeSwipe: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> Controller { Controller() }
+    func updateUIViewController(_ uiViewController: Controller, context: Context) {}
+
+    final class Controller: UIViewController, UIGestureRecognizerDelegate {
+        private weak var edgeSwipe: UIGestureRecognizer?
+        private weak var originalDelegate: (any UIGestureRecognizerDelegate)?
+        private var wasEnabled = false
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            guard let edge = navigationController?.interactivePopGestureRecognizer, edge.delegate !== self else { return }
+            edgeSwipe = edge
+            originalDelegate = edge.delegate
+            wasEnabled = edge.isEnabled
+            edge.delegate = self
+            edge.isEnabled = true
+        }
+
+        override func viewDidDisappear(_ animated: Bool) {
+            super.viewDidDisappear(animated)
+            guard let edgeSwipe, edgeSwipe.delegate === self else { return }
+            edgeSwipe.delegate = originalDelegate
+            edgeSwipe.isEnabled = wasEnabled
+        }
+
+        func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let navigationController else { return false }
+            return navigationController.viewControllers.count > 1 && navigationController.transitionCoordinator == nil
+        }
+    }
+}
+#endif
+
+extension View {
+    @ViewBuilder func dsEdgeSwipeBack() -> some View {
+        #if os(iOS)
+        background(DSEdgeSwipe().allowsHitTesting(false))
+        #else
+        self
+        #endif
+    }
+}
+
+struct DSStackedBar: View {
+    struct Segment: Identifiable {
+        let id: String
+        let value: Double
+        let color: Color
+    }
+
+    enum Kind { case drill, assets }
+    let segments: [Segment]
+    var kind: Kind = .drill
+
+    var body: some View {
+        let positive = segments.filter { $0.value > 0 }
+        let total = positive.reduce(0) { $0 + $1.value }
+        GeometryReader { geometry in
+            let width = max(0, geometry.size.width - CGFloat(max(0, positive.count - 1)) * OverviewSpec.barGap)
+            HStack(spacing: OverviewSpec.barGap) {
+                ForEach(positive) { segment in
+                    Rectangle().fill(segment.color).frame(width: width * CGFloat(segment.value / total))
+                }
+            }.background(positive.isEmpty ? DS.Color.track : DS.Color.bg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }.background(DS.Color.track)
+            .frame(height: kind == .drill ? OverviewSpec.drillBarHeight : OverviewSpec.assetsBarHeight)
+            .clipShape(kind == .drill ? AnyShape(DS.Shape.pill) : AnyShape(RoundedRectangle(cornerRadius: DS.Radius.xs, style: .continuous)))
+            .accessibilityHidden(true)
+    }
+}
+
+struct DSBalanceChart: View {
+    let values: [Int64]
+    let startLabel: String
+    let highlightLabel: String?
+    let highlightIndex: Int?
+    let endLabel: String
+
+    var body: some View {
+        VStack(spacing: OverviewSpec.headingGap) {
+            GeometryReader { geometry in
+                let points = plot(in: geometry.size)
+                let line = Path { path in path.addLines(points) }
+                Path { path in
+                    guard let first = points.first, let last = points.last else { return }
+                    path.addLines(points)
+                    path.addLine(to: CGPoint(x: last.x, y: geometry.size.height))
+                    path.addLine(to: CGPoint(x: first.x, y: geometry.size.height))
+                    path.closeSubpath()
+                }.fill(DS.Color.accent.opacity(OverviewSpec.chartAreaOpacity))
+                BalanceChartStroke(line: line)
+                if let index = highlightIndex, points.indices.contains(index) {
+                    Circle().fill(DS.Color.bg)
+                        .overlay(Circle().strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus))
+                        .frame(width: OverviewSpec.chartHighlightDot, height: OverviewSpec.chartHighlightDot)
+                        .position(points[index])
+                }
+                if let last = points.last {
+                    Circle().fill(DS.Color.accent)
+                        .overlay(Circle().stroke(DS.Color.bg, lineWidth: OverviewSpec.chartStroke))
+                        .frame(width: OverviewSpec.chartEndDot, height: OverviewSpec.chartEndDot)
+                        .position(last)
+                }
+            }.frame(height: OverviewSpec.chartHeight)
+            HStack {
+                Text(startLabel)
+                Spacer(minLength: DS.Space.s4)
+                if let highlightLabel {
+                    Text(highlightLabel).lineLimit(1)
+                    Spacer(minLength: DS.Space.s4)
+                }
+                Text(endLabel)
+            }.dsText(OverviewSpec.tiny).foregroundStyle(DS.Color.ink3)
+        }.accessibilityElement(children: .ignore)
+            .accessibilityLabel("近 30 天余额走势")
+            .accessibilityValue([startLabel, highlightLabel, endLabel].compactMap { $0 }.joined(separator: "，"))
+            .accessibilityIdentifier("accountBalanceChart")
+    }
+
+    private func plot(in size: CGSize) -> [CGPoint] {
+        guard let minValue = values.min(), let maxValue = values.max() else { return [] }
+        let range = Double(maxValue) - Double(minValue)
+        let horizontal = max(0, size.width - 2 * OverviewSpec.chartHorizontalInset)
+        let vertical = max(0, size.height - 2 * OverviewSpec.chartVerticalInset)
+        return values.enumerated().map { index, value in
+            let x = Double(index) / Double(max(1, values.count - 1))
+            let y = range > 0 ? (Double(maxValue) - Double(value)) / range : 0.5
+            return CGPoint(x: OverviewSpec.chartHorizontalInset + horizontal * x,
+                           y: OverviewSpec.chartVerticalInset + vertical * y)
+        }
+    }
+}
+
+private struct BalanceChartStroke: View {
+    let line: Path
+    @State private var trimProgress = CGFloat.zero
+    @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
+    @Environment(\.dsReduceMotionOverride) private var reduceMotionOverride
+    @Environment(\.dsAnimationsEnabled) private var animationsEnabled
+
+    var body: some View {
+        let _ = OverviewRenderCounts.hit("balanceChartStroke")
+        let animate = animationsEnabled && !(reduceMotionOverride ?? systemReduceMotion)
+        line.trim(from: .zero, to: animate ? trimProgress : 1)
+            .stroke(DS.Color.accent, style: StrokeStyle(lineWidth: OverviewSpec.chartStroke, lineCap: .round, lineJoin: .round))
+            .allowsHitTesting(false)
+            .onAppear {
+                guard trimProgress == 0 else { return }
+                withAnimation(animate ? DSMotion.smoothAnimation : nil) { trimProgress = 1 }
+            }
+    }
+}
+
+struct DSPeriodOptionGroup: View {
+    struct Option: Identifiable {
+        let id: String
+        let title: String
+        var range: String? = nil
+    }
+
+    let options: [Option]
+    let selection: String
+    var onSelect: (String) -> Void = { _ in }
+
+    var body: some View {
+        VStack(spacing: .zero) {
+            ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                let selected = option.id == selection
+                Button { onSelect(option.id) } label: {
+                    HStack(spacing: OverviewSpec.legendGap) {
+                        Text(option.title).dsText(DS.Font.tLabel).fontWeight(selected ? .semibold : .regular)
+                        Spacer(minLength: .zero)
+                        if let range = option.range {
+                            Text(range).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                        }
+                        ZStack {
+                            if selected {
+                                Circle().fill(DS.Color.accent)
+                                Circle().fill(DS.Color.onAccent).frame(width: DS.Space.s8, height: DS.Space.s8)
+                            } else {
+                                Circle().strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.focus)
+                            }
+                        }.frame(width: DS.Size.icon, height: DS.Size.icon).accessibilityHidden(true)
+                    }.foregroundStyle(DS.Color.ink)
+                        .frame(minHeight: OverviewSpec.optionHeight)
+                        .contentShape(Rectangle())
+                        .overlay(alignment: .top) {
+                            if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) }
+                        }
+                }.dsPressStyle()
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityIdentifier("overviewPeriod_" + option.id)
+            }
+        }.padding(.horizontal, DS.Space.s16)
+            .background(DS.Color.raised)
+            .clipShape(.rect(cornerRadius: DS.Radius.m, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: DS.Radius.m, style: .continuous)
+                .strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline).allowsHitTesting(false))
     }
 }

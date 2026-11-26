@@ -731,7 +731,7 @@ private struct FeatureCloudTransport: ChatTransport {
     func performCardAction(_ card: ButlerCard) {
         switch card.action ?? .openEvidence {
         case .openEvidence: sheet = .cardEvidence(card.id)
-        case .reconcileAccount(let id): sheet = .reconcile(id)
+        case .reconcileAccount(let id): openAccountValuation(.reconcile(id))
         case .confirmChangeSet(let id): sheet = .cardProposal(id)
         case .answerQuestion: sheet = .cardQuestion(card.id)
         case .openWish(let id): sheet = .wishlist(id)
