@@ -49,7 +49,6 @@ struct AskYubaiView: View {
     var initialText = ""
     var initialImage: Data? = nil
     var autoSend = false
-    var focusesDraft = false
     @Environment(\.yubaiSheetSurface) private var inSheet
     @State private var pendingAutoSend = false
     @State private var input = ""
@@ -111,10 +110,7 @@ struct AskYubaiView: View {
             .onChange(of: cloudAnswersAvailable) { _, available in if available { sendPendingQuestion() } }
             .task {
                 try? await Task.sleep(nanoseconds: 400_000_000)
-                if !Task.isCancelled {
-                    if focusesDraft { inputFocused = true }
-                    sendPendingQuestion()
-                }
+                if !Task.isCancelled { sendPendingQuestion() }
             }
             .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
             .fileImporter(isPresented: $filePicker, allowedContentTypes: [.image]) { result in

@@ -89,10 +89,6 @@ struct HomeView: View {
                  openAsk: { store.tabRouteRequest = .askDraft($0) },
                  openVoice: { store.tabRouteRequest = .askDraft("") },
                  recordSalary: { store.requestCaptureSheet(.prefilledEntry(.init(category: nil, amount: nil, purpose: "工资", nature: .income))) },
-                 deficit: store.homeTasks.compactMap { task -> Overspend.Options? in
-                     if case .overspend(let options) = task { return options }
-                     return nil
-                 }.first,
                  cover: { amount in
                      _ = store.update("补上") { try Reserve.transfer(.take, amount: amount, in: &$0, now: store.financialNow) }
                  })
@@ -112,7 +108,6 @@ private struct HomePage: View {
     let openAsk: (String) -> Void
     let openVoice: () -> Void
     let recordSalary: () -> Void
-    let deficit: Overspend.Options?
     let cover: (Int64) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
@@ -195,12 +190,10 @@ private struct HomePage: View {
                    guide: bars.guide)
             if period.income == 0 {
                 HomeStatus(text: "工资未到账", action: "记工资", onAction: recordSalary, identifier: "recordSalary")
-            } else if let deficit, fixture == nil {
-                HomeTaskCard(item: .overspend(deficit))
             } else if over {
                 let reserve = ledger.fixedSavingsTotal(now: now)
                 HomeStatus(text: "机动余钱 " + HomeDisplay.money(reserve, hidden: hide),
-                           action: fixture != nil && reserve >= amount ? "补上 " + HomeDisplay.money(amount, hidden: hide) : nil,
+                           action: reserve >= amount ? "补上 " + HomeDisplay.money(amount, hidden: hide) : nil,
                            onAction: { cover(amount) }, identifier: "coverFromReserve")
             } else if tight {
                 let date = Dates.addDays(projected, to: now)
@@ -433,7 +426,7 @@ private struct HomeRunningOverlay: View {
     let fixture = HomeFixture.home(.normal)
     HomePage(ledger: fixture.makeLedger().ledger, now: fixture.now, request: nil, fixture: fixture, scrollRequest: 0,
              openBudget: {}, openSettings: {}, openBill: { _ in }, openAsk: { _ in },
-             openVoice: {}, recordSalary: {}, deficit: nil, cover: { _ in })
+             openVoice: {}, recordSalary: {}, cover: { _ in })
         .safeAreaInset(edge: .bottom, spacing: .zero) { DSTabBar(selection: .constant(.home), onEntry: {}) }
 }
 #endif

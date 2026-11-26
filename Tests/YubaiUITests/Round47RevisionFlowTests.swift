@@ -127,7 +127,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
     func testDeficitRescueScrollsAboveCompactChromeBeforeTapInAllAppearances() {
         for mode in [(false, false, false), (true, false, false), (true, true, false), (true, false, true), (true, true, true)] {
             launch("v47r-deficit", large: mode.0, dark: mode.1, hidden: mode.2)
-            let scroll = element("entriesScroll"), rescue = element("coverFromReserve"), keep = element("deficitKeep")
+            let scroll = element("entriesScroll"), rescue = element("coverFromReserve")
             XCTAssertTrue(waitForStableFrame(rescue))
             let before = rescue.frame
             let initial = windowMetrics(in: app)?.scroll(matching: scroll.frame)
@@ -139,30 +139,31 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
                     $0.x < 20 && $0.y > scroll.frame.minY + 12 && $0.y < scroll.frame.maxY - 12
                 }) == true, "The native List gutter must accept a pan above the floating chrome")
             }
-            // First reveal the same single action the Rescued gallery stop
-            // taps, then keep the stricter simultaneous-answer/fade proof.
             XCTAssertTrue(revealControl(rescue, in: app, deadline: Date().addingTimeInterval(60), searching: scroll))
             XCTAssertTrue(rescue.isHittable)
+            XCTAssertLessThanOrEqual(rescue.frame.maxY, scroll.frame.maxY + 0.5)
             XCTAssertLessThanOrEqual(rescue.frame.maxY, element("mainNavigation").frame.minY + 0.5)
-            XCTAssertTrue(revealControlsTogether([rescue, keep], in: app, deadline: Date().addingTimeInterval(60),
-                                                searching: scroll, bottomClearance: 40))
-            for button in [rescue, keep] {
-                XCTAssertTrue(button.isHittable)
-                XCTAssertLessThanOrEqual(button.frame.maxY, scroll.frame.maxY - 40 + 0.5)
-                XCTAssertLessThan(button.frame.maxY, element("addEntry").frame.minY)
-                XCTAssertLessThan(button.frame.maxY, capsuleFrame(in: app).minY)
-            }
+            XCTAssertLessThan(rescue.frame.maxY, capsuleFrame(in: app).minY)
             if needsScroll { XCTAssertLessThan(rescue.frame.minY, before.minY - 0.5) }
             tap("coverFromReserve")
-            gone("deficitRescueCard"); expect("availableFunds", contains: mode.2 ? "¥••••" : "¥0.00")
+            gone("coverFromReserve"); expect("availableFunds", contains: mode.2 ? "¥••••" : "¥0.00")
             tap("undoLastChange")
-            XCTAssertTrue(element("deficitRescueCard").waitForExistence(timeout: 5))
+            XCTAssertTrue(element("coverFromReserve").waitForExistence(timeout: 5))
             XCTAssertEqual(app.state, .runningForeground)
         }
     }
     func testDeficitKeepLeavesHeadlineAndConsumesCardAcrossRelaunch() {
-        launch("v47r-deficit"); tap("deficitKeep"); gone("deficitRescueCard"); expect("availableFunds", contains: "¥350.00")
-        app.terminate(); launchApp(app); gone("deficitRescueCard"); expect("availableFunds", contains: "¥350.00")
+        launch("v47r-deficit"); openInbox()
+        tap("deficitKeep"); gone("deficitRescueCard")
+        backToHome(); expect("availableFunds", contains: "¥350.00")
+        app.terminate(); launchApp(app)
+        openAssistantHub()
+        if element("openButlerInbox").exists {
+            tap("openButlerInbox")
+            XCTAssertTrue(element("letterInbox").waitForExistence(timeout: 5))
+            gone("deficitRescueCard")
+        }
+        backToHome(); expect("availableFunds", contains: "¥350.00")
     }
     func testDeficitFormulaShowsZeroSavingAndPositiveDeficit() {
         launch("v47r-deficit")
@@ -323,7 +324,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
         XCTAssertTrue(revealControl(rescue, in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")))
         XCTAssertLessThanOrEqual(rescue.frame.maxY, element("addEntry").frame.minY)
         XCTAssertTrue(rescue.isHittable)
-        tapControl(rescue, in: app); expect("availableFunds", contains: "¥0.00"); gone("deficitRescueCard")
+        tapControl(rescue, in: app); expect("availableFunds", contains: "¥0.00"); gone("coverFromReserve")
         tap("undoLastChange"); expect("availableFunds", contains: "¥350.00")
     }
     func testSoftLineKeypadClearsTheSubmittedSystemKeyboardAcrossAllGalleryModes() {

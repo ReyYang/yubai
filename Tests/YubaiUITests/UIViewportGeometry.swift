@@ -136,6 +136,7 @@ struct UIWindowMetrics: Decodable {
     var paperDiagnostics: String? = nil
     var inputFocusEvents: [String]? = nil
     var focusedHost: String? = nil
+    var nativeSheetFrame: [CGFloat]? = nil
     var safeRectangle: CGRect { Self.rectangle(safeArea) }
     static func decode(_ value: Any?, onError: (String) -> Void = { print($0) }) -> Self? {
         do { return try JSONDecoder().decode(Self.self, from: rawData(value)) }

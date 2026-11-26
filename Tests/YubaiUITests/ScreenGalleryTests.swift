@@ -742,9 +742,9 @@ final class ScreenGalleryTests: YubaiUITestCase {
         stop("Hero-States-No-Income") { try load("v47r-no-income"); try require("availableFunds") }
         stop("Hero-States-Fallback") { try load("v47-after"); try require("firstSalaryCard") }
         stop("Ledger-Over") { try load("v47r-less"); try require("ledgerStatus"); try require("entriesScroll") }
-        stop("Ledger-Over-Deficit") { try load("v47r-deficit"); try require("deficitRescueCard") }
+        stop("Ledger-Over-Deficit") { try load("v47r-deficit"); try require("coverFromReserve") }
         stop("Ledger-Over-Rescued") { try load("v47r-deficit"); try tap("coverFromReserve"); try require("undoLastChange") }
-        stop("Ledger-Over-Undo") { try load("v47r-deficit"); try tap("coverFromReserve"); try tap("undoLastChange"); try require("deficitRescueCard") }
+        stop("Ledger-Over-Undo") { try load("v47r-deficit"); try tap("coverFromReserve"); try tap("undoLastChange"); try require("coverFromReserve") }
         stop("Butler-Cards-Topup") { try load("v47-topup"); try require("savingsTopupAll"); try require("savingsTopupDecline") }
         stop("Butler-Cards-Weekly-AI") { try load("v47r-weekly-ai"); try require("butlerAIAccept"); try require("butlerAIIncorrect") }
         stop("Butler-Cards-Long") { try load("v47r-weekly-ai-long"); if element("expandButlerHeadline").exists { try tap("expandButlerHeadline") }; try require("butlerAIAccept") }

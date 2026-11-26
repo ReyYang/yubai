@@ -240,23 +240,45 @@ class YubaiUITestCase: XCTestCase {
         XCTAssertTrue(waitForDisappearance(amount), "Entry sheet did not dismiss", file: file, line: line)
     }
 
-    func dismissNativeSheet(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
-        let header = control("nativeSheetHeader", in: app)
-        let surface = control("nativeSheetSurface", in: app)
-        let anchor = header.exists ? header : surface
-        guard anchor.waitForExistence(timeout: 5), waitForStableFrame(anchor) else {
-            XCTFail("Native sheet missing before downward drag", file: file, line: line)
-            return
-        }
+    func dismissNativeSheet(in app: XCUIApplication, closing target: XCUIElement? = nil,
+                            file: StaticString = #filePath, line: UInt = #line) {
         let window = app.windows.firstMatch
         let safe = window.frame
-        let frame = anchor.frame
-        let startY = max(safe.minY + 12, frame.minY + (header.exists ? 3 : 8))
-        let endY = min(safe.maxY - 18, startY + safe.height * 0.48)
-        let origin = window.coordinate(withNormalizedOffset: .zero)
-        let start = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: startY - safe.minY))
-        let end = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: endY - safe.minY))
-        start.press(forDuration: 0.05, thenDragTo: end)
+        let surface = control("nativeSheetSurface", in: app)
+        let header = control("nativeSheetHeader", in: app)
+        let metrics = windowMetrics(in: app)
+        var nativeFrame = metrics?.nativeSheetFrame.map(UIWindowMetrics.rectangle)
+        if nativeFrame == nil {
+            let anchor = surface.exists ? surface : header
+            guard anchor.waitForExistence(timeout: 5), waitForStableFrame(anchor) else {
+                XCTFail("Native sheet missing before downward drag", file: file, line: line)
+                return
+            }
+            nativeFrame = anchor.frame
+        }
+        guard let frame = nativeFrame, !frame.isEmpty else {
+            XCTFail("Native sheet has no usable frame", file: file, line: line)
+            return
+        }
+        func drag(from frame: CGRect) {
+            let startY = max(safe.minY + 12, frame.minY + 8)
+            let endY = min(safe.maxY - 18, startY + safe.height * 0.55)
+            let origin = window.coordinate(withNormalizedOffset: .zero)
+            let start = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: startY - safe.minY))
+            let end = origin.withOffset(CGVector(dx: frame.midX - safe.minX, dy: endY - safe.minY))
+            start.press(forDuration: 0.05, thenDragTo: end)
+        }
+
+        let keyboardWasVisible = app.keyboards.firstMatch.exists
+        drag(from: frame)
+        guard let target else { return }
+        if !waitForDisappearance(target, timeout: 2),
+           let updated = windowMetrics(in: app)?.nativeSheetFrame.map(UIWindowMetrics.rectangle),
+           keyboardWasVisible != app.keyboards.firstMatch.exists || abs(updated.minY - frame.minY) > 8 {
+            // UIKit can lower the detent or dismiss the keyboard before dismissing the sheet.
+            drag(from: updated)
+        }
+        XCTAssertTrue(waitForDisappearance(target, timeout: 5), "Native sheet did not dismiss", file: file, line: line)
     }
 
     func dismissCurrentSheet(in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {

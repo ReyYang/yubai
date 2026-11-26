@@ -124,9 +124,9 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         for large in [false, true] {
             launch(large: large); tap("butlerAIEvidence"); tap("butlerAIIncorrect")
             typeIntoField("周四是和同事拼单", identifier: "butlerAICorrectionText", in: app)
-            XCTAssertTrue(element("nativeSheetHeader").exists)
+            XCTAssertTrue(element("butlerAICorrectionSave").exists)
             let deadline = ProcessInfo.processInfo.systemUptime + 5
-            dismissNativeSheet(in: app)
+            dismissNativeSheet(in: app, closing: element("butlerAICorrectionText"))
             XCTAssertTrue(UIConditionWait.run(timeout: 3, deadline: deadline, read: {
                 !self.element("butlerAICorrectionText").exists && self.element("butlerAIEvidencePage").exists
             }), "Correction must respond to a second control within five seconds (large=\(large))")
@@ -357,11 +357,13 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         XCTAssertFalse(element("askSuggestion_2").exists)
         tap("askSuggestion_0")
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(waitForKeyboardEditing("askYubai", in: app))
         XCTAssertTrue((element("askYubai").value as? String ?? "").contains("这个能买吗"))
         tap("sendAskHome"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); openAssistantHub()
         tap("askSuggestion_1"); XCTAssertTrue(element("askAnswer").waitForExistence(timeout: 10)); openAssistantHub()
         tap("openProfile"); XCTAssertTrue(element("emptyState_profile").exists)
-        tap("addPrinciple"); XCTAssertTrue(element("principleText").waitForExistence(timeout: 5)); dismissNativeSheet(in: app)
+        tap("addPrinciple"); XCTAssertTrue(element("principleText").waitForExistence(timeout: 5))
+        dismissNativeSheet(in: app, closing: element("principleText"))
         openAssistantHub(); tap("openMemories"); XCTAssertTrue(element("emptyState_memories").exists)
         XCTAssertTrue(element("emptyMemories").exists)
     }
@@ -378,17 +380,27 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         tap("openWishlist"); XCTAssertTrue(element("emptyState_wish").exists)
         XCTAssertFalse(element("wishlistSavings").exists)
         tap("emptyAction_wish")
-        XCTAssertTrue(element("wishTitle").waitForExistence(timeout: 5)); dismissNativeSheet(in: app); backToRoot()
+        XCTAssertTrue(element("wishTitle").waitForExistence(timeout: 5))
+        dismissNativeSheet(in: app, closing: element("wishTitle"))
+        XCTAssertTrue(element("emptyState_wish").waitForExistence(timeout: 5))
+        backToRoot()
         openAssistantHub(); tap("openFixedFlows"); XCTAssertTrue(element("emptyState_bills").waitForExistence(timeout: 5))
-        tap("emptyAction_bills"); XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5)); dismissNativeSheet(in: app); backToRoot()
+        tap("emptyAction_bills"); XCTAssertTrue(element("fixedFlowTitle").waitForExistence(timeout: 5))
+        dismissNativeSheet(in: app, closing: element("fixedFlowTitle"))
+        XCTAssertTrue(element("emptyState_bills").waitForExistence(timeout: 5))
+        backToRoot()
         tap("openSettings"); tap("openSpendingParts")
         XCTAssertTrue(element("spendingPartsPage").exists)
         let category = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'newBudget_'")).firstMatch
         tapControl(category, in: app)
         XCTAssertTrue(element("budgetKeypad").waitForExistence(timeout: 5))
-        tap("cancelBudgetKeypad"); backToRoot()
+        tap("cancelBudgetKeypad")
+        XCTAssertTrue(waitForDisappearance(element("budgetKeypad")))
+        backToRoot()
         openFrequentEntries(); XCTAssertTrue(element("emptyState_frequent").exists)
         tap("emptyAction_frequent"); XCTAssertTrue(element("frequentEntryPurpose").waitForExistence(timeout: 5))
+        dismissNativeSheet(in: app, closing: element("frequentEntryPurpose"))
+        XCTAssertTrue(element("emptyState_frequent").waitForExistence(timeout: 5))
     }
     func testSearchNoResultsOffersCancelAndAsk() {
         launch(); tap("tab_ledger"); tap("openLedgerSearch")

@@ -201,18 +201,28 @@ struct ButlerSuggestionEntriesPage: View {
 
 private struct ButlerSuggestionCorrection: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
     let suggestion: ButlerSuggestion
     let finished: () -> Void
     @State private var sentence = ""
+    private var valid: Bool { sentence.count <= 200 && !sentence.contains(where: \.isNewline) }
+
     var body: some View {
-        Form {
-            Section {
-                CardTextFieldRow(title: "说一句", text: $sentence, identifier: "butlerAICorrectionText", multiline: true, autofocus: true)
-                InlineFieldError(message: sentence.count > 200 || sentence.contains(where: { $0.isNewline }) ? "请用一行、不超过 200 字" : nil)
-            }.listRowBackground(YubaiColor.card)
-        }.editorForm().manualSheetHeader("说得不对", actionTitle: "记下", enabled: sentence.count <= 200 && !sentence.contains(where: { $0.isNewline }), actionIdentifier: "butlerAICorrectionSave", action: {
-            if store.answerSuggestion(suggestion, .incorrect(sentence)) { finished() }
-        })
+        VStack(spacing: YubaiSpace.none) {
+            ManualSheetHeader(title: "说得不对", actionTitle: "记下", enabled: valid,
+                              actionIdentifier: "butlerAICorrectionSave", cancel: { dismiss() }, action: save)
+                .padding(.horizontal, YubaiSpace.insetPage)
+            Form {
+                Section {
+                    CardTextFieldRow(title: "说一句", text: $sentence, identifier: "butlerAICorrectionText", multiline: true, autofocus: true)
+                    InlineFieldError(message: valid ? nil : "请用一行、不超过 200 字")
+                }.listRowBackground(YubaiColor.card)
+            }.editorForm()
+        }.manualSheetNavigation()
+    }
+
+    private func save() {
+        if store.answerSuggestion(suggestion, .incorrect(sentence)) { finished() }
     }
 }
 

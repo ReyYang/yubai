@@ -1452,7 +1452,7 @@ struct RootView: View {
         case .categoryBudget(let category): BudgetDetailView(initialCategory: category)
         case .savingWish(let id): WishlistView(focusedWishID: id)
         case .askQuestion(let text): AskYubaiView(initialText: text, autoSend: true)
-        case .askDraft(let text): AskYubaiView(initialText: text, focusesDraft: !text.isEmpty)
+        case .askDraft(let text): AskYubaiView(initialText: text)
         case .budget: BudgetDetailView(startsEditing: true)
         case .assistantHub: YubaiTabView(asDestination: true)
         case .billDetail(let id): BillDetailView(planID: id)

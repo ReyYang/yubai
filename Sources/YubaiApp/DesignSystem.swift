@@ -2833,9 +2833,11 @@ struct KeypadSheet<Content: View, Footer: View>: View {
             }.scrollBounceBehavior(.basedOnSize).modifier(ScrollContentViewport())
             // Keep both subtrees mounted. A focus change must not recreate an
             // editor or change the sheet's selected height beneath UIKit.
+            // Hide the collapsed footer without clipping the tray's safe-area fill.
             footer().fixedSize(horizontal: false, vertical: true)
                 .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { if TextInputMetrics.changed(from: footerHeight, to: $0) { footerHeight = $0 } }
-                .frame(height: inputSession.isEditing ? 0 : nil).clipped()
+                .frame(height: inputSession.isEditing ? 0 : nil)
+                .opacity(inputSession.isEditing ? 0 : 1)
                 .allowsHitTesting(!inputSession.isEditing).accessibilityHidden(inputSession.isEditing)
                 .accessibilityElement(children: .contain).accessibilityIdentifier("fixedBottomBar")
         }.environment(\.yubaiRowInputSession, inputSession)
