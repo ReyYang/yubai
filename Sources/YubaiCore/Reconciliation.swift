@@ -92,4 +92,58 @@ public enum Reconciliation {
         next.lastReconciledAt = now; next.updatedAt = max(next.updatedAt, now)
         try next.validate(); ledger = next; return added
     }
+
+    @discardableResult
+    public static func reconcileAccount(_ ledger: inout Ledger, accountID: UUID, actualBalance: Int64, now: Date) throws -> Entry? {
+        guard let index = ledger.accounts.firstIndex(where: { $0.id == accountID && !$0.archived && $0.kind != .investment }),
+              (-Money.limit...Money.limit).contains(actualBalance) else { throw YubaiError.invalid("账户信息无效。") }
+        let account = ledger.accounts[index]
+        var next = ledger
+        var adjustment: Entry?
+        switch account.kind {
+        case .cash, .bank:
+            let id = try apply(&next, actual: [accountID: actualBalance], now: now).first
+            adjustment = id.flatMap { id in next.entries.first { $0.id == id } }
+        case .credit, .receivable:
+            let book = Finance.balance(account, in: ledger, at: now)
+            if book != actualBalance {
+                var entry = Entry(date: now, amount: abs(book - actualBalance),
+                                  nature: book > actualBalance ? .adjustmentOut : .adjustmentIn,
+                                  accountID: accountID, title: "调整")
+                entry.source = "对余额"
+                entry.recordedAt = now
+                next.entries.append(entry)
+                adjustment = entry
+            }
+            next.accounts[index].anchorBalance = actualBalance
+            next.accounts[index].anchorDate = now
+            next.accounts[index].reconciled = true
+            next.lastReconciledAt = now
+            next.updatedAt = max(next.updatedAt, now)
+        case .investment:
+            throw YubaiError.invalid("账户信息无效。")
+        }
+        for index in next.cards.indices where next.cards[index].action == .reconcileAccount(accountID) {
+            if next.cards[index].dismissedAt == nil { next.cards[index].dismissedAt = now }
+        }
+        try next.validate()
+        ledger = next
+        return adjustment
+    }
+
+    @discardableResult
+    public static func revalueInvestment(_ ledger: inout Ledger, accountID: UUID, newValue: Int64, now: Date) throws -> Int64 {
+        guard let index = ledger.accounts.firstIndex(where: { $0.id == accountID && !$0.archived && $0.kind == .investment }),
+              (0...Money.limit).contains(newValue) else { throw YubaiError.invalid("投资金额无效。") }
+        let previous = Finance.balance(ledger.accounts[index], in: ledger, at: now)
+        var next = ledger
+        next.accounts[index].anchorBalance = newValue
+        next.accounts[index].anchorDate = now
+        next.accounts[index].reconciled = true
+        next.updatedAt = max(next.updatedAt, now)
+        try next.validate()
+        ledger = next
+        return newValue - previous
+    }
+
 }
