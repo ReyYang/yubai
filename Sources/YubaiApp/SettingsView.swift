@@ -52,6 +52,16 @@ struct SettingsView: View {
                             link(.export, "导出账单", "CSV", id: "settingsExport") { store.settingsSheet = .export }
                             link(.disk, "存储空间", storageSize ?? "", id: "openStorage") { store.tabRouteRequest = .storage }
                         }
+                        #if DEBUG && targetEnvironment(simulator)
+                        // UI tests only: pages whose settings rows are gone stay testable without a URL round trip.
+                        if UITestSupport.script != nil {
+                            DSSettingsCard {
+                                link(.memory, "余白", "", first: true, id: "openAssistantHub") { store.tabRouteRequest = .assistantHub }
+                                link(.ai, "智能与隐私", "", id: "openLegacyIntelligencePrivacy") { store.tabRouteRequest = .intelligencePrivacy }
+                                link(.catAll, "预算", "", id: "openSpendingParts") { store.tabRouteRequest = .budget }
+                            }
+                        }
+                        #endif
                         Text("余白 " + SettingsDisplay.version).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3)
                             .frame(maxWidth: .infinity).id("settingsEnd")
                     }

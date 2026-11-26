@@ -28,7 +28,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
     }
     private func openAssistantHub() {
         if !element("openSettings").exists { tap("tab_ledger") }
-        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        tap("openSettings"); tap("openAssistantHub")
     }
     private func reveal(_ id: String) {
         XCTAssertTrue(revealControl(element(id), in: app, deadline: Date().addingTimeInterval(60), searching: element("entriesScroll")), id)
@@ -401,7 +401,7 @@ final class Round47HomeFlowTests: YubaiUITestCase {
         XCTAssertTrue(waitForDisappearance(element("openSettings")))
         tap("tab_ledger"); tap("openSettings")
         XCTAssertTrue(element("settingsScroll").waitForExistence(timeout: 5))
-        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        tap("openSettings"); tap("openAssistantHub")
         for entry in ["openAccounts", "openMemories"] {
             tap(entry)
             XCTAssertFalse(element("mainNavigation").exists)

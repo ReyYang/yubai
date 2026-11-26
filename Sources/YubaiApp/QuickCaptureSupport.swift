@@ -64,16 +64,6 @@ extension AppStore {
         case "ask": requestCaptureSheet(.ask(""))
         case "capture": requestCaptureSheet(.screenshotCapture(nil))
         case "entry": if let id = value("id").flatMap(UUID.init(uuidString:)) { requestCaptureSheet(.editEntry(id)) }
-        #if DEBUG && targetEnvironment(simulator)
-        // UI tests reach pages that no longer have a settings row.
-        case "test-route":
-            switch url.lastPathComponent {
-            case "assistantHub": tabRouteRequest = .assistantHub
-            case "intelligencePrivacy": tabRouteRequest = .intelligencePrivacy
-            case "budget": tabRouteRequest = .budget
-            default: break
-            }
-        #endif
         default: break
         }
     }

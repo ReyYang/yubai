@@ -40,7 +40,7 @@ final class Round47RevisionFlowTests: YubaiUITestCase {
 
     private func openAssistantHub() {
         backToHome()
-        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        tap("openSettings"); tap("openAssistantHub")
     }
 
     private func openInbox() {

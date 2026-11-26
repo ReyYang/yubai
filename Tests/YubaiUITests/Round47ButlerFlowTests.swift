@@ -36,7 +36,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
     private func openAssistantHub() {
         backToRoot()
         if !element("openSettings").exists { tap("tab_ledger") }
-        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5))
+        tap("openSettings"); tap("openAssistantHub")
     }
 
     private func openInbox() {
@@ -66,7 +66,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         openAssistantHub(); tap("openFrequentEntries")
         XCTAssertFalse(element("entryKeypadAmount").exists)
     }
-    private func settings() { backToRoot(); app.open(URL(string: "yubai://test-route/intelligencePrivacy")!); XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5)) }
+    private func settings() { backToRoot(); tap("openSettings"); tap("openLegacyIntelligencePrivacy"); XCTAssertTrue(element("butlerLastRun").waitForExistence(timeout: 5)) }
     private func backToRoot() {
         let deadline = Date().addingTimeInterval(30)
         for _ in 0..<8 {
@@ -389,7 +389,7 @@ final class Round47ButlerFlowTests: YubaiUITestCase {
         dismissNativeSheet(in: app, closing: element("fixedFlowTitle"))
         XCTAssertTrue(element("emptyState_bills").waitForExistence(timeout: 5))
         backToRoot()
-        app.open(URL(string: "yubai://test-route/budget")!)
+        tap("openSettings"); tap("openSpendingParts")
         XCTAssertTrue(element("spendingPartsPage").exists)
         let category = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'newBudget_'")).firstMatch
         tapControl(category, in: app)

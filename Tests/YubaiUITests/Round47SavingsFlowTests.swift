@@ -36,7 +36,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
 
     private func openInbox() {
         backToHome()
-        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5)); tap("openButlerInbox")
+        tap("openSettings"); tap("openAssistantHub"); tap("openButlerInbox")
     }
 
     private func keys(_ value: String) { for key in value { tap("keypad_" + String(key)) } }
@@ -54,7 +54,7 @@ final class Round47SavingsFlowTests: YubaiUITestCase {
     private func back() { tap("BackButton") }
     private func saved() {
         backToHome()
-        app.open(URL(string: "yubai://test-route/assistantHub")!); XCTAssertTrue(app.wait(for: .runningForeground, timeout: 5)); tap("openSaving")
+        tap("openSettings"); tap("openAssistantHub"); tap("openSaving")
         XCTAssertTrue(element("savingTabScroll").waitForExistence(timeout: 10))
         let total = element("reserveTotal")
         XCTAssertTrue(total.waitForExistence(timeout: 5), "reserveTotal 缺失，储蓄空状态存在：\(element("emptyState_saving").exists)")
