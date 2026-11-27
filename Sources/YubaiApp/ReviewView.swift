@@ -26,7 +26,7 @@ struct ReviewView: View {
             totals(snapshot, hidden: hidden).padding(.top, OverviewSpec.totalsTop)
             // Spec-Issues 9: unsorted bills make any 多花 unreliable, so the card asks for them first.
             if let unsorted = snapshot.unsorted {
-                ReviewUnsortedCard(count: unsorted.count, share: snapshot.spent > 0 ? Double(unsorted.amount) / Double(snapshot.spent) : 0) {
+                ReviewUnsortedCard(count: unsorted.count, share: hidden || snapshot.spent <= 0 ? nil : min(1, Double(unsorted.amount) / Double(snapshot.spent))) {
                     store.tabRouteRequest = .triage(snapshot.unsortedEntryIDs)
                 }.padding(.top, DS.Space.s20)
             } else if let anomaly = snapshot.anomaly {
@@ -292,7 +292,8 @@ struct ReviewPeriodSheetOverlay: View {
 /// Canvas Extra.dc.html 全景 · 兜底类最大: count and share on the left, 去整理 on a raised pill.
 private struct ReviewUnsortedCard: View {
     let count: Int
-    let share: Double
+    /// Nil while amounts are hidden.
+    let share: Double?
     let organize: () -> Void
 
     var body: some View {
@@ -300,8 +301,10 @@ private struct ReviewUnsortedCard: View {
             VStack(alignment: .leading, spacing: .zero) {
                 Text("\(count) 笔还没分类").dsText(DS.Font.tBody).fontWeight(.semibold).monospacedDigit()
                     .foregroundStyle(DS.Color.warnStrong)
-                Text("占本期 " + share.formatted(.percent.precision(.fractionLength(0)))).dsText(DS.Font.tSub).monospacedDigit()
-                    .foregroundStyle(DS.Color.warnInk)
+                if let share {
+                    Text("占本期 " + share.formatted(.percent.precision(.fractionLength(0)))).dsText(DS.Font.tSub).monospacedDigit()
+                        .foregroundStyle(DS.Color.warnInk)
+                }
             }.dsFillWidth()
             Button(action: organize) {
                 Text("去整理").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.warnStrong)

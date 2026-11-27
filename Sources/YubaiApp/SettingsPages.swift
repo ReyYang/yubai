@@ -56,7 +56,7 @@ struct RecurringView: View {
         let days = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: due).day ?? 0
         let schedule = plan.frequency == .yearly ? "每年 " + SettingsDisplay.monthDay(due)
             : "每月 \(plan.monthlyDay ?? Dates.calendar.component(.day, from: plan.dueDate)) 日"
-        let detail = [OverviewDisplay.money(plan.amount, hidden: hidden) + (plan.currency == .cny ? "" : " " + plan.currency.rawValue),
+        let detail = [plan.currency == .cny ? OverviewDisplay.money(plan.amount, hidden: hidden) : plan.currency.amountText(plan.amount, hidden: hidden),
                       schedule, plan.accountID.map { store.accountName($0) }].compactMap { $0 }.joined(separator: " · ")
         return Button { store.sheet = .editPlan(plan.id) } label: {
             HStack(spacing: DS.Space.s12) {

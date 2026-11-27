@@ -19,11 +19,14 @@ enum HomeDisplay {
     static func billAmount(_ entry: Entry, hidden: Bool) -> String {
         guard !hidden else { return money(entry.amount, hidden: true) }
         let sign = entry.nature.paired || entry.intoFixedSavings ? "" : entry.nature.inflow ? "+" : "−"
-        if let currency = entry.originalCurrency, let original = entry.originalAmount {
-            let value = money(original, hidden: false)
-            return sign + (currency == .jpy && original.isMultiple(of: 100) ? String(value.dropLast(3)) : value) + " " + currency.rawValue
-        }
+        // Spec-Currency 首页和列表: the main-currency amount; the original goes on the second line.
         return sign + money(entry.amount, hidden: false)
+    }
+
+    /// The second line of a foreign bill: what was paid, in its own currency (「C$4.25」).
+    static func originalAmount(_ entry: Entry, hidden: Bool) -> String? {
+        guard let currency = entry.originalCurrency, let original = entry.originalAmount else { return nil }
+        return currency.amountText(original, hidden: hidden)
     }
 
     static func dsBudget(_ row: HomeBudget, hidden: Bool) -> DSBudget {
@@ -208,7 +211,7 @@ private struct HomePage: View {
                    // Spec-Issues 7: overspent shows 每天 0.00, not an empty slot.
                    daily: over ? HomeDisplay.money(0, hidden: hide) : period.income > 0 ? HomeDisplay.money(daily, hidden: hide) : "",
                    remainingDays: days, days: bars.days, budgets: [], onAmount: openBudget,
-                   title: period.headlineTitle, tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
+                   title: over ? "超支" : "还能花", tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
                    guide: bars.guide)
             if period.income == 0 {
                 HomeStatus(text: "工资未到账", action: "记工资", onAction: recordSalary, identifier: "recordSalary")
@@ -281,7 +284,7 @@ private struct HomePage: View {
         let icon = HomeDisplay.icon(entry, category: category,
                                     picked: ledger.categories.first { $0.name == category && $0.income == entry.nature.categoryIncome }?.icon)
         let amount = HomeDisplay.billAmount(entry, hidden: hide)
-        let detailAmount = entry.originalCurrency.map { _ in "≈ " + HomeDisplay.money(entry.amount, hidden: hide) }
+        let detailAmount = HomeDisplay.originalAmount(entry, hidden: hide)
         let amountColor = entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink
         let frames = frames
         return HomeBillButton(onTap: {

@@ -11,7 +11,7 @@ enum SettingsSheet: Hashable, Identifiable {
     case addCategory(income: Bool), addSubcategory(category: String, income: Bool)
     case renameSubcategory(category: String, sub: String, income: Bool)
     case addCurrency, rate(BillCurrency), mainCurrency(BillCurrency)
-    case captureCard(String), captureMerchant(String)
+    case captureCard(String), captureMerchant(String), captureAddCard
     case accountAdd(AccountType?, onboarding: Bool)
     case accountName(UUID), accountType(UUID), accountLimit(UUID), accountDay(UUID, statement: Bool)
     case onboardFloor
@@ -102,6 +102,10 @@ struct SettingsSheetHost: View {
         case .mainCurrency(let currency): MainCurrencyConfirm(currency: currency)
         case .captureCard(let card): CaptureCardSheet(card: card)
         case .captureMerchant(let key): CaptureMerchantSheet(key: key)
+        case .captureAddCard: TextEntrySheet(title: "添加卡", placeholder: "卡名", initial: "", identifier: "captureCardName") { name, ledger in
+            guard let account = ManualBookkeeping.defaultAccount(in: ledger) else { throw YubaiError.invalid("请先添加账户。") }
+            try QuickCapture.setAccount(account.id, forCard: name, in: &ledger)
+        }
         case let .accountAdd(type, onboarding): AccountAddSheet(type: type ?? .debit, onboarding: onboarding)
         case .accountName(let id): TextEntrySheet(title: "名称", placeholder: "名称", initial: store.accounts.first { $0.id == id }?.name ?? "", identifier: "accountName") { name, ledger in
             try Accounts.update(id, .init(name: name), in: &ledger, now: Dates.now)
@@ -351,7 +355,7 @@ struct SavingAmountSheet: View {
     }
 
     private func text(hidden: Bool) -> String {
-        hidden ? OverviewDisplay.money(0, hidden: true) : replace ? OverviewDisplay.money(keypad.amount ?? 0, hidden: false) : keypad.groupedText
+        hidden ? OverviewDisplay.money(0, hidden: true) : replace ? SettingsDisplay.inputMoney(keypad.amount ?? 0) : keypad.groupedText
     }
 
     private func press(_ key: String) {
@@ -378,7 +382,7 @@ struct FloorAmountSheet: View {
                 if onboarding { store.onboarding.floor = value; close(); return }
                 if store.update("底线存款", entryMotion: false, showToast: false, { try Reserve.setFloor(value, in: &$0, now: store.financialNow) }) { close() }
             }) {
-                SettingsAmountBox(label: "底线存款", value: hidden ? OverviewDisplay.money(0, hidden: true) : replace ? OverviewDisplay.money(amount, hidden: false) : keypad.groupedText)
+                SettingsAmountBox(label: "底线存款", value: hidden ? OverviewDisplay.money(0, hidden: true) : replace ? SettingsDisplay.inputMoney(amount) : keypad.groupedText)
                 if !chips.isEmpty {
                     let values = chips
                     SettingsChips(chips: zip(titles, values).map { .init(id: $0.0, title: $0.0, selected: $0.1 == amount && $0.1 > 0) }) { id in
@@ -604,7 +608,7 @@ struct SubscriptionAddSheet: View {
                     .padding(.horizontal, SettingsSpec.nameFieldInset).frame(minHeight: SettingsSpec.row)
                     .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
                     .overlay { RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline) }
-                    SettingsAmountBox(label: draft.yearly ? "每年" : "每月", value: hidden ? OverviewDisplay.money(0, hidden: true) : replace ? OverviewDisplay.money(keypad.amount ?? 0, hidden: false) : keypad.groupedText)
+                    SettingsAmountBox(label: draft.yearly ? "每年" : "每月", value: hidden ? OverviewDisplay.money(0, hidden: true) : replace ? SettingsDisplay.inputMoney(keypad.amount ?? 0) : keypad.groupedText)
                         .padding(.top, SettingsSpec.balanceTop)
                         .onTapGesture { nameFocused = false }
                     SettingsChips(chips: [.init(id: "day", title: "每月 \(draft.day) 日", selected: !draft.yearly),
@@ -943,7 +947,7 @@ struct AccountAddSheet: View {
                         .padding(.top, SettingsSpec.chipsTop)
                     VStack(alignment: .leading, spacing: OverviewSpec.headingGap) {
                         Text(type.balanceLabel).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-                        Text(hidden ? OverviewDisplay.money(0, hidden: true) : replace ? OverviewDisplay.money(keypad.amount ?? 0, hidden: false) : keypad.groupedText)
+                        Text(hidden ? OverviewDisplay.money(0, hidden: true) : replace ? SettingsDisplay.inputMoney(keypad.amount ?? 0) : keypad.groupedText)
                             .dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                             .accessibilityIdentifier("accountBalance")
                     }
@@ -1029,7 +1033,7 @@ struct CreditLimitSheet: View {
                 let value = keypad.amount ?? 0
                 if store.update("额度", entryMotion: false, showToast: false, { try Accounts.update(accountID, .init(creditLimit: value), in: &$0, now: store.financialNow) }) { close() }
             }) {
-                SettingsAmountBox(label: "额度", value: hidden ? OverviewDisplay.money(0, hidden: true) : replace ? OverviewDisplay.money(keypad.amount ?? 0, hidden: false) : keypad.groupedText)
+                SettingsAmountBox(label: "额度", value: hidden ? OverviewDisplay.money(0, hidden: true) : replace ? SettingsDisplay.inputMoney(keypad.amount ?? 0) : keypad.groupedText)
             }
         }
         .onAppear { if !loaded { loaded = true; keypad = EntryKeypad(amount: store.accounts.first { $0.id == accountID }?.creditLimit ?? 0) } }

@@ -89,16 +89,20 @@ public enum QuickCapture {
         public let card: String
         public let recentCount: Int
         public let accountID: UUID?
+        /// Some Apple Pay bill ever came from this card (else it was only given an account).
+        public let everUsed: Bool
     }
 
     public static func cards(in ledger: Ledger, now: Date = Dates.now, days: Int = 30) -> [CardSummary] {
         let start = Dates.addDays(-(days - 1), to: Dates.day(now))
         var names: [String: String] = [:]   // card key → shown name
         var counts: [String: Int] = [:]
+        var seen = Set<String>()
         for entry in ledger.activeEntries {
             guard let card = entry.quickCapture?.card?.trimmingCharacters(in: .whitespacesAndNewlines), !card.isEmpty else { continue }
             let key = cardKey(card)
             names[key] = names[key] ?? card
+            seen.insert(key)
             let when = entry.quickCapture?.transactionDate ?? entry.recordedAt ?? entry.date
             if when >= start && when <= now { counts[key, default: 0] += 1 }
         }
@@ -109,7 +113,7 @@ public enum QuickCapture {
             accounts[key] = id
         }
         return names.map { key, name in
-            CardSummary(card: name, recentCount: counts[key, default: 0], accountID: accounts[key])
+            CardSummary(card: name, recentCount: counts[key, default: 0], accountID: accounts[key], everUsed: seen.contains(key))
         }.sorted { $0.recentCount == $1.recentCount ? $0.card < $1.card : $0.recentCount > $1.recentCount }
     }
 

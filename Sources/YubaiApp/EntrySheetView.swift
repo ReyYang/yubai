@@ -60,7 +60,8 @@ struct EntrySheetOverlay: View {
                         // Spec-Gestures: alongside the keys and the scroll. The sheet decides by direction first.
                         .simultaneousGesture(sheetDrag, including: model.drawer == nil ? .all : .subviews)
                         .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
-                        .accessibilityHidden(model.categoryPanel || model.drawer?.isPopover == true)
+                        // The rate card types on the sheet's keypad, so the sheet stays reachable under it.
+                        .accessibilityHidden(model.categoryPanel || (model.drawer?.isPopover == true && model.drawer != .rate))
                 }
                 if model.categoryPanel && !model.categoryOnly {
                     DS.Color.scrim
@@ -999,7 +1000,7 @@ private struct EntryRatePopover: View {
                 Text(model.rateSource).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3).dsFillWidth()
                 if model.typedRate != nil, model.autoRate != nil {
                     Button { model.draft.exchangeRate = "" } label: {
-                        Text("用同步的").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
+                        Text(model.rateResetTitle).dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
                             .frame(minHeight: DS.Size.tapMin)
                     }.buttonStyle(EntryTactileButtonStyle()).accessibilityIdentifier("entryRateReset")
                 }

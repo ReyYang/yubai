@@ -59,16 +59,23 @@ struct QuickCaptureSettingsView: View {
     }
 
     private func entrance(_ icon: DS.Icon, _ name: String, count: Int, first: Bool, id: String) -> some View {
-        Button { askingToOpen = true } label: {
+        Button {
+            #if os(iOS)
+            askingToOpen = true
+            #endif
+        } label: {
             HStack(spacing: DS.Space.s12) {
                 DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.accentInk)
                 VStack(alignment: .leading, spacing: .zero) {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink)
                     Text("近 7 天 \(count) 笔").dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                 }.dsFillWidth()
+                #if os(iOS)
+                // The 记一笔 actions ship on iOS only; the Mac has none to add.
                 Text("添加").dsText(SettingsSpec.addLabel).foregroundStyle(DS.Color.accentInk)
                     .padding(.horizontal, SettingsSpec.addInset).frame(height: SettingsSpec.addHeight)
                     .dsPill(DS.Color.accentSoft)
+                #endif
             }
             .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.quickRow)
             .overlay(alignment: .top) {
@@ -106,7 +113,7 @@ struct QuickCardsView: View {
                             HStack(spacing: DS.Space.s8) {
                                 VStack(alignment: .leading, spacing: .zero) {
                                     Text(card.card).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1)
-                                    Text(card.recentCount > 0 ? "近 30 天 \(card.recentCount) 笔" : "还没刷过")
+                                    Text(card.everUsed ? "近 30 天 \(card.recentCount) 笔" : "还没刷过")
                                         .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                                 }.dsFillWidth()
                                 HStack(spacing: HomeSpec.gap6) {
@@ -120,6 +127,16 @@ struct QuickCardsView: View {
                             .contentShape(Rectangle())
                         }.dsPressStyle().accessibilityElement(children: .combine).accessibilityIdentifier("quickCard_\(index)")
                     }
+                    // A new card can be pointed at an account before its first Apple Pay bill.
+                    Button { store.settingsSheet = .captureAddCard } label: {
+                        HStack(spacing: DS.Space.s12) {
+                            DSIconView(icon: .add, size: SettingsSpec.calendarArrow, color: DS.Color.accentInk)
+                            Text("添加卡").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk).dsFillWidth()
+                        }
+                        .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
+                        .overlay(alignment: .top) { if !cards.isEmpty { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                        .contentShape(Rectangle())
+                    }.dsPressStyle().accessibilityIdentifier("quickAddCard")
                 }
                 .padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s28)
             }.scrollIndicators(.hidden)
@@ -245,8 +262,11 @@ struct CaptureMerchantSheet: View {
                 DSPeriodOptionGroup(options: ledger.orderedCategories(income: income).map { .init(id: $0.name, title: $0.name) },
                                     selection: rule?.category ?? "", rowHeight: SettingsSpec.row, identifierPrefix: "captureMerchantCategory_") { value in
                     guard let rule else { return }
-                    if store.update("商户分类", entryMotion: false, showToast: false, {
-                        try QuickCapture.remember(merchant: rule.name, category: value, income: income, in: &$0)
+                    // The same category again keeps its subcategory; another one replaces the whole rule.
+                    guard value != rule.category else { close(); return }
+                    if store.update("商户分类", entryMotion: false, showToast: false, { ledger in
+                        ledger.classificationMemory.removeValue(forKey: rule.key)
+                        try QuickCapture.remember(merchant: rule.name, category: value, income: income, in: &ledger)
                     }) { close() }
                 }
                 .padding(.horizontal, DS.Space.s20).padding(.top, DS.Space.s4).padding(.bottom, OverviewSpec.periodBottom)

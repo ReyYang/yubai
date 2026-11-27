@@ -317,7 +317,7 @@ struct DSHero: View {
                     }.foregroundStyle(DS.Color.ink).dynamicTypeSize(...DynamicTypeSize.xLarge)
                         .fixedSize().padding(.bottom, HomeSpec.heroDailyBottom)
                 }.contentShape(Rectangle())
-            }.dsPressStyle().accessibilityLabel("还能花，查看算式").accessibilityValue(amount.contains("•") ? "金额已隐藏" : amount)
+            }.dsPressStyle().accessibilityLabel(title + "，查看算式").accessibilityValue(amount.contains("•") ? "金额已隐藏" : amount)
                 .accessibilityIdentifier("fundsFormula")
             DSDayBars(days: days, guide: guide).padding(.top, DS.Space.s8)
             DSHomeBudgetColumns(budgets: budgets, onBudget: onBudget)

@@ -9,7 +9,7 @@ struct BillBrandIcon: View {
     @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var scheme
     private var icon: DS.Icon {
-        store.current.categories.first { $0.name == category && $0.income == inflow }.map { DS.Icon(category: $0.name, symbol: $0.symbol, income: $0.income) } ?? .catOther
+        store.current.categories.first { $0.name == category && $0.income == inflow }.map(\.entryIcon) ?? .catOther
     }
     var body: some View {
         Group {

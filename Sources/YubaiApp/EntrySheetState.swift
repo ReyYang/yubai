@@ -656,6 +656,15 @@ struct EntryCategoryState: Equatable {
         draft.exchangeRate = text
     }
 
+    /// The reset under a typed rate names what it goes back to.
+    var rateResetTitle: String {
+        if let id = editingID, let entry = ledger.entries.first(where: { $0.id == id }), entry.originalCurrency == draft.currency {
+            return "用记下时的"
+        }
+        if FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now) != nil { return "用固定汇率" }
+        return "用同步的"
+    }
+
     func pickCurrency(_ currency: BillCurrency) {
         if draft.currency != currency { draft.exchangeRate = "" }
         draft.currency = currency

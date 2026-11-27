@@ -15,9 +15,16 @@ extension AppStore {
         return true
     }
 
+    /// Writable right now without asking anything of the person (no lock, no pending choice, no busy store).
+    private var mayWriteQuietly: Bool {
+        !locked && loadFailure == nil && !loadingLedger && !storageBusy && !recoveringWriteFailure
+            && syncChoice == nil && !switchingLedgerLocation && !choosingSyncVersion
+    }
+
     func syncExchangeRatesIfNeeded(force: Bool = false) async {
-        guard mayFetchRates, !rateSyncRunning, !locked, loadFailure == nil else { return }
+        guard mayFetchRates, !rateSyncRunning, mayWriteQuietly else { return }
         guard force || ExchangeRates.needsSync(current, now: Date()) else { return }
+        let ledgerID = current.id
         rateSyncRunning = true
         defer { rateSyncRunning = false }
         do {
@@ -26,6 +33,8 @@ extension AppStore {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
             let rates = try ExchangeRates.parseECB(data, fetchedAt: Date())
+            // While it was in flight the ledger may have been swapped, locked, or the switch turned off.
+            guard current.id == ledgerID, mayWriteQuietly, force || current.preferences.autoRateSync != false else { return }
             _ = update("汇率同步", preservingUpdatedAt: true, recordUndo: false, reportError: false,
                        entryMotion: false, showToast: false) { try ExchangeRates.apply(rates, to: &$0) }
         } catch {
@@ -43,10 +52,13 @@ enum DisplayCurrency {
 
     @MainActor static func configure(_ ledger: Ledger, now: Date) {
         let currency = ledger.preferences.mainCurrency ?? .cny
-        guard currency != .cny, let rate = ExchangeRates.rate(for: currency, in: ledger, now: now), rate.cnyPerUnit > 0 else {
+        // Spec-Currency: display follows the latest sync; a fixed rate only stands in when nothing synced.
+        guard currency != .cny,
+              let rate = ledger.preferences.syncedRates?.rate(for: currency) ?? ExchangeRates.rate(for: currency, in: ledger, now: now)?.cnyPerUnit,
+              rate > 0 else {
             main = .cny; cnyPerUnit = 1; return
         }
-        main = currency; cnyPerUnit = rate.cnyPerUnit
+        main = currency; cnyPerUnit = rate
     }
 
     static var symbol: String { main.symbol }

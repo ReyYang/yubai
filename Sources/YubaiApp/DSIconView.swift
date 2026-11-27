@@ -93,6 +93,18 @@ extension DS.Icon {
         .catTravel, .catFamily, .catInsurance, .catFees, .catDigital, .catDaily, .catGrocery, .catOther, .incInvestment,
     ]
 
+    /// What VoiceOver says for each pick in 编辑分类 · 图标.
+    var choiceName: String {
+        switch self {
+        case .catLearning: "书本"; case .catFood: "碗"; case .catCoffee: "咖啡杯"; case .catTransport: "地铁"
+        case .catShopping: "购物袋"; case .catHousing: "房子"; case .catHealth: "药箱"; case .catBeauty: "剪刀"
+        case .catFun: "游戏"; case .catTravel: "行李箱"; case .catFamily: "礼物"; case .catInsurance: "盾牌"
+        case .catFees: "票据"; case .catDigital: "手机"; case .catDaily: "商店"; case .catGrocery: "菜篮"
+        case .catOther: "三个点"; case .incInvestment: "走势"
+        default: "图标"
+        }
+    }
+
     init(symbol: String, income: Bool = false) {
         if symbol == "gift" { self = income ? .incGift : .catFamily; return }
         self = Self.storedSymbols[symbol] ?? .catOther

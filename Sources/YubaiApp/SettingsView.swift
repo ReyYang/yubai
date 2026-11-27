@@ -27,7 +27,7 @@ struct SettingsView: View {
                         DSSettingsCard {
                             link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(SettingsSummary.monthlyFixed(in: ledger, now: now).total, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
                             link(.catAll, "分类", "\(ledger.orderedCategories(income: false).count) 个", id: "openCategories") { store.tabRouteRequest = .categorySettings }
-                            link(.acctDebit, "账户", "\(store.accounts.filter { !$0.archived }.count) 个", id: "settingsAccounts") { store.tabRouteRequest = .assets }
+                            link(.acctDebit, "账户", "\(store.accounts.filter { !$0.archived }.count) 个", id: "settingsAccounts") { store.tabRouteRequest = .settingsAccounts }
                         }
                         // Canvas S-Settings: 主币种 and 快速记账 share a group.
                         DSSettingsCard {
@@ -113,6 +113,9 @@ struct SettingsView: View {
     }
 
     static func money(_ cents: Int64, hidden: Bool) -> String { OverviewDisplay.money(cents, hidden: hidden) }
+    /// What a keypad sheet starts from: the stored CNY value, never converted to the main currency,
+    /// because what is typed is saved as CNY.
+    static func inputMoney(_ cents: Int64) -> String { Money.text(cents, currency: false) }
 
     static func cycleDay(_ day: Int) -> String { day == CycleStart.lastDay ? "每月最后一天" : "每月 \(day) 日" }
 

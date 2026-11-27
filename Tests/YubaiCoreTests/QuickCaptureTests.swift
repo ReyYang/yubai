@@ -24,6 +24,8 @@ final class QuickCaptureTests: XCTestCase {
         XCTAssertEqual(cards[0].recentCount, 2, "the 40-day-old bill is outside 30 days")
         XCTAssertNil(cards[0].accountID)
         XCTAssertEqual(cards[1].recentCount, 0)
+        XCTAssertFalse(cards[1].everUsed)
+        XCTAssertTrue(cards[0].everUsed)
         XCTAssertEqual(cards[1].accountID, credit.id)
         try QuickCapture.setAccount(credit.id, forCard: " 招行 尾号 6214 ", in: &ledger)
         XCTAssertEqual(QuickCapture.cards(in: ledger, now: now).first { $0.recentCount == 2 }?.accountID, credit.id)

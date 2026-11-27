@@ -234,10 +234,13 @@ private struct EntryCategoryEditView: View {
     /// Canvas S-CatEdit 图标: six to a row, 44 high, the picked one on accent-soft.
     private func iconGrid(_ category: YubaiCore.Category) -> some View {
         let picked = category.entryIcon
+        // Spec-Issues 4: every category's icon is its own — one another category shows cannot be picked.
+        let taken = Set(model.ledger.categories.filter { $0.income == category.income && !$0.system && $0.name != category.name }.map(\.entryIcon))
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: EntrySpec.iconColumns),
                          spacing: DS.Space.s8) {
             ForEach(DS.Icon.categoryChoices, id: \.self) { icon in
                 let on = icon == picked
+                let used = taken.contains(icon) && !on
                 Button { pick(icon) } label: {
                     icon.view(size: DS.Size.icon, color: on ? DS.Color.accentInk : DS.Color.ink2)
                         .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin)
@@ -245,7 +248,9 @@ private struct EntryCategoryEditView: View {
                                     in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
                 }
                 .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
-                .accessibilityLabel("图标")
+                .disabled(used)
+                .opacity(used ? SettingsSpec.disabledOpacity : 1)
+                .accessibilityLabel(icon.choiceName)
                 .accessibilityAddTraits(on ? .isSelected : [])
             }
         }

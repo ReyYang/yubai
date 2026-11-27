@@ -146,7 +146,7 @@ private struct BudgetPage: View {
         let calm = rows.filter { !$0.isWarning }
         return VStack(alignment: .leading, spacing: .zero) {
             // Spec-Issues 7: the label says which it is; overspent is amber 超支.
-            Text(period.headlineTitle).dsText(DS.Font.tSub)
+            Text(period.showsSpendableDeficit ? "超支" : "还能花").dsText(DS.Font.tSub)
                 .foregroundStyle(period.showsSpendableDeficit ? DS.Color.warnInk : DS.Color.ink3)
                 .padding(.top, DS.Space.s8)
             Text(HomeDisplay.money(period.spendableDisplayAmount, hidden: hidden))
@@ -192,7 +192,7 @@ private struct BudgetPage: View {
             }
             // Canvas Main.dc.html 还能花 page: the sum is the last line — 还能花, or amber 超支.
             let over = period.showsSpendableDeficit
-            formulaLine(period.headlineTitle, sign: "=", amount: period.spendableDisplayAmount,
+            formulaLine(over ? "超支" : "还能花", sign: "=", amount: period.spendableDisplayAmount,
                         tint: over ? DS.Color.warnInk : DS.Color.ink, strong: true)
                 .accessibilityElement(children: .combine)
                 .accessibilityIdentifier("formulaRow_result")

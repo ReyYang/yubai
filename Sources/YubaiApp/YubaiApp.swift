@@ -30,7 +30,7 @@ struct LedgerPreset: Equatable {
 }
 enum TabRoute: Hashable {
     case profile, wishlist
-    case quickCapture, quickCards, quickMerchants, importHistory, backup, storage, frequent
+    case quickCapture, quickCards, quickMerchants, settingsAccounts, importHistory, backup, storage, frequent
     case formula, settings, savingRule, reserve
     case weekly(UUID?), whereCategory(title: String, categories: [String], isOther: Bool, selection: OverviewPeriodSelection), memories
     /// The 多花 card's page: the same everyday bills, amount and baseline as the card.
@@ -1116,6 +1116,8 @@ enum AppSheet: Identifiable {
         do {
             if try await context.evaluatePolicy(available ? policy : .deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") {
                 locked = false; if syncChoice != nil { sheet = .syncVersions }
+                // A foreground return that found the ledger locked skipped the rate check; catch up now.
+                Task { await syncExchangeRatesIfNeeded() }
             }
         } catch let error as LAError where error.code == .userFallback { await unlock(useBiometrics: false) }
         catch { self.error = "未能解锁。可以重试 Face ID、Touch ID 或设备密码。" }
@@ -1537,8 +1539,8 @@ struct RootView: View {
         case .savingRule: SavingsView()
         case .reserve: ReserveView()
         case .weekly(let id): weeklyDestination(id)
-        case .assets: SettingsAccountsPage()
-        case .overviewBills: EmptyView()
+        case .settingsAccounts: SettingsAccountsPage()
+        case .assets, .overviewBills: EmptyView()
         case .accountDetail(let id): AccountDetailView(accountID: id)
         case let .whereCategory(title, categories, isOther, selection): ReviewDrillView(title: title, categories: categories, isOther: isOther, selection: selection)
         case let .anomaly(category, selection): ReviewDrillView(title: category, categories: [category], isOther: false, selection: selection, anomaly: true)

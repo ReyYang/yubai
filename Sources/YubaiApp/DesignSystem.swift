@@ -3394,7 +3394,7 @@ struct LedgerCategoryIcon: View {
     private var icon: DS.Icon {
         let name = category.components(separatedBy: " · ").first ?? category
         let match = store.current.categories.first { $0.name == name && (income == nil || $0.income == income) }
-        return match.map { DS.Icon(category: $0.name, symbol: $0.symbol, income: $0.income) } ?? .catOther
+        return match.map(\.entryIcon) ?? .catOther
     }
     var body: some View {
         Group {
