@@ -718,6 +718,11 @@ struct APIKeySheet: View {
     @State private var key = ""
     @State private var saving = false
     @State private var loaded = false
+    @State private var confirmingDelete = false
+    @State private var closeRequested = false
+
+    /// A key is already in the keychain: 删除密钥 takes the place of 去 DeepSeek 申请.
+    private var hasKey: Bool { store.settingsFixture.map(\.hasSavedKey) ?? IntelligenceRuntime.cloud.hasKeychainKey }
 
     private var valid: Bool {
         let clean = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -744,18 +749,49 @@ struct APIKeySheet: View {
                         DSButton("保存", enabled: valid && !saving) { save(close) }.accessibilityIdentifier("apiKeySave")
                     }
                 }.frame(height: DS.Size.buttonH).padding(.top, SettingsSpec.keyButtonsTop)
-                Button {
-                    if let url = URL(string: "https://platform.deepseek.com/api_keys") { openURL(url) }
-                } label: {
-                    HStack(spacing: DS.Space.s4) {
-                        Text("去 DeepSeek 申请").dsText(DS.Font.tLabelStrong)
-                        DSIconView(icon: .arrowOut, size: SettingsSpec.linkIcon, color: DS.Color.accentInk)
-                    }.foregroundStyle(DS.Color.accentInk).frame(maxWidth: .infinity, minHeight: DS.Size.tapMin).contentShape(Rectangle())
-                }.dsPressStyle().accessibilityIdentifier("apiKeyApply").padding(.top, DS.Space.s8)
+                if hasKey {
+                    Button { confirmingDelete = true } label: {
+                        Text("删除密钥").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.warnInk)
+                            .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin).contentShape(Rectangle())
+                    }.dsPressStyle().accessibilityIdentifier("apiKeyDelete").padding(.top, DS.Space.s8)
+                } else {
+                    Button {
+                        if let url = URL(string: "https://platform.deepseek.com/api_keys") { openURL(url) }
+                    } label: {
+                        HStack(spacing: DS.Space.s4) {
+                            Text("去 DeepSeek 申请").dsText(DS.Font.tLabelStrong)
+                            DSIconView(icon: .arrowOut, size: SettingsSpec.linkIcon, color: DS.Color.accentInk)
+                        }.foregroundStyle(DS.Color.accentInk).frame(maxWidth: .infinity, minHeight: DS.Size.tapMin).contentShape(Rectangle())
+                    }.dsPressStyle().accessibilityIdentifier("apiKeyApply").padding(.top, DS.Space.s8)
+                }
             }
             .padding(.horizontal, DS.Space.s20).padding(.top, DS.Space.s4).padding(.bottom, OverviewSpec.periodBottom)
+            .onChange(of: closeRequested) { _, requested in if requested { close() } }
         }
-        .onAppear { if !loaded { loaded = true; key = store.settingsFixture?.apiKey ?? "" } }
+        .overlay {
+            if confirmingDelete {
+                SettingsConfirm(consequence: "删除后云端 AI 关闭。", action: "删除", cancel: { confirmingDelete = false }, confirm: deleteKey)
+            }
+        }
+        .onAppear {
+            guard !loaded else { return }
+            loaded = true; key = store.settingsFixture?.apiKey ?? ""
+            confirmingDelete = store.settingsFixture == .aiKeyDelete
+        }
+    }
+
+    private func deleteKey() {
+        confirmingDelete = false
+        Task {
+            if store.settingsFixture == nil {
+                do { try await Task.detached(priority: .userInitiated) { try APIKeyStore.shared.delete() }.value }
+                catch { store.error = error.localizedDescription; return }
+                IntelligenceRuntime.cloud.refresh(); await IntelligenceRuntime.cloud.waitForRefresh()
+            }
+            key = ""
+            store.update("云端 AI", entryMotion: false, showToast: false) { $0.preferences.cloudAIEnabled = false }
+            closeRequested = true
+        }
     }
 
     /// `sk-` and the last four; the rest are bullets. The key itself is never shown or logged.

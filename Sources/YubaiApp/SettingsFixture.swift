@@ -3,7 +3,7 @@ import YubaiCore
 
 /// Canvas data for the settings, account and first-open boards. Debug launch arguments only.
 enum SettingsFixture: Equatable {
-    case main, mainEnd, cycle, recurring, categories, ai, aiKey, hub
+    case main, mainEnd, cycle, recurring, categories, ai, aiKey, aiKeySaved, aiKeyDelete, hub
     case accountAdd, accountEdit, saving, floor, subAdd, subIcon, currency, export
     case onboard(Int)
 
@@ -19,6 +19,8 @@ enum SettingsFixture: Equatable {
         case "categories": return .categories
         case "ai": return .ai
         case "ai-key": return .aiKey
+        case "ai-key-saved": return .aiKeySaved
+        case "ai-key-delete": return .aiKeyDelete
         case "hub": return .hub
         default: break
         }
@@ -41,6 +43,8 @@ enum SettingsFixture: Equatable {
     var now: Date { Dates.parse("2026-11-23 12:00:00")! }
     /// A fake key: no request is ever sent from a fixture.
     var apiKey: String? { "sk-test-0000-fixture-3f2a" }
+    /// The keychain already holds a key (the 删除密钥 boards).
+    var hasSavedKey: Bool { self == .aiKeySaved || self == .aiKeyDelete }
     var storageBytes: Int64 { 126_000_000 }
     var calendarMonth: Date? { self == .recurring ? Dates.parse("2026-12-01") : nil }
     var openCategory: String? { self == .categories ? "购物" : nil }
@@ -154,7 +158,7 @@ enum SettingsFixture: Equatable {
         case .recurring: seed.route = [.settings, .recurring]
         case .categories: seed.route = [.settings, .categorySettings]
         case .ai: seed.route = [.settings, .aiSettings]
-        case .aiKey: seed.route = [.settings, .aiSettings]; seed.sheet = .apiKey(enabling: false)
+        case .aiKey, .aiKeySaved, .aiKeyDelete: seed.route = [.settings, .aiSettings]; seed.sheet = .apiKey(enabling: false)
         case .accountAdd: seed.route = []; seed.sheet = .accountAdd(.debit, onboarding: false)
         case .accountEdit: seed.route = [.accountDetail(credit.id), .accountEdit(credit.id)]
         case .saving: seed.route = [.settings]; seed.sheet = .saving

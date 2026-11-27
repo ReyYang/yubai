@@ -59,6 +59,8 @@ enum AskSpec {
     static let body = DS.TextStyle(size: 15, lineHeight: 22, weight: .regular, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: false)
     // canvas Ask.dc.html: follow-up question
     static let question = DS.TextStyle(size: 15, lineHeight: 22, weight: .medium, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: false)
+    // canvas Ask.dc.html: chosen follow-up option
+    static let chipSelected = DS.TextStyle(size: 14, lineHeight: 20, weight: .semibold, tracking: 0, family: .text, relativeTo: .callout, monospacedDigit: false)
     // canvas Ask.dc.html: verdict word
     static let verdict = DS.TextStyle(size: 22, lineHeight: 28, weight: .semibold, tracking: 0, family: .text, relativeTo: .title2, monospacedDigit: false)
     // canvas Ask.dc.html: approval title
