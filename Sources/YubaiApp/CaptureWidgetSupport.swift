@@ -1,4 +1,5 @@
 import Foundation
+import os
 import YubaiCore
 #if canImport(WidgetKit)
 import WidgetKit
@@ -7,11 +8,18 @@ import WidgetKit
 /// 主币种 only changes display. Every amount that goes through `HomeDisplay.money` is shown in the
 /// main currency at this device's latest synced rate; the ledger stays in CNY.
 enum DisplayCurrency {
-    /// Written on the main actor whenever the ledger's preferences or the local rates change.
-    nonisolated(unsafe) private(set) static var current: MoneyDisplay = .cny
+    /// Written on the main actor whenever the ledger's preferences or the local rates change; read from
+    /// anywhere (notifications, Siri), so behind a lock. Take it once per message, not per amount.
+    private static let storage = OSAllocatedUnfairLock<MoneyDisplay>(initialState: .cny)
+    static var current: MoneyDisplay { storage.withLock { $0 } }
 
-    @MainActor static func configure(_ ledger: Ledger, synced: SyncedExchangeRates?, now: Date) {
-        current = MoneyDisplay(ledger: ledger, synced: synced, now: now)
+    /// True when the shown currency or rate changed.
+    @discardableResult @MainActor static func configure(_ ledger: Ledger, synced: SyncedExchangeRates?, now: Date) -> Bool {
+        let next = MoneyDisplay(ledger: ledger, synced: synced, now: now)
+        return storage.withLock { value in
+            guard value != next else { return false }
+            value = next; return true
+        }
     }
 }
 

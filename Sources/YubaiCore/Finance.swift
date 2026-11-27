@@ -539,6 +539,12 @@ public struct LedgerPresentationCache {
         for wish in ledger.wishlist {
             if let date = wish.followUpAt, date > now { expires = min(expires, date) }
         }
+        // 最近删除 drops a bill 30 days after it was deleted, at that time of day.
+        for entry in ledger.entries {
+            guard let deleted = entry.deletedAt else { continue }
+            let leaves = Dates.calendar.date(byAdding: .day, value: 30, to: deleted) ?? deleted
+            if leaves > now { expires = min(expires, leaves) }
+        }
         settingsValue = (value, now, expires, zone); return value
     }
 }

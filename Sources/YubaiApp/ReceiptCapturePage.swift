@@ -155,7 +155,7 @@ struct ReceiptCapturePage: View {
                 let layout = textSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: YubaiSpace.space4)) : AnyLayout(HStackLayout(spacing: YubaiSpace.space8))
                 layout {
                     Text(line.draft.title).yubaiFont(YubaiFont.row).lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
-                    AmountLabel(cents: line.draft.amount, hide: store.preferences.hideAmounts, sign: line.draft.nature.inflow ? .inflow : .outflow)
+                    AmountLabel(cents: line.draft.amount, hide: store.preferences.hideAmounts, sign: line.draft.nature.inflow ? .inflow : .outflow, stored: true)
                 }
                 categoryButton(id: line.id, title: line.draft.title, income: line.draft.nature.categoryIncome, hint: line.hint)
             }.frame(maxWidth: .infinity, alignment: .leading)

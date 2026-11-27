@@ -32,15 +32,17 @@ enum CaptureNotifications {
         // 自动化不弹权限框；首次设置在「快速记账」里由用户开启。
         let settings = await center.notificationSettings()
         guard [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus) else { return }
+        // One rate for the whole message, even if a sync lands meanwhile.
+        let display = DisplayCurrency.current
         let content = UNMutableNotificationContent(); content.title = "余白"; content.sound = .default
         let privateResult = ledger.preferences.lockEnabled || ledger.preferences.hideAmounts
-        if privateResult { content.body = "已记下 " + (ledger.preferences.hideAmounts ? "••••" : DisplayCurrency.current.text(entry.amount, symbol: true)) }
+        if privateResult { content.body = "已记下 " + (ledger.preferences.hideAmounts ? "••••" : display.text(entry.amount, symbol: true)) }
         else {
             let category = entry.hasNoCaptureCategory ? "没分类" : Classification.displayCategory(entry.category)
-            content.body = "已记下 " + entry.displayTitle + " " + DisplayCurrency.current.text(entry.amount, symbol: true) + " · " + category + " · " + ledger.accountName(entry.accountID)
+            content.body = "已记下 " + entry.displayTitle + " " + display.text(entry.amount, symbol: true) + " · " + category + " · " + ledger.accountName(entry.accountID)
         }
         let value = Finance.spendableBreakdown(ledger)
-        content.body += "\n" + value.headlineTitle + " " + (ledger.preferences.hideAmounts ? "••••" : DisplayCurrency.current.text(value.headlineAmount, symbol: true)) + " · 轻点改一下"
+        content.body += "\n" + value.headlineTitle + " " + (ledger.preferences.hideAmounts ? "••••" : display.text(value.headlineAmount, symbol: true)) + " · 轻点改一下"
         content.categoryIdentifier = "quick-capture"; content.userInfo = ["entryID": entry.id.uuidString]
         try? await center.add(UNNotificationRequest(identifier: entry.id.uuidString, content: content, trigger: nil))
     }

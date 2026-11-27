@@ -374,7 +374,8 @@ private struct BudgetKeypadOverlay: View {
                         Color.clear.frame(width: DS.Size.tapMin)
                     }
                 }
-                Text(expression.formattedDisplay).dsText(DS.Font.nDetail).foregroundStyle(DS.Color.ink)
+                // Saved as CNY whatever the main currency, so the box says ¥.
+                Text(SettingsDisplay.typed(expression.formattedDisplay, hidden: false)).dsText(DS.Font.nDetail).foregroundStyle(DS.Color.ink)
                     .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).accessibilityIdentifier("budgetKeypadAmount")
             }
             DSKeypad(canSave: expression.canSave, onKey: press, onSave: {

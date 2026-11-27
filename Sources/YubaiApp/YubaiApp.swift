@@ -103,9 +103,12 @@ enum AppSheet: Identifiable {
                 resetRootNavigation()
             }
             if oldValue != ledger {
+                // Before `invalidateDerived`, which publishes the widget snapshot in the new main currency.
+                if oldValue.preferences != ledger.preferences, DisplayCurrency.configure(ledger, synced: rateSync.rates, now: Dates.now) {
+                    moneyDisplay = DisplayCurrency.current
+                }
+                if rateSync.rates == nil, ledger.preferences.legacySyncedRates != nil { rateSync.adoptLegacy(ledger.preferences.legacySyncedRates) }
                 invalidateDerived()
-                if oldValue.preferences != ledger.preferences { DisplayCurrency.configure(ledger, synced: rateSync.rates, now: Dates.now) }
-                if oldValue.categories != ledger.categories { CategoryIcons.configure(ledger.categories) }
                 // The long-press menu never outlives its bill (synced away, swiped, deleted by a shortcut).
                 if let id = billMenu?.entryID, !ledger.entries.contains(where: { $0.id == id && $0.deletedAt == nil }) {
                     billMenu = nil
@@ -462,7 +465,16 @@ enum AppSheet: Identifiable {
         cachedEntryTimeline = (month, search, filter, allMonths, calendar, value)
         return value
     }
+    /// What `DisplayCurrency` holds, observed: pages that show amounts read it to redraw on a new rate.
+    private(set) var moneyDisplay = MoneyDisplay.cny
+    /// The rate behind the main currency changed with no ledger change: redraw what shows amounts.
+    func displayCurrencyChanged() {
+        moneyDisplay = DisplayCurrency.current
+        invalidateDerived()
+    }
     private func invalidateDerived() {
+        // Here rather than in `ledger`'s didSet: fixtures set the ledger in init, where didSet does not run.
+        CategoryIcons.configure(ledger.categories)
         let previousEntries = derivedSource.entries
         derivedSource = ledger
         if preferences != ledger.preferences { preferences = ledger.preferences }
@@ -1152,9 +1164,6 @@ enum AppSheet: Identifiable {
                 locked = false; if syncChoice != nil { sheet = .syncVersions }
                 // A foreground return that found the ledger locked skipped the rate check; catch up now (backoff applies).
                 Task { await syncExchangeRatesIfNeeded() }
-                #if os(iOS)
-                RateRefreshTask.schedule()
-                #endif
             }
         } catch let error as LAError where error.code == .userFallback { await unlock(useBiometrics: false) }
         catch { self.error = "未能解锁。可以重试 Face ID、Touch ID 或设备密码。" }
@@ -1363,7 +1372,13 @@ struct RootView: View {
         #endif
         .onChange(of: phase) { _, newValue in
             guard !store.loadingLedger, !store.isDesignFixture else { return }
-            if newValue == .background { store.flushBeforeSuspension() }
+            if newValue == .background {
+                store.flushBeforeSuspension()
+                #if os(iOS)
+                // Keeps a daily rate refresh queued for when the app is not opened.
+                RateRefreshTask.schedule()
+                #endif
+            }
             if newValue == .active {
                 store.purgeExpiredEntries(); store.ask.expireIfNeeded(ledgerID: store.current.id); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
                 // Rates after iCloud has settled (skipped while it is busy).

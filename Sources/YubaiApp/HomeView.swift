@@ -58,15 +58,14 @@ enum HomeDisplay {
         return (days, daily.evenPace.map { fixture ? HomeSpec.barGuide : height($0) })
     }
 
-    /// A bill's icon: savings, transfers, income and fixed bills by what they are; spending by its category,
+    /// A bill's icon: savings, transfers and income by what they are; spending by its category,
     /// the same icon the category shows everywhere else in the ledger.
     static func icon(_ entry: Entry, category: YubaiCore.Category?, name: String) -> DS.Icon {
         if entry.intoFixedSavings || entry.nature == .investBuy { return .saveFirst }
         if entry.nature.paired { return .transfer }
         if entry.nature == .income { return .acctWallet }
-        // A fixed bill keeps the plan glyph unless its category's icon was picked by hand.
-        if entry.planID != nil && category?.icon == nil { return .subscription }
         if let category { return category.entryIcon }
+        if entry.planID != nil { return .subscription }
         return DS.Icon(category: name, symbol: "", income: false)
     }
 
@@ -86,6 +85,8 @@ struct HomeView: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
+        // Amounts are formatted through `DisplayCurrency`; reading this redraws home when a new rate lands.
+        let _ = store.moneyDisplay
         HomePage(ledger: store.current, now: store.financialNow, request: request, fixture: HomeFixture.current, scrollRequest: store.rootScrollRequest[.ledger, default: 0],
                  openBudget: { store.tabRouteRequest = .formula },
                  openSettings: { store.tabRouteRequest = .settings },

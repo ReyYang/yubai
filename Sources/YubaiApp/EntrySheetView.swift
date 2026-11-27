@@ -88,6 +88,7 @@ struct EntrySheetOverlay: View {
             }
             .ignoresSafeArea(.container, edges: .bottom)
             // The rate card types on the sheet's keypad: card and keypad are one modal, so VoiceOver reaches both.
+            .accessibilityElement(children: .contain)
             .accessibilityAddTraits(model.drawer == .rate ? .isModal : [])
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation, value: model.drawer?.isPopover == true ? model.drawer : nil)
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.categoryPanel)
@@ -167,8 +168,10 @@ struct EntrySheetOverlay: View {
             // Lists rise above their pill; 币种 and 汇率 hang under the amount.
             // The rate card stops above the keypad, which types the rate; at large type it scrolls instead.
             let floor = drawer == .rate ? keys.map(\.minY) ?? geometry.size.height : geometry.size.height
-            let available = drawer.opensBelow ? max(0, floor - pill.maxY - EntrySpec.popoverGap)
-                : max(0, pill.minY - EntrySpec.popoverGap)
+            let roomBelow = max(0, floor - pill.maxY - EntrySpec.popoverGap), roomAbove = max(0, pill.minY - EntrySpec.popoverGap)
+            // A short screen at large type leaves no room under the rate line: the card rises above it instead.
+            let below = drawer.opensBelow && !(drawer == .rate && roomBelow < EntrySpec.rateCardMinHeight && roomAbove > roomBelow)
+            let available = below ? roomBelow : roomAbove
             let margin = typeSize.isAccessibilitySize ? DS.Space.s16 : DS.Space.s20
             let leading = min(max(margin, pill.midX - width * EntrySpec.midpoint),
                               geometry.size.width - margin - width)
@@ -181,7 +184,9 @@ struct EntrySheetOverlay: View {
                     .contentShape(EntryBackdropShape(hole: drawer == .rate ? keys?.offsetBy(dx: inset.leading, dy: inset.top) : nil), eoFill: true)
                     .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
                         // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
-                        let hit = targets.first { $0.value.contains(location) }?.key
+                        // Where two targets overlap (the ≈ line's 44 pt reaches up to ¥), the other one wins.
+                        let hits = targets.filter { $0.value.contains(location) }.map(\.key)
+                        let hit = hits.first { $0 != drawer } ?? hits.first
                         model.drawer = hit == drawer ? nil : hit
                     }
                     .gesture(closeDrag { model.drawer = nil })
@@ -193,9 +198,9 @@ struct EntrySheetOverlay: View {
                     popoverContent(drawer).simultaneousGesture(closeDrag { model.drawer = nil })
                     ScrollView { popoverContent(drawer) }.scrollIndicators(.hidden)
                 }
-                .frame(width: width, height: available, alignment: drawer.opensBelow ? .top : .bottom)
-                .offset(x: leading, y: drawer.opensBelow ? pill.maxY + EntrySpec.popoverGap : 0)
-                .transition(reduced ? .opacity : .scale(scale: EntrySpec.popoverScale, anchor: drawer.opensBelow ? .top : .bottom).combined(with: .opacity))
+                .frame(width: width, height: available, alignment: below ? .top : .bottom)
+                .offset(x: leading, y: below ? pill.maxY + EntrySpec.popoverGap : 0)
+                .transition(reduced ? .opacity : .scale(scale: EntrySpec.popoverScale, anchor: below ? .top : .bottom).combined(with: .opacity))
                 .focusable()
                 .focusEffectDisabled()
                 .focused($calendarFocus, equals: .calendar)
@@ -914,7 +919,7 @@ private struct EntryRateLine: View {
                     Text(model.hidesAmounts ? "≈ ••••" : "≈ " + Money.text(local)).dsText(DS.Font.tSub).monospacedDigit()
                         .foregroundStyle(DS.Color.ink3)
                     if model.typedRate != nil {
-                        Text("手动汇率").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink2)
+                        Text("手动汇率").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink2).fixedSize()
                             .padding(.horizontal, SettingsSpec.tagInset).frame(height: SettingsSpec.tagHeight).dsPill()
                     }
                     DS.Icon.chevron.view(size: EntrySpec.currencyChevron, color: DS.Color.chevron)

@@ -638,7 +638,10 @@ struct EntryCategoryState: Equatable {
             return "记下时的汇率"
         }
         if FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now) != nil { return "设置里的固定汇率" }
-        if let fetched = syncedRates?.fetchedAt { return CurrencySettings.syncTime(fetched, now: now) + " 同步" }
+        if let synced = syncedRates, let quoted = synced.quoteDate(for: draft.currency) {
+            // A quote kept from an older sync says its own date, not the latest sync's time.
+            return quoted < synced.date ? Dates.monthDay(quoted) + " 的汇率" : CurrencySettings.syncTime(synced.fetchedAt, now: now) + " 同步"
+        }
         return ""
     }
 

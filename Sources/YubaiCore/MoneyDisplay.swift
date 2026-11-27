@@ -41,7 +41,8 @@ public struct MoneyDisplay: Codable, Equatable, Sendable {
     public func text(_ cnyCents: Int64, symbol: Bool = false) -> String {
         let (shown, minor) = convert(cnyCents)
         let number = Self.number(abs(minor), digits: shown.fractionDigits)
-        return (minor < 0 ? "-" : "") + (symbol ? shown.symbol : "") + number
+        // Too large to convert falls back to CNY: then ¥ always shows, so the number is never misread.
+        return (minor < 0 ? "-" : "") + (symbol || shown != currency ? shown.symbol : "") + number
     }
 
     /// The symbol that `text(_:symbol:)` would use for this amount.

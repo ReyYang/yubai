@@ -74,7 +74,7 @@ struct ReviewDrillView: View {
                 .init(id: row.id, value: Double(row.amount), color: colors[index])
             }, hidesAmounts: hidden).padding(.bottom, DS.Space.s4)
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                DSOverviewLegendRow(name: row.category, amount: OverviewDisplay.money(row.amount, hidden: hidden), color: colors[index],
+                DSOverviewLegendRow(name: row.title, amount: OverviewDisplay.money(row.amount, hidden: hidden), color: colors[index],
                                     share: hidden || row.amount < 0 ? nil : OverviewDisplay.share(row.amount, of: total),
                                     delta: hidden ? nil : row.changePercent.map(OverviewDisplay.percent),
                                     isAnomaly: row.isAnomaly, isDrill: true)

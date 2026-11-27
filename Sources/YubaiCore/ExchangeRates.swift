@@ -66,8 +66,19 @@ public struct RateSyncState: Codable, Equatable, Sendable {
     /// A good response: merged into the rates, which change only when the reference date or a quote did.
     public mutating func succeeded(_ fresh: SyncedExchangeRates, at now: Date) throws {
         let merged = try ExchangeRates.merge(fresh, into: rates)
-        if merged.date != rates?.date || merged.cnyPerUnit != rates?.cnyPerUnit { rates = merged }
+        // An older reference date than what is kept (a stale cache answering) changes nothing.
+        if let kept = rates, merged.date < kept.date {
+        } else if merged.date != rates?.date || merged.cnyPerUnit != rates?.cnyPerUnit || merged.quoteDates != rates?.quoteDates {
+            rates = merged
+        }
         lastAttempt = now; lastSuccess = now; failures = 0; lastError = nil
+    }
+
+    /// Rates an older build kept in the ledger: taken once, when this device has none of its own.
+    public mutating func adoptLegacy(_ legacy: SyncedExchangeRates?) {
+        guard rates == nil, let legacy, !legacy.cnyPerUnit.isEmpty else { return }
+        rates = legacy
+        lastSuccess = lastSuccess ?? legacy.fetchedAt
     }
 
     public mutating func failed(_ reason: String, at now: Date) {

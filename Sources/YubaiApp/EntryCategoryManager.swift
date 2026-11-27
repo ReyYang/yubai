@@ -98,7 +98,7 @@ struct EntryCategoryManagerView: View {
             get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { category in
             Button("删除", role: .destructive) { model.deleteCategory(category.name, income: category.income) }
         } message: { category in
-            Text("已记的 \(model.entryCount(category: category.name, income: category.income)) 笔改到「\(category.income ? "其他收入" : "其他支出")」")
+            Text("已记的 \(model.entryCount(category: category.name, income: category.income).formatted()) 笔改到「\(category.income ? "其他收入" : "其他支出")」")
         }
     }
 
@@ -222,13 +222,13 @@ private struct EntryCategoryEditView: View {
         .confirmationDialog("删除「\(current ?? "")」？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("删除", role: .destructive, action: delete)
         } message: {
-            Text("已记的 \(model.entryCount(category: current ?? "", income: target.income)) 笔改到「\(fallback)」")
+            Text("已记的 \(model.entryCount(category: current ?? "", income: target.income).formatted()) 笔改到「\(fallback)」")
         }
         .confirmationDialog(deletingSub.map { "删除「\($0)」？" } ?? "", isPresented: Binding(
             get: { deletingSub != nil }, set: { if !$0 { deletingSub = nil } }), titleVisibility: .visible, presenting: deletingSub) { sub in
             Button("删除", role: .destructive) { remove(sub) }
         } message: { sub in
-            Text("已记的 \(model.entryCount(category: current ?? "", subcategory: sub, income: target.income)) 笔改到「\(current ?? "")」")
+            Text("已记的 \(model.entryCount(category: current ?? "", subcategory: sub, income: target.income).formatted()) 笔改到「\(current ?? "")」")
         }
     }
 
@@ -459,14 +459,15 @@ struct EntryPageHeader<Trailing: View>: View {
 }
 
 extension DS.Icon {
-    /// The icon a new category starts with, stored so it stays put: what its name means if no other
-    /// category shows it, else the first free pick (`categoryIcons`). Nil when nothing needs storing.
+    /// The icon a new category starts with, stored so it stays put: what its name means if no category
+    /// already shows it (by meaning or by a stored icon), else the first pick none shows. Nil when the
+    /// meaning icon is free, so nothing needs storing. Income categories show no icon cell.
     static func newCategoryIcon(name: String, income: Bool, in ledger: Ledger) -> String? {
         guard !income else { return nil }
-        let added = YubaiCore.Category(name)
-        let icon = categoryIcons(ledger.categories + [added])[CategoryKey(name: name, income: false)]
-        let natural = DS.Icon(category: name, symbol: added.symbol, income: false)
-        return icon == natural ? nil : icon?.rawValue
+        let shown = Set(categoryIcons(ledger.categories).filter { !$0.key.income }.values)
+        let natural = DS.Icon(category: name, symbol: YubaiCore.Category(name).symbol, income: false)
+        if natural != .catOther && !shown.contains(natural) { return nil }
+        return categoryChoices.first { !shown.contains($0) && $0 != .catOther && $0 != .incInvestment }?.rawValue
     }
 
 }

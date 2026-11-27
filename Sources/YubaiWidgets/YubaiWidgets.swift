@@ -61,7 +61,7 @@ private struct CaptureWidgetView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     if let snapshot = entry.snapshot {
                         Text((snapshot.headlineTitle ?? "还能花") + " " + snapshot.money(snapshot.available)).font(.headline).monospacedDigit().privacySensitive()
-                        Text("今天记了 \(snapshot.todayCount) 笔").font(.caption).privacySensitive()
+                        Text("今天记了 \(snapshot.todayCount.formatted()) 笔").font(.caption).privacySensitive()
                     } else { Label("记一笔", icon: .add, size: 17) }
                 }
             case .systemMedium: medium
@@ -76,7 +76,7 @@ private struct CaptureWidgetView: View {
             if let snapshot = entry.snapshot {
                 Text(snapshot.headlineTitle ?? "还能花").font(.caption).foregroundStyle(.secondary)
                 Text(snapshot.money(snapshot.available)).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit().minimumScaleFactor(0.5).lineLimit(1).privacySensitive()
-                Text("今天记了 \(snapshot.todayCount) 笔 · " + snapshot.money(snapshot.todayTotal)).font(.system(size: 11)).foregroundStyle(.secondary).privacySensitive()
+                Text("今天记了 \(snapshot.todayCount.formatted()) 笔 · " + snapshot.money(snapshot.todayTotal)).font(.system(size: 11)).foregroundStyle(.secondary).privacySensitive()
             } else { Label("余白", systemImage: "square.righthalf.filled").font(.headline) }
             Spacer(minLength: 4)
             Link(destination: CaptureSnapshotBridge.addURL()) { Label("记一笔", icon: .add, size: 15).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 40).background(brand, in: Capsule()).foregroundStyle(scheme == .dark ? .black : .white) }

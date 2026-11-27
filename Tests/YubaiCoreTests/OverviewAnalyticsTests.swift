@@ -118,9 +118,25 @@ final class OverviewAnalyticsTests: XCTestCase {
         XCTAssertFalse(drill.slices.last!.isAnomaly)
         XCTAssertEqual(drill.slices.reduce(0) { $0 + $1.amount }, anomaly.amount, "the rows add up to the card")
         XCTAssertEqual(drill.entryGroups[refund.id], OverviewAnalytics.refundGroup)
+        XCTAssertEqual(drill.slices.last?.title, "退款")
         // The plain category page reconciles the same way.
         let page = OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false, selection: .current, now: now)
         XCTAssertEqual(page.slices.reduce(0) { $0 + $1.amount }, page.amount)
+    }
+
+    func testASubcategoryNamedRefundStaysSpending() {
+        var (ledger, account) = sample()
+        let returned = expense(250_000, "购物", account: account, subcategory: "衣服")
+        var refund = Entry(date: date("2026-11-14"), amount: 30_000, nature: .refund, accountID: account.id, title: "退大衣", category: "购物")
+        refund.relatedEntryID = returned.id
+        ledger.entries = history(["购物": 200_000], account: account) + [
+            returned, expense(100_000, "购物", account: account, subcategory: "退款"), refund
+        ]
+        let drill = try! XCTUnwrap(OverviewAnalytics.anomalyDrill(in: ledger, category: "购物", selection: .current, now: now))
+        XCTAssertEqual(drill.slices.map(\.title), ["衣服", "退款", "退款"], "the person's 退款 spending and the refunds row")
+        XCTAssertEqual(drill.slices.map(\.amount), [250_000, 100_000, -30_000])
+        XCTAssertEqual(drill.slices.reduce(0) { $0 + $1.amount }, drill.amount)
+        XCTAssertEqual(Set(drill.slices.map(\.id)).count, 3, "row ids stay unique")
     }
 
     func testUnsortedListsTheEntriesToOrganize() {

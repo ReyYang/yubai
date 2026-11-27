@@ -27,12 +27,12 @@ struct SettingsView: View {
                         DSSettingsCard {
                             link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(store.settingsSummary.monthlyFixed, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
                             link(.catAll, "分类", "\(ledger.orderedCategories(income: false).count) 个", id: "openCategories") { store.tabRouteRequest = .categorySettings }
-                            link(.acctDebit, "账户", "\(store.accounts.filter { !$0.archived }.count) 个", id: "settingsAccounts") { store.tabRouteRequest = .settingsAccounts }
+                            link(.acctDebit, "账户", "\(store.accounts.filter { !$0.archived }.count.formatted()) 个", id: "settingsAccounts") { store.tabRouteRequest = .settingsAccounts }
                         }
                         // Canvas S-Settings: 主币种 and 快速记账 share a group.
                         DSSettingsCard {
                             link(.exchange, "主币种", SettingsDisplay.mainCurrency(store.preferences), brand: true, first: true, id: "settingsCurrency") { store.tabRouteRequest = .currency }
-                            link(.bolt, "快速记账", "近 7 天 \(store.quickCaptureStats.recent) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
+                            link(.bolt, "快速记账", "近 7 天 \(store.quickCaptureStats.recent.formatted()) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
                         }
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
@@ -381,7 +381,7 @@ struct BackupView: View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Text("已验证的备份").yubaiFont(YubaiFont.navTitle)
-                Text("\(ledger.accounts.count.formatted()) 个账户 · \(ledger.activeEntries.count.formatted()) 笔有效记录 · \(ledger.attachments.count) 份附件")
+                Text("\(ledger.accounts.count.formatted()) 个账户 · \(ledger.activeEntries.count.formatted()) 笔有效记录 · \(ledger.attachments.count.formatted()) 份附件")
                 Text("最后修改：\(Dates.text(ledger.updatedAt, time: true))").yubaiFont(YubaiFont.caption)
                 Button("确认恢复这份账本") {
                     if store.restore(ledger) { pendingRestore = nil; restoreData = nil; encryptedRestore = false; restorePassword = ""; message = "已恢复" }

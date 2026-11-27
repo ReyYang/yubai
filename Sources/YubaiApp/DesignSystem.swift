@@ -1622,16 +1622,26 @@ struct AmountLabel: View {
     var sign: Sign = .automatic
     var currency: Bool? = nil
     var ink: Color = YubaiColor.label
+    /// An amount being typed or checked before it is saved: CNY, like what gets stored. Otherwise the
+    /// main currency, like every other amount the app shows.
+    var stored = false
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
     private var showsCurrency: Bool { currency ?? (resolvedRole == .hero || resolvedRole == .display) }
-    private var text: String { Self.text(cents, sign: sign, currency: showsCurrency) }
+    private var text: String {
+        if stored { return Self.text(cents, sign: sign, currency: showsCurrency) }
+        let prefix: String
+        switch sign { case .automatic: prefix = cents < 0 ? "−" : ""; case .inflow: prefix = "+"; case .outflow: prefix = "−"; case .none: prefix = "" }
+        let magnitude = cents == .min ? Int64.max : abs(cents)
+        return prefix + DisplayCurrency.current.text(magnitude, symbol: showsCurrency)
+    }
+    private var hiddenSymbol: String { stored ? "¥" : DisplayCurrency.current.symbol(for: cents) }
     private var numericValue: Double {
         switch sign { case .automatic: Double(cents) / 100; case .inflow, .none: abs(Double(cents)) / 100; case .outflow: -abs(Double(cents)) / 100 }
     }
     var body: some View {
         let font = resolvedRole.font
         Group {
-            if hide { Text(showsCurrency ? "¥••••" : "••••").transition(.opacity) }
+            if hide { Text(showsCurrency ? hiddenSymbol + "••••" : "••••").transition(.opacity) }
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(ink)
             // Page headline numerals are the one scale-to-fit exception.

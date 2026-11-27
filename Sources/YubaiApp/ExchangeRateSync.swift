@@ -18,14 +18,13 @@ extension AppStore {
         return true
     }
 
-    /// The ledger is not busy with iCloud or a choice the person has to make.
-    private var mayCheckRates: Bool {
-        !locked && loadFailure == nil && !loadingLedger && !storageBusy && !recoveringWriteFailure
-            && syncChoice == nil && !switchingLedgerLocation && !choosingSyncVersion && !syncBusy
-    }
+    /// Rates are this device's own and touch no ledger file, so the lock and storage work never hold them
+    /// up; only an automatic check waits for iCloud to settle, so it does not compete with a sync.
+    private var mayCheckRates: Bool { loadFailure == nil && !loadingLedger && !syncBusy && !switchingLedgerLocation }
 
+    /// 去更新 / 重试 and the background refresh: true when the rates are fresh afterwards.
     @discardableResult func syncExchangeRatesIfNeeded(force: Bool = false) async -> Bool {
-        guard mayFetchRates, !rateSyncRunning, mayCheckRates else { return false }
+        guard mayFetchRates, !rateSyncRunning, force || mayCheckRates, !loadingLedger else { return false }
         let auto = current.preferences.autoRateSync != false
         guard force || ExchangeRates.needsSync(autoSync: auto, state: rateSync, now: Date()) else { return false }
         rateSyncRunning = true
@@ -37,6 +36,10 @@ extension AppStore {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
             try state.succeeded(ExchangeRates.parseECB(data, fetchedAt: Date()), at: Date())
+        } catch is CancellationError {
+            return false   // The system took the background time back: not a failure, no backoff.
+        } catch let error as URLError where error.code == .cancelled {
+            return false
         } catch let error as URLError {
             state.failed(error.code == .notConnectedToInternet || error.code == .networkConnectionLost ? "网络连不上" : "汇率服务没有回应", at: Date())
         } catch {
@@ -49,8 +52,8 @@ extension AppStore {
     /// The device-local rates changed: save them and redraw amounts in the main currency.
     func rateSyncChanged() {
         RateSyncStore.save(rateSync)
-        DisplayCurrency.configure(current, synced: rateSync.rates, now: Dates.now)
-        CaptureSnapshotBridge.publish(current)
+        // A new rate redraws every amount (and republishes the widget); an unchanged one changes nothing.
+        if DisplayCurrency.configure(current, synced: rateSync.rates, now: Dates.now) { displayCurrencyChanged() }
     }
 }
 
@@ -82,6 +85,8 @@ enum RateRefreshTask {
             MainActor.assumeIsolated {
                 schedule()
                 let work = Task { @MainActor in
+                    // A background launch is still reading the ledger (for 每天自动更新).
+                    await store.waitForLedger()
                     let ok = await store.syncExchangeRatesIfNeeded()
                     delivered.setTaskCompleted(success: ok)
                 }

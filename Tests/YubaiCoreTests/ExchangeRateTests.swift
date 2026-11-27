@@ -88,6 +88,14 @@ final class ExchangeRateTests: XCTestCase {
         let encoded = String(decoding: try JSONEncoder().encode(l), as: UTF8.self)
         XCTAssertFalse(encoded.contains("syncedRates"))
         XCTAssertTrue(encoded.contains("mainCurrency"))
+        // An older build's ledger: its rates are read for this device to adopt, and the next save drops them.
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(encoded.utf8)) as? [String: Any])
+        var preferences = try XCTUnwrap(object["preferences"] as? [String: Any])
+        let rates = try JSONSerialization.jsonObject(with: JSONEncoder().encode(SyncedExchangeRates(date: now, fetchedAt: now, cnyPerUnit: ["USD": 7.5])))
+        preferences["syncedRates"] = rates; object["preferences"] = preferences
+        let old = try JSONDecoder().decode(Ledger.self, from: JSONSerialization.data(withJSONObject: object))
+        XCTAssertEqual(old.preferences.legacySyncedRates?.rate(for: .usd), 7.5)
+        XCTAssertFalse(String(decoding: try JSONEncoder().encode(old), as: UTF8.self).contains("syncedRates"))
     }
 
     func testEntryFreezesRateAndLaterSyncNeverChangesIt() throws {
@@ -162,6 +170,8 @@ final class ExchangeRateTests: XCTestCase {
         let yen = MoneyDisplay(currency: .jpy, cnyPerUnit: Decimal(string: "0.0478")!)
         // ¥0.72 is 15.06 yen: one rounding gives 15; rounding to cents first and then to yen could give 16.
         XCTAssertEqual(yen.text(72), "15")
+        // ¥1.41 is 29.498 yen: once, 29; via 29.50 it would be 30.
+        XCTAssertEqual(yen.text(141), "29")
         XCTAssertEqual(yen.text(717, symbol: true), "JP¥150")
         XCTAssertEqual(yen.text(-717, symbol: true), "-JP¥150")
         let usd = MoneyDisplay(currency: .usd, cnyPerUnit: 7)
@@ -171,6 +181,36 @@ final class ExchangeRateTests: XCTestCase {
         XCTAssertEqual(tiny.convert(Money.limit).currency, .cny)
         XCTAssertEqual(tiny.text(Money.limit, symbol: true), "¥" + Money.text(Money.limit, currency: false), "CNY numbers keep ¥")
         XCTAssertEqual(MoneyDisplay.cny.text(123_456, symbol: true), "¥1,234.56")
+        XCTAssertTrue(tiny.text(Money.limit).hasPrefix("¥"), "a CNY fallback says ¥ even where the main currency shows no symbol")
+    }
+
+    func testRetainedQuotesKeepTheirDateAndOlderAnswersAreIgnored() throws {
+        let monday = Dates.parse("2026-11-23")!, tuesday = Dates.parse("2026-11-24")!
+        var state = RateSyncState()
+        try state.succeeded(SyncedExchangeRates(date: monday, fetchedAt: monday, cnyPerUnit: ["USD": 7.1, "CAD": 5.1]), at: monday)
+        // Tuesday's answer lacks CAD: CAD stays, with Monday's date.
+        try state.succeeded(SyncedExchangeRates(date: tuesday, fetchedAt: tuesday, cnyPerUnit: ["USD": 7.2]), at: tuesday)
+        XCTAssertEqual(state.rates?.quoteDate(for: .cad), monday)
+        XCTAssertEqual(state.rates?.quoteDate(for: .usd), tuesday)
+        // A later answer the same day brings CAD back at the same price: its date moves to Tuesday.
+        try state.succeeded(SyncedExchangeRates(date: tuesday, fetchedAt: tuesday, cnyPerUnit: ["USD": 7.2, "CAD": 5.1]), at: tuesday)
+        XCTAssertEqual(state.rates?.quoteDate(for: .cad), tuesday)
+        // A stale cache answering with Monday changes nothing.
+        try state.succeeded(SyncedExchangeRates(date: monday, fetchedAt: tuesday, cnyPerUnit: ["USD": 7.0]), at: tuesday)
+        XCTAssertEqual(state.rates?.rate(for: .usd), 7.2)
+    }
+
+    func testRatesAnOlderBuildKeptInTheLedgerAreAdoptedOnce() throws {
+        let old = #"{"date":"2026-11-26T00:00:00Z","fetchedAt":"2026-11-26T09:00:00Z","cnyPerUnit":{"USD":7.11}}"#
+        let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
+        let legacy = try decoder.decode(SyncedExchangeRates.self, from: Data(old.utf8))
+        var state = RateSyncState()
+        state.adoptLegacy(legacy)
+        XCTAssertEqual(state.rates?.rate(for: .usd), Decimal(string: "7.11"))
+        XCTAssertEqual(state.lastSuccess, legacy.fetchedAt)
+        var newer = state
+        newer.adoptLegacy(SyncedExchangeRates(date: now, fetchedAt: now, cnyPerUnit: ["USD": 9]))
+        XCTAssertEqual(newer.rates?.rate(for: .usd), Decimal(string: "7.11"), "the device's own rates win")
     }
 
     func testEditingALegacyForeignEntryKeepsItsBookedAmount() throws {

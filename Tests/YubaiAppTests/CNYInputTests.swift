@@ -33,4 +33,14 @@ final class CNYInputTests: XCTestCase {
         XCTAssertEqual(SettingsDisplay.cnySigned(-618_700, hidden: false), "−¥6,187.00")
         XCTAssertEqual(SettingsDisplay.cnySigned(500, hidden: false), "+¥5.00")
     }
+
+    func testABillPaidInTheMainCurrencyShowsWhatWasPaid() throws {
+        DisplayCurrency.configure(try usdLedger(), synced: nil, now: now)
+        var bill = Entry(date: now, amount: 2_133, accountID: UUID(), title: "咖啡", category: "餐饮")
+        bill.originalCurrency = .usd; bill.originalAmount = 300
+        XCTAssertEqual(HomeDisplay.billAmount(bill, hidden: false), "−3.00", "as paid, not 2,133 fen converted back")
+        XCTAssertNil(HomeDisplay.originalAmount(bill, hidden: false), "no second line")
+        bill.originalCurrency = .cad; bill.originalAmount = 425
+        XCTAssertNotNil(HomeDisplay.originalAmount(bill, hidden: false))
+    }
 }

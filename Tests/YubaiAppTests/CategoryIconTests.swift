@@ -58,6 +58,18 @@ final class CategoryIconTests: XCTestCase {
         XCTAssertNil(DS.Icon.newCategoryIcon(name: "红包", income: true, in: ledger))
     }
 
+    func testCategoriesAddedOneAfterAnotherNeverShareAnIcon() {
+        var ledger = Ledger()
+        ledger.categories = YubaiCore.Category.defaults
+        for name in ["宠物", "咖啡", "园艺", "数码", "通讯"] {
+            var added = YubaiCore.Category(name)
+            added.icon = DS.Icon.newCategoryIcon(name: name, income: false, in: ledger)
+            ledger.categories.append(added)
+        }
+        let shown = DS.Icon.categoryIcons(ledger.categories).filter { !$0.key.income && $0.key.name != "其他支出" && $0.key.name != "内部移动" }.map(\.value)
+        XCTAssertEqual(Set(shown).count, shown.count, "宠物 taking the cup first does not leave 咖啡 with it too")
+    }
+
     func testHomeRowsUseTheLedgerCategoryIcon() {
         let categories = YubaiCore.Category.defaults
         CategoryIcons.configure(categories)

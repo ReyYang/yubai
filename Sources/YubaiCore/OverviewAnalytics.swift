@@ -30,6 +30,8 @@ public struct OverviewPeriodWindow: Equatable, Sendable {
 
 public struct OverviewCategorySlice: Equatable, Sendable, Identifiable {
     public var id: String { category }
+    /// What the row is called: the refunds row is 退款.
+    public var title: String { category == OverviewAnalytics.refundGroup ? OverviewAnalytics.refundTitle : category }
     public let category: String
     public let categories: [String]
     public let amount: Int64
@@ -428,8 +430,10 @@ public enum OverviewAnalytics {
         entries.reduce(into: [:]) { $0[key($1), default: 0] += $1.amount }
     }
 
-    /// A drill's own row for money that came back (退款), so the rows add up to the page's amount.
-    public static let refundGroup = "退款"
+    /// A drill's own row for money that came back, so the rows add up to the page's amount. The key cannot
+    /// be a category or subcategory name (a person may name one 退款); the row shows `refundTitle`.
+    public static let refundGroup = "\u{1}refunds"
+    public static let refundTitle = "退款"
 
     /// Spending groups largest first, then the refunds row, negative, last.
     private static func drillSlices(_ values: [String: Int64], anomaly: Bool, previous: (String) -> Int64) -> [OverviewCategorySlice] {

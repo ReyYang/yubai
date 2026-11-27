@@ -601,6 +601,8 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Nil, including an old ledger, means enabled.
     public var yearlyBillsSetAside: Bool?
     public var quickCapture = QuickCapturePreferences()
+    /// What an older build stored as synced rates in the ledger; decoded only, so the next save drops it.
+    public internal(set) var legacySyncedRates: SyncedExchangeRates?
     public var categoryOrder: [String] = Category.defaults.filter { !$0.system }.map(\.name)
     public var onboardingComplete = false
     public var profileColdStartDone = false
@@ -652,7 +654,8 @@ public struct Preferences: Codable, Equatable, Sendable {
         billExchangeRates = try values.decodeIfPresent([ManualExchangeRate].self, forKey: .billExchangeRates)
         lastBillCurrency = try values.decodeIfPresent(BillCurrency.self, forKey: .lastBillCurrency)
         mainCurrency = try? values.decodeIfPresent(BillCurrency.self, forKey: .mainCurrency)
-        // syncedRates (older builds) is device-local now and is dropped from the ledger on read.
+        // syncedRates (older builds) is device-local now: read once for the device to adopt, never written.
+        legacySyncedRates = try? values.decodeIfPresent(SyncedExchangeRates.self, forKey: .syncedRates)
         autoRateSync = try? values.decodeIfPresent(Bool.self, forKey: .autoRateSync)
         yearlyBillsSetAside = try values.decodeIfPresent(Bool.self, forKey: .yearlyBillsSetAside)
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
