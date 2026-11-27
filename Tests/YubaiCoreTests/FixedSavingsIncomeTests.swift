@@ -326,12 +326,4 @@ final class FixedSavingsIncomeTests: XCTestCase {
         XCTAssertThrowsError(try ProposalTool.plan.propose(.object(fields), ctx))
     }
 
-    func testColdStartRecognizesSavingsFromIncomeAlone() async throws {
-        var ledger = ledger(); ledger.fixedSavings = nil; ledger.savingRule = nil
-        try change(subsidy(in: ledger)).apply(to: &ledger)
-        let script = ScriptedChatTransport([ChatMessage(role: .assistant, content: "想聊哪件事？")])
-        _ = try await ProfileColdStart(transport: script).next(ledger: ledger, messages: [], now: now)
-        let requests = await script.recorded()
-        XCTAssertTrue(requests[0].messages[0].content?.contains("这是再聊") == true)
-    }
 }

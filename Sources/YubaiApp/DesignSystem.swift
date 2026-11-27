@@ -3766,7 +3766,7 @@ struct EntryCalendarView: View {
     private var monthTitle: String {
         "\(Dates.calendar.component(.year, from: month))年\(Dates.calendar.component(.month, from: month))月"
     }
-    /// Unified Sunday-first week across the app, matching BillCalendar.
+    /// Unified Sunday-first week across the app.
     private static let weekdays = ["日", "一", "二", "三", "四", "五", "六"]
     private var leading: Int { (Dates.calendar.component(.weekday, from: month) - 1) % 7 }
     private var count: Int { Dates.calendar.range(of: .day, in: .month, for: month)?.count ?? 0 }
