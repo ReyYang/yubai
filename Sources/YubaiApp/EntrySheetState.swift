@@ -608,6 +608,8 @@ struct EntryCategoryState: Equatable {
     }
 
     func pressAmountKey(_ key: String) {
+        // With the rate open, the sheet's own keypad types the rate (no system keyboard over the sheet).
+        if drawer == .rate { pressRateKey(key); return }
         if shouldReplacePrefill && (key.first?.isNumber == true || key == ".") { draft.expression.reset() }
         shouldReplacePrefill = false
         draft.expression.press(key)
@@ -635,6 +637,23 @@ struct EntryCategoryState: Equatable {
         if FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now) != nil { return "设置里的固定汇率" }
         if let fetched = ledger.preferences.syncedRates?.fetchedAt { return CurrencySettings.syncTime(fetched, now: now) + " 同步" }
         return ""
+    }
+
+    /// Typing a rate for this entry: digits, one point, up to four decimals; ⌫ back to the synced one.
+    func pressRateKey(_ key: String) {
+        var text = draft.exchangeRate
+        switch key {
+        case "⌫": text = String(text.dropLast())
+        case ".": if !text.contains(".") { text = (text.isEmpty ? "0" : text) + "." }
+        case "+", "−": return
+        default:
+            for digit in key where digit.isNumber {
+                let decimals = text.split(separator: ".", omittingEmptySubsequences: false).dropFirst().first?.count ?? 0
+                guard text.count < 12, !(text.contains(".") && decimals >= 4) else { break }
+                text = text == "0" ? String(digit) : text + String(digit)
+            }
+        }
+        draft.exchangeRate = text
     }
 
     func pickCurrency(_ currency: BillCurrency) {

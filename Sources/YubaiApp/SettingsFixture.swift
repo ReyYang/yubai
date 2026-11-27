@@ -5,6 +5,7 @@ import YubaiCore
 enum SettingsFixture: Equatable {
     case main, mainEnd, cycle, recurring, categories, ai, aiKey, aiKeySaved, aiKeyDelete, hub
     case accountAdd, accountEdit, saving, floor, subAdd, subIcon, currency, export
+    case currencyConfirm, syncFail, quick, quickCards, quickMerchants
     case onboard(Int)
 
     static let current: Self? = {
@@ -32,6 +33,11 @@ enum SettingsFixture: Equatable {
         case "sub-add": return .subAdd
         case "sub-icon": return .subIcon
         case "currency": return .currency
+        case "currency-confirm": return .currencyConfirm
+        case "sync-fail": return .syncFail
+        case "quick": return .quick
+        case "quick-cards": return .quickCards
+        case "quick-merchants": return .quickMerchants
         case "export": return .export
         default: break
         }
@@ -117,12 +123,25 @@ enum SettingsFixture: Equatable {
             plan.monthlyDay = day; plan.accountID = account; plan.iconSlug = slug
             ledger.plans.append(plan)
         }
+        // canvas Main.dc.html 主币种与汇率: CAD from the daily sync, USD fixed by hand.
         ledger.preferences.billExchangeRates = [
-            ManualExchangeRate(currency: .jpy, cnyPerUnit: Decimal(string: "0.0475")!, updatedAt: Self.date("2026-11-25")),
-            ManualExchangeRate(currency: .usd, cnyPerUnit: Decimal(string: "7.2410")!, updatedAt: Self.date("2026-11-25")),
-            ManualExchangeRate(currency: .hkd, cnyPerUnit: Decimal(string: "0.9302")!, updatedAt: Self.date("2026-11-25")),
+            ManualExchangeRate(currency: .usd, cnyPerUnit: Decimal(string: "7.2")!, updatedAt: Self.date("2026-11-20")),
         ]
-        ledger.preferences.lastBillCurrency = .jpy
+        ledger.preferences.syncedRates = SyncedExchangeRates(
+            date: Self.date("2026-11-22"), fetchedAt: self == .syncFail ? Self.date("2026-11-15 08:00") : Self.date("2026-11-23 08:00"),
+            cnyPerUnit: ["CAD": Decimal(string: "5.1012")!, "USD": Decimal(string: "7.1103")!, "JPY": Decimal(string: "0.0471")!,
+                         "HKD": Decimal(string: "0.9134")!, "EUR": Decimal(string: "7.6518")!, "GBP": Decimal(string: "8.9930")!,
+                         "SGD": Decimal(string: "5.3021")!, "AUD": Decimal(string: "4.6702")!])
+        ledger.preferences.lastBillCurrency = .cad
+        // canvas 快速记账: two cards seen, one more given an account; six remembered merchants.
+        for (index, (merchant, card)) in [("瑞幸咖啡", "招行 尾号 6214"), ("美团外卖", "招行 尾号 6214"), ("滴滴出行", "招行信用卡 尾号 0938")].enumerated() {
+            _ = try? QuickCapture.applePay(merchant: merchant, amount: "¥\(18 + index * 7).00", card: card,
+                                           date: Self.date("2026-11-2\(index) 12:00"), in: &ledger, now: Self.date("2026-11-2\(index) 12:00"))
+        }
+        ledger.preferences.quickCapture.cardAccounts["Apple Card 尾号 1102"] = bank.id
+        for (merchant, category) in [("瑞幸咖啡", "吃饭"), ("美团外卖", "吃饭"), ("滴滴出行", "交通"), ("盒马鲜生", "日用"), ("Apple", "娱乐")] {
+            try? QuickCapture.remember(merchant: merchant, category: category, income: false, in: &ledger)
+        }
         ledger.preferences.cloudAIEnabled = true
         ledger.preferences.assistantTone = .direct
         ledger.preferences.lockEnabled = true
@@ -169,7 +188,11 @@ enum SettingsFixture: Equatable {
         case .subIcon:
             seed.route = [.settings, .recurring]; seed.sheet = .subIcon
             seed.draft = SubscriptionDraft(name: "Apple One", amount: 6_800, day: 12, yearly: false, slug: nil)
-        case .currency: seed.route = [.settings, .currency]
+        case .currency, .syncFail: seed.route = [.settings, .currency]
+        case .currencyConfirm: seed.route = [.settings, .currency]; seed.sheet = .mainCurrency(.usd)
+        case .quick: seed.route = [.settings, .quickCapture]
+        case .quickCards: seed.route = [.settings, .quickCapture, .quickCards]
+        case .quickMerchants: seed.route = [.settings, .quickCapture, .quickMerchants]
         case .hub: seed.route = [.settings, .wishesHub]
         case .export: seed.route = [.settings]; seed.sheet = .export
         case .onboard: break

@@ -12,7 +12,8 @@ struct QuickCaptureSettingsView: View {
     var body: some View {
         let _ = SettingsRenderCounts.hit("quickBody")
         let ledger = store.current, now = store.financialNow
-        let recent = store.recentCaptures
+        // One window for the headline and the rows, so 23 笔 is always the sum of the entrances.
+        let recent = QuickCapture.recentEntries(in: ledger, now: now)
         VStack(spacing: .zero) {
             OverviewNavigationBar(title: "快速记账")
             ScrollView {

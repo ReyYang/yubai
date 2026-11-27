@@ -438,7 +438,7 @@ struct CurrencyView: View {
                             } label: {
                                 HStack(spacing: .zero) {
                                     Text(currency.symbol).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink2)
-                                        .frame(width: SettingsSpec.currencySymbolColumn, alignment: .leading)
+                                        .fixedSize().frame(minWidth: SettingsSpec.currencySymbolColumn, alignment: .leading)
                                     Text(currency.unit).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).dsFillWidth()
                                     DSIconView(icon: .done, size: SettingsSpec.check, color: DS.Color.accentInk)
                                         .opacity(currency == main ? 1 : 0)

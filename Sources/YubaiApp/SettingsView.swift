@@ -32,7 +32,7 @@ struct SettingsView: View {
                         // Canvas S-Settings: 主币种 and 快速记账 share a group.
                         DSSettingsCard {
                             link(.exchange, "主币种", SettingsDisplay.mainCurrency(store.preferences), brand: true, first: true, id: "settingsCurrency") { store.tabRouteRequest = .currency }
-                            link(.bolt, "快速记账", "近 7 天 \(store.recentCaptures.count) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
+                            link(.bolt, "快速记账", "近 7 天 \(QuickCapture.recentEntries(in: ledger, now: now).count) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
                         }
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }

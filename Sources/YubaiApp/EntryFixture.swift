@@ -5,6 +5,8 @@ import YubaiCore
 enum EntryFixture: String, CaseIterable {
     case expense, aa, income, transfer, move, deposit, large, foreign, fixed, time, cats
     case nocat, more, account, purpose, manage
+    /// X-entry-norate: a foreign amount with no rate synced or fixed. S-Entry-Ccy / S-Entry-Rate open their lists.
+    case norate, ccy, rate
     case calendarPopover = "flow-calendar-popover"
     case empty = "flow-empty-draft"
     case guess = "flow-guess-only"
@@ -122,6 +124,18 @@ enum EntryFixture: String, CaseIterable {
             draft.exchangeRate = EntrySpec.fixtureJPYRate
             draft.accountID = credit.id
             draft.exception = .reimbursement
+        case .norate, .ccy, .rate:
+            draft.expression = EntryAmountExpression(expression: "1280")
+            draft.purpose = "一兰拉面"
+            draft.category = "吃饭"
+            draft.currency = self == .norate ? .jpy : .cad
+            draft.accountID = credit.id
+            if self != .norate {
+                ledger.preferences.syncedRates = SyncedExchangeRates(date: today, fetchedAt: today,
+                                                                     cnyPerUnit: ["CAD": Decimal(string: "5.1012")!])
+                draft.expression = EntryAmountExpression(expression: "4.25")
+                draft.purpose = "咖啡"
+            }
         case .empty: break
         case .nocat:
             draft.expression = EntryAmountExpression(expression: EntrySpec.fixtureLunchAmount)
@@ -145,6 +159,8 @@ enum EntryFixture: String, CaseIterable {
         if self == .more { model.drawer = .more }
         if self == .account { model.drawer = .source }
         if self == .purpose { model.drawer = .purpose }
+        if self == .ccy { model.drawer = .currency }
+        if self == .rate { model.drawer = .rate }
         return model
     }
 }

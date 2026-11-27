@@ -74,9 +74,13 @@ public enum QuickCapture {
     public enum Entrance: String, CaseIterable, Sendable { case applePay = "Apple Pay", siri = "Siri／快捷指令" }
     /// 「近 7 天 N 笔」 per entrance, counted from each entry's recorded source.
     public static func recentCount(_ entrance: Entrance, in ledger: Ledger, now: Date = Dates.now, days: Int = 7) -> Int {
+        recentEntries([entrance], in: ledger, now: now, days: days).count
+    }
+    /// The bills the given entrances recorded in the last `days` days; 快速记账's headline adds these up.
+    public static func recentEntries(_ entrances: [Entrance] = Entrance.allCases, in ledger: Ledger, now: Date = Dates.now, days: Int = 7) -> [Entry] {
         let start = Dates.addDays(-(days - 1), to: Dates.day(now))
-        let sources: Set<String> = entrance == .siri ? [entrance.rawValue, "快捷指令"] : [entrance.rawValue]
-        return ledger.activeEntries.filter { sources.contains($0.source) && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= now }.count
+        let sources = Set(entrances.flatMap { $0 == .siri ? [$0.rawValue, "快捷指令"] : [$0.rawValue] })
+        return ledger.activeEntries.filter { sources.contains($0.source) && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= now }
     }
     /// 卡对应的账户 (S-Quick-Cards): every card seen in Apple Pay bills or given an account, with its
     /// bills in the last `days` days and the account it records to.

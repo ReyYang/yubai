@@ -95,6 +95,7 @@ enum EntrySpec {
     static let rateTagHeight: CGFloat = 18
     static let rateFillInset: CGFloat = 10
     static let rateFillHeight: CGFloat = 22
+    static let rateCaret: CGFloat = 22
     static let iconColumns = 6 // Main.dc.html S-CatEdit icon grid: repeat(6, 1fr)
     static let popoverSpace = "entryPopover" // coordinate space shared by the pills and their pop-out list
     static let dragMinimum: CGFloat = 6 // design-v2 Spec-Gestures: 竖向位移 > 6 才接管

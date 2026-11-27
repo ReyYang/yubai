@@ -168,7 +168,8 @@ struct EntrySheetOverlay: View {
                               geometry.size.width - margin - width)
             ZStack(alignment: .topLeading) {
                 // A tap on another pill switches straight to its list; anywhere else closes this one.
-                Color.clear.contentShape(Rectangle())
+                // The rate card has no backdrop: the keypad under it types the rate.
+                if drawer != .rate { Color.clear.contentShape(Rectangle())
                     .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
                         // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
                         let hit = targets.first { $0.value.contains(location) }?.key
@@ -176,7 +177,7 @@ struct EntrySheetOverlay: View {
                     }
                     .gesture(closeDrag { model.drawer = nil })
                     .accessibilityHidden(true)
-                    .ignoresSafeArea()
+                    .ignoresSafeArea() }
                 ViewThatFits(in: .vertical) {
                     // Pulling down from a day or an account row closes the list too; the scrolling
                     // version (largest type) keeps the drag for its scroll.
@@ -286,13 +287,15 @@ private struct EntryPillAnchors: PreferenceKey {
 }
 
 private extension View {
+    /// Merged into what the subtree already reported: a plain `anchorPreference` would replace it,
+    /// and the hit frame set outside a pill would erase the drawn frame set inside it.
     func entryAnchor(_ drawer: EntryDrawer) -> some View {
-        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(drawn: [drawer: $0]) }
+        transformAnchorPreference(key: EntryPillAnchors.self, value: .bounds) { $0.drawn[drawer] = $1 }
     }
 
     /// After the 44 pt frame: the whole target counts as the pill for the backdrop's switch.
     func entryHit(_ drawer: EntryDrawer) -> some View {
-        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(hit: [drawer: $0]) }
+        transformAnchorPreference(key: EntryPillAnchors.self, value: .bounds) { $0.hit[drawer] = $1 }
     }
 }
 
@@ -928,7 +931,7 @@ private struct EntryCurrencyList: View {
                 Button { model.pickCurrency(currency) } label: {
                     HStack(spacing: .zero) {
                         Text(currency.symbol).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink2)
-                            .frame(width: EntrySpec.currencySymbolColumn, alignment: .leading)
+                            .fixedSize().frame(minWidth: EntrySpec.currencySymbolColumn, alignment: .leading)
                         HStack(alignment: .firstTextBaseline, spacing: HomeSpec.gap6) {
                             Text(currency.unit).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink)
                             if currency == main {
@@ -971,11 +974,20 @@ private struct EntryRatePopover: View {
                 Text("1 " + model.draft.currency.symbol + " =").dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink2)
                     .fixedSize()
                     .dsAccessibilityFocus(firstFocus)
-                // The rate in use shows as the field's placeholder; typing one makes it 手动 for this entry only.
-                DSInlineTextField(title: model.autoRate.map(CurrencySettings.rateText) ?? "汇率", text: $model.draft.exchangeRate,
-                                  decimal: true, embedded: true) { model.drawer = nil }
-                .dsText(EntrySpec.rateField)
-                .multilineTextAlignment(.trailing)
+                // Typed on the sheet's keypad. The rate in use shows quietly until one is typed (手动, this entry only).
+                HStack(spacing: DS.Space.s4) {
+                    Spacer(minLength: .zero)
+                    Text(model.draft.exchangeRate.isEmpty ? (model.autoRate.map(CurrencySettings.rateText) ?? "0") : model.draft.exchangeRate)
+                        .dsText(EntrySpec.rateField).monospacedDigit()
+                        .foregroundStyle(model.draft.exchangeRate.isEmpty ? DS.Color.ink3 : DS.Color.ink)
+                        .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
+                    Capsule(style: .continuous).fill(DS.Color.accent)
+                        .frame(width: EntrySpec.caretWidth, height: EntrySpec.rateCaret).accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("汇率")
+                .accessibilityValue(model.draft.exchangeRate.isEmpty ? (model.autoRate.map(CurrencySettings.rateText) ?? "") : model.draft.exchangeRate)
+                .accessibilityHint("用下方键盘输入")
                 .padding(.horizontal, DS.Space.s12)
                 .frame(minHeight: DS.Size.tapMin)
                 .background(DS.Color.bg, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
