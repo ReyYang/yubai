@@ -212,7 +212,7 @@ private struct OnboardSaving: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("每月到手").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2)
                     Spacer(minLength: DS.Space.s8)
-                    Text(hidden ? OverviewDisplay.money(0, hidden: true) : draft.focusSaving ? OverviewDisplay.money(draft.takeHome, hidden: false) : draft.takeHomePad.groupedText).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
+                    Text(SettingsDisplay.typed(draft.focusSaving ? SettingsDisplay.inputMoney(draft.takeHome) : draft.takeHomePad.groupedText, hidden: hidden)).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
                     if !draft.focusSaving { caret }
                 }
                 .padding(.horizontal, DS.Space.s16).frame(maxWidth: .infinity, minHeight: SettingsSpec.incomeBox)
@@ -227,7 +227,7 @@ private struct OnboardSaving: View {
                 HStack(alignment: .firstTextBaseline) {
                     Text("每月先攒").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
                     Spacer(minLength: DS.Space.s8)
-                    Text(hidden ? OverviewDisplay.money(0, hidden: true) : draft.focusSaving ? draft.savingPad.groupedText : OverviewDisplay.money(draft.saving, hidden: false)).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
+                    Text(SettingsDisplay.typed(draft.focusSaving ? draft.savingPad.groupedText : SettingsDisplay.inputMoney(draft.saving), hidden: hidden)).dsText(DS.Font.nSpineLg).foregroundStyle(DS.Color.ink)
                         .accessibilityIdentifier("onboardSavingAmount")
                     if draft.focusSaving { caret }
                 }
@@ -236,11 +236,11 @@ private struct OnboardSaving: View {
                     HStack {
                         Text("先攒 " + OverviewDisplay.share(draft.saving, of: draft.takeHome))
                         Spacer(minLength: DS.Space.s8)
-                        Text("留给花 " + OverviewDisplay.money(draft.takeHome - draft.saving, hidden: hidden))
+                        Text("留给花 " + SettingsDisplay.cny(draft.takeHome - draft.saving, hidden: hidden))
                     }.dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3).padding(.top, SettingsSpec.labelsTop)
                 }
-                SettingsChips(chips: chips.map { .init(id: "\($0)", title: OverviewDisplay.money($0, hidden: hidden), selected: $0 == draft.saving) }
-                              + (custom ? [.init(id: "\(draft.saving)", title: OverviewDisplay.money(draft.saving, hidden: hidden), selected: true)] : []),
+                SettingsChips(chips: chips.map { .init(id: "\($0)", title: SettingsDisplay.cny($0, hidden: hidden), selected: $0 == draft.saving) }
+                              + (custom ? [.init(id: "\(draft.saving)", title: SettingsDisplay.cny(draft.saving, hidden: hidden), selected: true)] : []),
                               outlined: true) { id in draft.saving = Int64(id) ?? 0; draft.focusSaving = true }
                     .padding(.top, SettingsSpec.chipsTop)
             }
@@ -256,7 +256,7 @@ private struct OnboardSaving: View {
                 HStack(spacing: DS.Space.s8) {
                     Text("底线存款").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2)
                     Spacer(minLength: DS.Space.s8)
-                    Text(draft.floor.map { OverviewDisplay.money($0, hidden: hidden) } ?? "稍后再设").dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                    Text(draft.floor.map { SettingsDisplay.cny($0, hidden: hidden) } ?? "稍后再设").dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     DSIconView(icon: .chevron, size: SettingsSpec.linkIcon, color: DS.Color.ink3)
                 }
                 .padding(.horizontal, DS.Space.s4).frame(minHeight: SettingsSpec.floorRow)
@@ -305,7 +305,7 @@ private struct OnboardAccounts: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("流动现金").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3)
                 Spacer(minLength: DS.Space.s8)
-                Text(OverviewDisplay.money(draft.liquidCash, hidden: hidden, currency: true)).dsText(OverviewSpec.saved).foregroundStyle(DS.Color.accentInk)
+                Text(SettingsDisplay.cny(draft.liquidCash, hidden: hidden, symbol: true)).dsText(OverviewSpec.saved).foregroundStyle(DS.Color.accentInk)
                     .contentTransition(.numericText(value: Double(draft.liquidCash)))
                     .accessibilityIdentifier("onboardLiquidCash")
             }
@@ -332,7 +332,7 @@ private struct OnboardAccounts: View {
                 Spacer(minLength: .zero)
                 Text(account.name).dsText(SettingsSpec.tileName).foregroundStyle(account.selected ? DS.Color.ink : DS.Color.ink2).lineLimit(1)
                 if let amount = account.amount {
-                    Text((account.type == .credit ? "欠 " : "") + OverviewDisplay.money(amount, hidden: hidden))
+                    Text((account.type == .credit ? "欠 " : "") + SettingsDisplay.cny(amount, hidden: hidden))
                         .dsText(DS.Font.tSubStrong).monospacedDigit().foregroundStyle(DS.Color.ink).padding(.top, OverviewSpec.headingGap)
                 }
             }

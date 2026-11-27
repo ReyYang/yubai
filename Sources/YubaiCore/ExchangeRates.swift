@@ -18,18 +18,60 @@ public struct EntryRate: Codable, Equatable, Sendable {
 }
 
 /// The latest daily reference rates. Synced once a day, never while recording.
+/// Kept on this device only (see `RateSyncState`), never in the ledger or on iCloud.
 public struct SyncedExchangeRates: Codable, Equatable, Sendable {
-    /// The publisher's reference date.
+    /// The publisher's latest reference date.
     public var date: Date
     /// When the last successful sync finished.
     public var fetchedAt: Date
     /// CNY yuan per one unit, keyed by currency code.
     public var cnyPerUnit: [String: Decimal]
-    public init(date: Date, fetchedAt: Date, cnyPerUnit: [String: Decimal]) {
+    /// Each quote's own reference date: a quote kept from an older sync keeps its older date.
+    public var quoteDates: [String: Date]
+    public init(date: Date, fetchedAt: Date, cnyPerUnit: [String: Decimal], quoteDates: [String: Date]? = nil) {
         self.date = date; self.fetchedAt = fetchedAt; self.cnyPerUnit = cnyPerUnit
+        self.quoteDates = quoteDates ?? Dictionary(uniqueKeysWithValues: cnyPerUnit.keys.map { ($0, date) })
+    }
+    private enum CodingKeys: String, CodingKey { case date, fetchedAt, cnyPerUnit, quoteDates }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        date = try c.decode(Date.self, forKey: .date)
+        fetchedAt = try c.decode(Date.self, forKey: .fetchedAt)
+        cnyPerUnit = try c.decode([String: Decimal].self, forKey: .cnyPerUnit)
+        let stored: [String: Date]? = (try? c.decodeIfPresent([String: Date].self, forKey: .quoteDates)) ?? nil
+        let fallback = date
+        quoteDates = stored ?? Dictionary(uniqueKeysWithValues: cnyPerUnit.keys.map { ($0, fallback) })
     }
     public func rate(for currency: BillCurrency) -> Decimal? {
         currency == .cny ? 1 : cnyPerUnit[currency.rawValue]
+    }
+    public func quoteDate(for currency: BillCurrency) -> Date? {
+        cnyPerUnit[currency.rawValue] == nil ? nil : quoteDates[currency.rawValue] ?? date
+    }
+}
+
+/// This device's rate sync: the rates, when it last tried and last succeeded, and how many tries
+/// in a row failed (for backoff). Lives in local storage, not in the ledger.
+public struct RateSyncState: Codable, Equatable, Sendable {
+    public var rates: SyncedExchangeRates?
+    public var lastAttempt: Date?
+    public var lastSuccess: Date?
+    public var failures: Int
+    /// Why the last try failed, said in 主币种与汇率 next to 重试.
+    public var lastError: String?
+    public init(rates: SyncedExchangeRates? = nil, lastAttempt: Date? = nil, lastSuccess: Date? = nil, failures: Int = 0, lastError: String? = nil) {
+        self.rates = rates; self.lastAttempt = lastAttempt; self.lastSuccess = lastSuccess; self.failures = failures; self.lastError = lastError
+    }
+
+    /// A good response: merged into the rates, which change only when the reference date or a quote did.
+    public mutating func succeeded(_ fresh: SyncedExchangeRates, at now: Date) throws {
+        let merged = try ExchangeRates.merge(fresh, into: rates)
+        if merged.date != rates?.date || merged.cnyPerUnit != rates?.cnyPerUnit { rates = merged }
+        lastAttempt = now; lastSuccess = now; failures = 0; lastError = nil
+    }
+
+    public mutating func failed(_ reason: String, at now: Date) {
+        lastAttempt = now; failures += 1; lastError = reason
     }
 }
 
@@ -38,20 +80,26 @@ public enum ExchangeRates {
     public static let sourceURL = URL(string: "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml")!
     /// Sync on foreground when the last success is older than this.
     public static let refreshInterval: TimeInterval = 12 * 3600
+    /// The first retry after a failure; each further failure doubles it, up to `refreshInterval`.
+    public static let retryBase: TimeInterval = 15 * 60
     /// Settings shows 「去更新」 after this many days without a success.
     public static let staleDays = 7
 
-    public static func needsSync(_ ledger: Ledger, now: Date) -> Bool {
-        guard ledger.preferences.autoRateSync != false else { return false }
-        guard let last = ledger.preferences.syncedRates?.fetchedAt else { return true }
-        return now.timeIntervalSince(last) >= refreshInterval || last > now
+    /// Due when 每天自动更新 is on, the last success is 12 hours old, and any failure backoff has passed.
+    public static func needsSync(autoSync: Bool, state: RateSyncState, now: Date) -> Bool {
+        guard autoSync else { return false }
+        if let success = state.lastSuccess, success <= now, now.timeIntervalSince(success) < refreshInterval { return false }
+        if state.failures > 0, let attempt = state.lastAttempt, attempt <= now {
+            let wait = min(refreshInterval, retryBase * pow(2, Double(min(state.failures, 12) - 1)))
+            return now.timeIntervalSince(attempt) >= wait
+        }
+        return true
     }
 
-    public static func isStale(_ ledger: Ledger, now: Date) -> Bool {
-        guard let last = ledger.preferences.syncedRates?.fetchedAt else { return true }
+    public static func isStale(_ state: RateSyncState, now: Date) -> Bool {
+        guard let last = state.lastSuccess else { return true }
         return now.timeIntervalSince(last) >= Double(staleDays) * 86_400
     }
-
     /// Parses the ECB daily XML (EUR base) into CNY per unit for the supported currencies.
     public static func parseECB(_ data: Data, fetchedAt: Date) throws -> SyncedExchangeRates {
         guard let text = String(data: data, encoding: .utf8) else { throw YubaiError.invalid("汇率数据无法读取。") }
@@ -84,29 +132,29 @@ public enum ExchangeRates {
         return SyncedExchangeRates(date: reference, fetchedAt: fetchedAt, cnyPerUnit: result)
     }
 
-    /// Store a sync result. Entries already recorded keep their frozen rate.
-    public static func apply(_ rates: SyncedExchangeRates, to ledger: inout Ledger) throws {
-        guard !rates.cnyPerUnit.isEmpty, rates.cnyPerUnit.values.allSatisfy({ $0 > 0 && $0 <= 100_000 }) else {
+    /// A sync result merged with the last one. A partial response never erases quotes it does not
+    /// mention, and those keep their own older reference date.
+    public static func merge(_ fresh: SyncedExchangeRates, into old: SyncedExchangeRates?) throws -> SyncedExchangeRates {
+        guard !fresh.cnyPerUnit.isEmpty, fresh.cnyPerUnit.values.allSatisfy({ $0 > 0 && $0 <= 100_000 }) else {
             throw YubaiError.invalid("汇率数据不完整。")
         }
-        var next = ledger, merged = rates
-        // A partial response never erases quotes it does not mention.
-        for (code, value) in ledger.preferences.syncedRates?.cnyPerUnit ?? [:] where merged.cnyPerUnit[code] == nil {
+        var merged = fresh
+        for (code, value) in old?.cnyPerUnit ?? [:] where merged.cnyPerUnit[code] == nil {
             merged.cnyPerUnit[code] = value
+            merged.quoteDates[code] = old?.quoteDates[code] ?? old?.date
         }
-        next.preferences.syncedRates = merged
-        try next.validate(); ledger = next
+        return merged
     }
 
     /// Rate to use for a new entry: a fixed manual rate set in Settings wins,
-    /// otherwise the latest synced rate. Nil means the person must type one.
-    public static func rate(for currency: BillCurrency, in ledger: Ledger, now: Date) -> EntryRate? {
+    /// otherwise the latest synced rate (with its own reference date). Nil means the person must type one.
+    public static func rate(for currency: BillCurrency, in ledger: Ledger, synced: SyncedExchangeRates?, now: Date) -> EntryRate? {
         guard currency != .cny else { return nil }
         if let manual = FixedFlows.exchangeRate(for: currency, in: ledger, now: now) {
             return EntryRate(cnyPerUnit: manual.cnyPerUnit, date: manual.updatedAt, manual: true)
         }
-        guard let synced = ledger.preferences.syncedRates, let value = synced.rate(for: currency) else { return nil }
-        return EntryRate(cnyPerUnit: value, date: synced.date, manual: false)
+        guard let synced, let value = synced.rate(for: currency), let date = synced.quoteDate(for: currency) else { return nil }
+        return EntryRate(cnyPerUnit: value, date: date, manual: false)
     }
 
     /// Converts original cents to CNY cents with the given rate, rounded to fen.
@@ -118,20 +166,9 @@ public enum ExchangeRates {
         return NSDecimalNumber(decimal: rounded).int64Value
     }
 
-    /// Display-only conversion from the CNY ledger into the main currency, using
-    /// the latest synced (or fixed manual) rate. The ledger itself never changes.
-    public static func display(_ cnyCents: Int64, in ledger: Ledger, now: Date) -> (currency: BillCurrency, cents: Int64) {
-        let main = ledger.preferences.mainCurrency ?? .cny
-        guard main != .cny, let rate = rate(for: main, in: ledger, now: now), rate.cnyPerUnit > 0 else { return (.cny, cnyCents) }
-        var value = Decimal(cnyCents) / rate.cnyPerUnit, rounded = Decimal()
-        NSDecimalRound(&rounded, &value, 0, .plain)
-        guard abs(rounded) <= Decimal(Money.limit) else { return (.cny, cnyCents) }
-        return (main, NSDecimalNumber(decimal: rounded).int64Value)
-    }
-
     /// Changing the main currency only changes display; recorded entries stay in CNY.
-    public static func setMainCurrency(_ currency: BillCurrency, in ledger: inout Ledger, now: Date) throws {
-        guard currency == .cny || rate(for: currency, in: ledger, now: now) != nil else { throw YubaiError.invalid("先更新汇率。") }
+    public static func setMainCurrency(_ currency: BillCurrency, in ledger: inout Ledger, synced: SyncedExchangeRates?, now: Date) throws {
+        guard currency == .cny || rate(for: currency, in: ledger, synced: synced, now: now) != nil else { throw YubaiError.invalid("先更新汇率。") }
         ledger.preferences.mainCurrency = currency == .cny ? nil : currency
     }
 }

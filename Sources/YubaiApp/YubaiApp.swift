@@ -104,7 +104,7 @@ enum AppSheet: Identifiable {
             }
             if oldValue != ledger {
                 invalidateDerived()
-                if oldValue.preferences != ledger.preferences { DisplayCurrency.configure(ledger, now: Dates.now) }
+                if oldValue.preferences != ledger.preferences { DisplayCurrency.configure(ledger, synced: rateSync.rates, now: Dates.now) }
                 // The long-press menu never outlives its bill (synced away, swiped, deleted by a shortcut).
                 if let id = billMenu?.entryID, !ledger.entries.contains(where: { $0.id == id && $0.deletedAt == nil }) {
                     billMenu = nil
@@ -163,10 +163,6 @@ enum AppSheet: Identifiable {
     var savingsTotals: LedgerSavingsTotals {
         _ = ledgerRevision
         return presentationCache.savings(in: derivedSource, revision: sourceRevision)
-    }
-    var recentCaptures: [Entry] {
-        _ = ledgerRevision
-        return presentationCache.recentCaptures(in: derivedSource, revision: sourceRevision)
     }
     private struct AssessmentKey: Hashable {
         let amount: Int64; let title: String; let category: String?; let subcategory: String?
@@ -553,8 +549,10 @@ enum AppSheet: Identifiable {
     var askRequest: AskRequest?
     /// The bill whose long-press menu is open.
     var billMenu: BillMenuRequest?
-    /// A rate fetch is in flight (主币种与汇率 · 去更新 waits on it).
+    /// A rate fetch is in flight (主币种与汇率 · 去更新 turns while it runs).
     var rateSyncRunning = false
+    /// This device's synced rates and sync attempts (not in the ledger, not on iCloud).
+    var rateSync = RateSyncStore.load() { didSet { if rateSync != oldValue { rateSyncChanged() } } }
     /// The last home deletion's 撤销 bar. Survives the lock screen; ends at its own deadline.
     var billUndo: BillUndoNotice?
     @ObservationIgnored var billUndoExpiry: Task<Void, Never>?
@@ -690,6 +688,8 @@ enum AppSheet: Identifiable {
             settingsSheet = seed.sheet
             subscriptionDraft = seed.draft
             if let draft = seed.onboarding { onboarding = draft }
+            rateSync = seed.rateSync
+            DisplayCurrency.configure(ledger, synced: rateSync.rates, now: Dates.now)
             loadingLedger = false
             invalidateDerived()
             return
@@ -1116,8 +1116,11 @@ enum AppSheet: Identifiable {
         do {
             if try await context.evaluatePolicy(available ? policy : .deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") {
                 locked = false; if syncChoice != nil { sheet = .syncVersions }
-                // A foreground return that found the ledger locked skipped the rate check; catch up now.
+                // A foreground return that found the ledger locked skipped the rate check; catch up now (backoff applies).
                 Task { await syncExchangeRatesIfNeeded() }
+                #if os(iOS)
+                RateRefreshTask.schedule()
+                #endif
             }
         } catch let error as LAError where error.code == .userFallback { await unlock(useBiometrics: false) }
         catch { self.error = "未能解锁。可以重试 Face ID、Touch ID 或设备密码。" }
@@ -1133,6 +1136,12 @@ enum AppSheet: Identifiable {
     @NSApplicationDelegateAdaptor(LedgerTerminationDelegate.self) private var terminationDelegate
     #endif
     @State private var store = AppStore.shared
+    init() {
+        #if os(iOS)
+        // Background handlers must be registered before launch finishes.
+        RateRefreshTask.register(store: AppStore.shared)
+        #endif
+    }
     private var colorScheme: ColorScheme? {
         switch store.preferences.appearance {
         case "dark": .dark
@@ -1323,8 +1332,8 @@ struct RootView: View {
             if newValue == .background { store.flushBeforeSuspension() }
             if newValue == .active {
                 store.purgeExpiredEntries(); store.ask.expireIfNeeded(ledgerID: store.current.id); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
-                Task { await store.syncExchangeRatesIfNeeded() }
-                Task { await store.configureSync(); store.runCycleMaintenance() }
+                // Rates after iCloud has settled (skipped while it is busy).
+                Task { await store.configureSync(); store.runCycleMaintenance(); await store.syncExchangeRatesIfNeeded() }
             }
             if newValue == .background && store.preferences.lockEnabled {
                 store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.billMenu = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true

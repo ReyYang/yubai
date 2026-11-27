@@ -1,9 +1,12 @@
 import Foundation
 import YubaiCore
+#if canImport(BackgroundTasks) && os(iOS)
+import BackgroundTasks
+#endif
 
-/// Spec-Currency 什么时候同步: on the way back to the foreground, when the last success is older than
-/// 12 hours and 每天自动更新 is on, fetch the ECB daily reference rates once. Recording never waits for it;
-/// a failure is silent and the settings row shows the age of the last good sync (X-sync-fail).
+/// Spec-Currency 什么时候同步: when the app comes back (after iCloud has settled) and a daily background
+/// refresh, fetch the ECB daily reference rates — only when 12 hours have passed since the last success,
+/// with backoff after failures. Recording never waits for it. The rates live on this device only.
 extension AppStore {
     /// Fixtures and UI tests never reach the network.
     private var mayFetchRates: Bool {
@@ -15,59 +18,82 @@ extension AppStore {
         return true
     }
 
-    /// Writable right now without asking anything of the person (no lock, no pending choice, no busy store).
-    private var mayWriteQuietly: Bool {
+    /// The ledger is not busy with iCloud or a choice the person has to make.
+    private var mayCheckRates: Bool {
         !locked && loadFailure == nil && !loadingLedger && !storageBusy && !recoveringWriteFailure
-            && syncChoice == nil && !switchingLedgerLocation && !choosingSyncVersion
+            && syncChoice == nil && !switchingLedgerLocation && !choosingSyncVersion && !syncBusy
     }
 
-    func syncExchangeRatesIfNeeded(force: Bool = false) async {
-        guard mayFetchRates, !rateSyncRunning, mayWriteQuietly else { return }
-        guard force || ExchangeRates.needsSync(current, now: Date()) else { return }
-        let ledgerID = current.id
+    @discardableResult func syncExchangeRatesIfNeeded(force: Bool = false) async -> Bool {
+        guard mayFetchRates, !rateSyncRunning, mayCheckRates else { return false }
+        let auto = current.preferences.autoRateSync != false
+        guard force || ExchangeRates.needsSync(autoSync: auto, state: rateSync, now: Date()) else { return false }
         rateSyncRunning = true
         defer { rateSyncRunning = false }
+        var state = rateSync
         do {
             var request = URLRequest(url: ExchangeRates.sourceURL, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 15)
             request.setValue("Yubai", forHTTPHeaderField: "User-Agent")
             let (data, response) = try await URLSession.shared.data(for: request)
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-            let rates = try ExchangeRates.parseECB(data, fetchedAt: Date())
-            // While it was in flight the ledger may have been swapped, locked, or the switch turned off.
-            guard current.id == ledgerID, mayWriteQuietly, force || current.preferences.autoRateSync != false else { return }
-            _ = update("汇率同步", preservingUpdatedAt: true, recordUndo: false, reportError: false,
-                       entryMotion: false, showToast: false) { try ExchangeRates.apply(rates, to: &$0) }
+            try state.succeeded(ExchangeRates.parseECB(data, fetchedAt: Date()), at: Date())
+        } catch let error as URLError {
+            state.failed(error.code == .notConnectedToInternet || error.code == .networkConnectionLost ? "网络连不上" : "汇率服务没有回应", at: Date())
         } catch {
-            // Silent by design: the last rates stay in use.
+            state.failed("汇率数据读不懂", at: Date())
         }
+        rateSync = state
+        return state.failures == 0
+    }
+
+    /// The device-local rates changed: save them and redraw amounts in the main currency.
+    func rateSyncChanged() {
+        RateSyncStore.save(rateSync)
+        DisplayCurrency.configure(current, synced: rateSync.rates, now: Dates.now)
+        CaptureSnapshotBridge.publish(current)
     }
 }
 
-/// 主币种 only changes display. Every amount that goes through `HomeDisplay.money` is shown in the
-/// main currency at the latest rate; the ledger stays in CNY.
-/// Written on the main actor when the ledger's preferences change; read by the display funnels.
-enum DisplayCurrency {
-    nonisolated(unsafe) private(set) static var main: BillCurrency = .cny
-    nonisolated(unsafe) private(set) static var cnyPerUnit: Decimal = 1
+/// This device's rate sync state, kept out of the ledger (and so out of iCloud).
+enum RateSyncStore {
+    private static let key = "yubai.rateSync"
 
-    @MainActor static func configure(_ ledger: Ledger, now: Date) {
-        let currency = ledger.preferences.mainCurrency ?? .cny
-        // Spec-Currency: display follows the latest sync; a fixed rate only stands in when nothing synced.
-        guard currency != .cny,
-              let rate = ledger.preferences.syncedRates?.rate(for: currency) ?? ExchangeRates.rate(for: currency, in: ledger, now: now)?.cnyPerUnit,
-              rate > 0 else {
-            main = .cny; cnyPerUnit = 1; return
-        }
-        main = currency; cnyPerUnit = rate
+    static func load() -> RateSyncState {
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let state = try? JSONDecoder().decode(RateSyncState.self, from: data) else { return RateSyncState() }
+        return state
     }
 
-    static var symbol: String { main.symbol }
-
-    static func convert(_ cnyCents: Int64) -> Int64 {
-        guard main != .cny else { return cnyCents }
-        var value = Decimal(cnyCents) / cnyPerUnit, rounded = Decimal()
-        NSDecimalRound(&rounded, &value, 0, .plain)
-        guard abs(rounded) <= Decimal(Money.limit) else { return cnyCents }
-        return NSDecimalNumber(decimal: rounded).int64Value
+    static func save(_ state: RateSyncState) {
+        guard let data = try? JSONEncoder().encode(state) else { return }
+        UserDefaults.standard.set(data, forKey: key)
     }
 }
+
+#if os(iOS)
+/// Spec-Currency 兜底: a once-a-day background refresh, in case the app is not opened.
+enum RateRefreshTask {
+    static let identifier = "app.yubai.personal.rates"
+
+    @MainActor static func register(store: AppStore) {
+        BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: .main) { task in
+            // The scheduler guarantees .main here; BGTask is not Sendable.
+            nonisolated(unsafe) let delivered = task
+            MainActor.assumeIsolated {
+                schedule()
+                let work = Task { @MainActor in
+                    let ok = await store.syncExchangeRatesIfNeeded()
+                    delivered.setTaskCompleted(success: ok)
+                }
+                delivered.expirationHandler = { work.cancel() }
+            }
+        }
+    }
+
+    static func schedule() {
+        let request = BGAppRefreshTaskRequest(identifier: identifier)
+        request.earliestBeginDate = Date().addingTimeInterval(ExchangeRates.refreshInterval * 2)
+        try? BGTaskScheduler.shared.submit(request)
+    }
+}
+#endif

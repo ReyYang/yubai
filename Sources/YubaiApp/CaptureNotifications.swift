@@ -34,13 +34,13 @@ enum CaptureNotifications {
         guard [.authorized, .provisional, .ephemeral].contains(settings.authorizationStatus) else { return }
         let content = UNMutableNotificationContent(); content.title = "余白"; content.sound = .default
         let privateResult = ledger.preferences.lockEnabled || ledger.preferences.hideAmounts
-        if privateResult { content.body = "已记下 " + (ledger.preferences.hideAmounts ? "••••" : Money.text(entry.amount)) }
+        if privateResult { content.body = "已记下 " + (ledger.preferences.hideAmounts ? "••••" : DisplayCurrency.current.text(entry.amount, symbol: true)) }
         else {
             let category = entry.hasNoCaptureCategory ? "没分类" : Classification.displayCategory(entry.category)
-            content.body = "已记下 " + entry.displayTitle + " " + Money.text(entry.amount) + " · " + category + " · " + ledger.accountName(entry.accountID)
+            content.body = "已记下 " + entry.displayTitle + " " + DisplayCurrency.current.text(entry.amount, symbol: true) + " · " + category + " · " + ledger.accountName(entry.accountID)
         }
         let value = Finance.spendableBreakdown(ledger)
-        content.body += "\n" + value.headlineTitle + " " + (ledger.preferences.hideAmounts ? "••••" : Money.text(value.headlineAmount)) + " · 轻点改一下"
+        content.body += "\n" + value.headlineTitle + " " + (ledger.preferences.hideAmounts ? "••••" : DisplayCurrency.current.text(value.headlineAmount, symbol: true)) + " · 轻点改一下"
         content.categoryIdentifier = "quick-capture"; content.userInfo = ["entryID": entry.id.uuidString]
         try? await center.add(UNNotificationRequest(identifier: entry.id.uuidString, content: content, trigger: nil))
     }

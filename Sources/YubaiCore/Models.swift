@@ -596,8 +596,6 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var lastBillCurrency: BillCurrency?
     /// Nil means CNY. Display only; the ledger stays in CNY.
     public var mainCurrency: BillCurrency?
-    /// Latest daily reference rates.
-    public var syncedRates: SyncedExchangeRates?
     /// Nil means on.
     public var autoRateSync: Bool?
     /// Nil, including an old ledger, means enabled.
@@ -654,7 +652,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         billExchangeRates = try values.decodeIfPresent([ManualExchangeRate].self, forKey: .billExchangeRates)
         lastBillCurrency = try values.decodeIfPresent(BillCurrency.self, forKey: .lastBillCurrency)
         mainCurrency = try? values.decodeIfPresent(BillCurrency.self, forKey: .mainCurrency)
-        syncedRates = try? values.decodeIfPresent(SyncedExchangeRates.self, forKey: .syncedRates)
+        // syncedRates (older builds) is device-local now and is dropped from the ledger on read.
         autoRateSync = try? values.decodeIfPresent(Bool.self, forKey: .autoRateSync)
         yearlyBillsSetAside = try values.decodeIfPresent(Bool.self, forKey: .yearlyBillsSetAside)
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
@@ -684,7 +682,6 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encodeIfPresent(billExchangeRates, forKey: .billExchangeRates)
         try c.encodeIfPresent(lastBillCurrency, forKey: .lastBillCurrency)
         try c.encodeIfPresent(mainCurrency, forKey: .mainCurrency)
-        try c.encodeIfPresent(syncedRates, forKey: .syncedRates)
         if autoRateSync == false { try c.encode(false, forKey: .autoRateSync) }
         try c.encodeIfPresent(yearlyBillsSetAside, forKey: .yearlyBillsSetAside)
         try c.encode(quickCapture, forKey: .quickCapture); try c.encode(categoryOrder, forKey: .categoryOrder)

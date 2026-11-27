@@ -4,6 +4,17 @@ import YubaiCore
 import WidgetKit
 #endif
 
+/// 主币种 only changes display. Every amount that goes through `HomeDisplay.money` is shown in the
+/// main currency at this device's latest synced rate; the ledger stays in CNY.
+enum DisplayCurrency {
+    /// Written on the main actor whenever the ledger's preferences or the local rates change.
+    nonisolated(unsafe) private(set) static var current: MoneyDisplay = .cny
+
+    @MainActor static func configure(_ ledger: Ledger, synced: SyncedExchangeRates?, now: Date) {
+        current = MoneyDisplay(ledger: ledger, synced: synced, now: now)
+    }
+}
+
 /// 两个 target 只共享快照，扩展不持有账本，也没有写账入口。
 enum CaptureSnapshotBridge {
     private static var file: URL? {
@@ -17,6 +28,8 @@ enum CaptureSnapshotBridge {
     private static let publishQueue = DispatchQueue(label: "app.yubai.capture-snapshot", qos: .utility)
     static func publish(_ ledger: Ledger) {
         #if os(iOS)
+        // The widget shows amounts the way the app does: main currency at this device's rate.
+        let display = DisplayCurrency.current
         publishQueue.async {
             // App Group lookup can itself synchronously wait on system I/O.
             guard let file else { return }
@@ -25,7 +38,7 @@ enum CaptureSnapshotBridge {
                 try? FileManager.default.removeItem(at: file)
             } else {
                 do {
-                    let bytes = try JSONEncoder().encode(QuickCaptureSnapshot(ledger: ledger))
+                    let bytes = try JSONEncoder().encode(QuickCaptureSnapshot(ledger: ledger, display: display))
                     try bytes.write(to: file, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
                 } catch { try? FileManager.default.removeItem(at: file) }
             }

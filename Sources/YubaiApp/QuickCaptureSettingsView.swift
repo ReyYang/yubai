@@ -81,8 +81,8 @@ struct QuickCaptureSettingsView: View {
                 }.dsFillWidth()
                 #if os(iOS)
                 // The 记一笔 actions ship on iOS only; the Mac has none to add.
-                Text("添加").dsText(SettingsSpec.addLabel).foregroundStyle(DS.Color.accentInk)
-                    .padding(.horizontal, SettingsSpec.addInset).frame(height: SettingsSpec.addHeight)
+                Text("添加").dsText(SettingsSpec.pillLabel).foregroundStyle(DS.Color.accentInk)
+                    .padding(.horizontal, SettingsSpec.pillInset).frame(height: SettingsSpec.pillHeight)
                     .dsPill(DS.Color.accentSoft)
                 #endif
             }

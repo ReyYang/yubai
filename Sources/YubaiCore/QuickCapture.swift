@@ -33,7 +33,10 @@ public struct QuickCaptureSnapshot: Codable, Equatable, Sendable {
     public var headlineTitle: String?
     public var generatedAt: Date; public var available: Int64; public var todayCount: Int; public var todayTotal: Int64
     public var frequent: [Frequent]
-    public init(ledger: Ledger, now: Date = Dates.now) {
+    /// How the widget shows amounts: the main currency at this device's rate.
+    public var display: MoneyDisplay?
+    public init(ledger: Ledger, now: Date = Dates.now, display: MoneyDisplay = .cny) {
+        self.display = display
         let value = Finance.spendableBreakdown(ledger, now: now)
         generatedAt = now; available = value.headlineAmount; headlineTitle = value.headlineTitle
         let entries = ledger.activeEntries.filter { $0.date <= now }

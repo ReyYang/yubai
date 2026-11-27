@@ -115,7 +115,18 @@ struct SettingsView: View {
     static func money(_ cents: Int64, hidden: Bool) -> String { OverviewDisplay.money(cents, hidden: hidden) }
     /// What a keypad sheet starts from: the stored CNY value, never converted to the main currency,
     /// because what is typed is saved as CNY.
-    static func inputMoney(_ cents: Int64) -> String { Money.text(cents, currency: false) }
+    static func inputMoney(_ cents: Int64) -> String { MoneyDisplay.cny.text(cents) }
+    /// A keypad box: what is typed is saved as CNY whatever the main currency, so the box always says ¥.
+    static func typed(_ text: String, hidden: Bool) -> String { "¥" + (hidden ? "••••" : text) }
+    /// Chips and helper numbers beside a keypad box: CNY like the box, never the main currency.
+    static func cny(_ cents: Int64, hidden: Bool, symbol: Bool = false) -> String {
+        if hidden { return (symbol ? "¥" : "") + "••••" }
+        return MoneyDisplay.cny.text(cents, symbol: symbol).replacingOccurrences(of: "-", with: "−")
+    }
+    static func cnySigned(_ cents: Int64, hidden: Bool) -> String {
+        guard !hidden else { return "¥••••" }
+        return (cents < 0 ? "−" : cents > 0 ? "+" : "") + cny(abs(cents), hidden: false, symbol: true)
+    }
 
     static func cycleDay(_ day: Int) -> String { day == CycleStart.lastDay ? "每月最后一天" : "每月 \(day) 日" }
 
@@ -146,30 +157,6 @@ struct SettingsView: View {
 
     static func reviewTime(_ time: WeeklyReviewTime) -> String {
         "周" + ["一", "二", "三", "四", "五", "六", "日"][max(0, min(6, time.weekday - 1))] + " " + String(format: "%02d:%02d", time.hour, time.minute)
-    }
-
-    static func symbol(_ currency: BillCurrency) -> String {
-        switch currency {
-        case .cny: "¥"
-        case .jpy: "円"
-        case .usd: "$"
-        default: currency.symbol
-        }
-    }
-
-    static func categoryIcon(_ name: String) -> DS.Icon {
-        switch name {
-        case "吃饭", "餐饮": .catFood
-        case "咖啡": .catCoffee
-        case "交通": .catTransport
-        case "买菜", "买菜做饭": .catGrocery
-        case "购物": .catShopping
-        case "居住": .catHousing
-        case "娱乐": .catFun
-        case "日用": .catDaily
-        case "数码", "数码与电子产品": .catDigital
-        default: .catOther
-        }
     }
 
     static func storage(_ bytes: Int64) -> String {

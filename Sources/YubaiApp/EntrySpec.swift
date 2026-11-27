@@ -90,9 +90,6 @@ enum EntrySpec {
     static let currencySymbolColumn: CGFloat = 40
     static let ratePopoverWidth: CGFloat = 280
     static let rateField = DS.TextStyle(size: 18, lineHeight: 24, weight: .semibold, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: true)
-    static let rateTag = DS.TextStyle(size: 11, lineHeight: 18, weight: .semibold, tracking: 0, family: .text, relativeTo: .caption2, monospacedDigit: false)
-    static let rateTagInset: CGFloat = 6
-    static let rateTagHeight: CGFloat = 18
     static let rateFillInset: CGFloat = 10
     static let rateFillHeight: CGFloat = 22
     static let rateCaret: CGFloat = 22

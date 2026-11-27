@@ -4,12 +4,9 @@ import YubaiCore
 enum HomeDisplay {
     /// Every amount on home, overview and settings: in the main currency (display only), CNY by default.
     static func money(_ cents: Int64, hidden: Bool, currency: Bool = false) -> String {
-        let symbol = DisplayCurrency.symbol
-        if hidden { return currency ? symbol + "••••" : "••••" }
-        let shown = DisplayCurrency.convert(cents)
-        let number = DisplayCurrency.main.formatted(abs(shown))
-        guard currency else { return (shown < 0 ? "-" : "") + number }
-        return (shown < 0 ? "-" : "") + symbol + number
+        let display = DisplayCurrency.current
+        if hidden { return currency ? display.symbol(for: cents) + "••••" : "••••" }
+        return display.text(cents, symbol: currency)
     }
 
     static func signed(_ cents: Int64, hidden: Bool) -> String {
@@ -20,13 +17,18 @@ enum HomeDisplay {
     static func billAmount(_ entry: Entry, hidden: Bool) -> String {
         guard !hidden else { return money(entry.amount, hidden: true) }
         let sign = entry.nature.paired || entry.intoFixedSavings ? "" : entry.nature.inflow ? "+" : "−"
-        // Spec-Currency 首页和列表: the main-currency amount; the original goes on the second line.
+        // Spec-Currency 首页和列表: the main-currency amount; the original goes on the second line —
+        // unless it was paid in the main currency, then that amount as paid, and no second line.
+        if let currency = entry.originalCurrency, currency == DisplayCurrency.current.currency, let original = entry.originalAmount {
+            return sign + currency.formatted(original)
+        }
         return sign + money(entry.amount, hidden: false)
     }
 
     /// The second line of a foreign bill: what was paid, in its own currency (「C$4.25」).
     static func originalAmount(_ entry: Entry, hidden: Bool) -> String? {
-        guard let currency = entry.originalCurrency, let original = entry.originalAmount else { return nil }
+        guard let currency = entry.originalCurrency, let original = entry.originalAmount,
+              currency != DisplayCurrency.current.currency else { return nil }
         return currency.amountText(original, hidden: hidden)
     }
 

@@ -434,13 +434,13 @@ struct CurrencyView: View {
                     DSSettingsCard(leading: DS.Space.s16) {
                         ForEach(Array(BillCurrency.allCases.enumerated()), id: \.element) { index, currency in
                             // A currency with no rate yet (never synced, none fixed) cannot be the main one.
-                            let available = currency == .cny || ExchangeRates.rate(for: currency, in: ledger, now: now) != nil
+                            let available = currency == .cny || ExchangeRates.rate(for: currency, in: ledger, synced: store.rateSync.rates, now: now) != nil
                             Button {
                                 guard currency != main else { return }
                                 if currency == .cny {
                                     // Back to 人民币: the stored numbers again, nothing to confirm (Spec-Currency).
                                     _ = store.update("主币种", recordUndo: false, entryMotion: false, showToast: false) {
-                                        try ExchangeRates.setMainCurrency(.cny, in: &$0, now: now)
+                                        try ExchangeRates.setMainCurrency(.cny, in: &$0, synced: nil, now: now)
                                     }
                                 } else {
                                     store.settingsSheet = .mainCurrency(currency)
@@ -481,7 +481,7 @@ struct CurrencyView: View {
                             Button { store.settingsSheet = .rate(currency) } label: {
                                 HStack(spacing: DS.Space.s8) {
                                     Text(currency.unit).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).dsFillWidth()
-                                    let rate = ExchangeRates.rate(for: currency, in: ledger, now: now)
+                                    let rate = ExchangeRates.rate(for: currency, in: ledger, synced: store.rateSync.rates, now: now)
                                     if rate?.manual == true {
                                         Text("手动").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink2)
                                             .padding(.horizontal, SettingsSpec.tagInset).frame(height: SettingsSpec.tagHeight).dsPill()
@@ -512,11 +512,13 @@ struct CurrencyView: View {
             .accessibilityAddTraits(.isHeader)
     }
 
-    /// 上次更新: when it is fresh, just the time; 7 days without a success (X-sync-fail) the age turns amber
-    /// and 去更新 fetches now.
+    /// 上次更新: when fresh, just the time. After 7 days without a success (X-sync-fail) the age turns amber
+    /// and 去更新 fetches now; while it runs the refresh glyph turns; a failure says why and offers 重试.
     private func lastSync(_ ledger: Ledger, now: Date) -> some View {
-        let fetched = ledger.preferences.syncedRates?.fetchedAt
-        let stale = ExchangeRates.isStale(ledger, now: now)
+        let sync = store.rateSync
+        let fetched = sync.lastSuccess
+        let stale = ExchangeRates.isStale(sync, now: now)
+        let failed = sync.failures > 0 && sync.lastError != nil
         return HStack(spacing: DS.Space.s8) {
             VStack(alignment: .leading, spacing: .zero) {
                 Text("上次更新").dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink)
@@ -524,16 +526,20 @@ struct CurrencyView: View {
                     Text(fetched.map { CurrencySettings.syncTime($0, now: now) + " · " + CurrencySettings.age($0, now: now) } ?? "还没更新过")
                         .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.warnInk)
                 }
+                if failed, let reason = sync.lastError {
+                    Text(reason).dsText(DS.Font.tSub).foregroundStyle(DS.Color.warnInk).accessibilityIdentifier("rateSyncError")
+                }
             }.dsFillWidth()
-            if stale {
+            if store.rateSyncRunning {
+                RateSyncSpinner().accessibilityLabel("更新中")
+            } else if stale || failed {
                 Button { Task { await store.syncExchangeRatesIfNeeded(force: true) } } label: {
-                    Text("去更新").dsText(SettingsSpec.updateLabel).foregroundStyle(DS.Color.accentInk)
-                        .padding(.horizontal, SettingsSpec.updateInset).frame(height: SettingsSpec.updateHeight)
+                    Text(failed ? "重试" : "去更新").dsText(SettingsSpec.pillLabel).foregroundStyle(DS.Color.accentInk)
+                        .padding(.horizontal, SettingsSpec.pillInset).frame(height: SettingsSpec.pillHeight)
                         .dsPill(DS.Color.accentSoft)
                         .frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
                 }
-                .dsPressStyle().disabled(store.rateSyncRunning)
-                .opacity(store.rateSyncRunning ? DSInteraction.reducedPressOpacity : 1)
+                .dsPressStyle()
                 .accessibilityIdentifier("syncRatesNow")
             } else if let fetched {
                 Text(CurrencySettings.syncTime(fetched, now: now)).dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink3)
@@ -543,6 +549,20 @@ struct CurrencyView: View {
         .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("lastRateSync")
+    }
+}
+
+/// The refresh glyph turning while rates are fetched; still under Reduce Motion.
+private struct RateSyncSpinner: View {
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var turning = false
+
+    var body: some View {
+        DSIconView(icon: .refresh, size: DS.Size.icon, color: DS.Color.accentInk)
+            .rotationEffect(.degrees(turning && !reduced ? 360 : 0))
+            .animation(reduced ? nil : .linear(duration: 1).repeatForever(autoreverses: false), value: turning)
+            .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            .onAppear { turning = true }
     }
 }
 
@@ -622,7 +642,8 @@ struct MainCurrencyConfirm: View {
 
     private func confirm() {
         let now = store.financialNow
-        if store.update("主币种", recordUndo: false, entryMotion: false, showToast: false, { try ExchangeRates.setMainCurrency(currency, in: &$0, now: now) }) {
+        let synced = store.rateSync.rates
+        if store.update("主币种", recordUndo: false, entryMotion: false, showToast: false, { try ExchangeRates.setMainCurrency(currency, in: &$0, synced: synced, now: now) }) {
             close()
         }
     }

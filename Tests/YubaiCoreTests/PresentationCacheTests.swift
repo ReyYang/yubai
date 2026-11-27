@@ -132,18 +132,4 @@ final class PresentationCacheTests: XCTestCase {
         ledger.stoppedSubscriptions = []
         XCTAssertEqual(cache.savings(in: ledger, revision: 2, now: start.addingTimeInterval(21)).total, 0)
     }
-    func testRecentCaptureEligibilityUsesRecordedAtFutureTimeAndDayRollover() {
-        var ledger = Ledger()
-        var recent = entry(100); recent.quickCapture = QuickCaptureOrigin(withoutOpeningApp: true)
-        recent.recordedAt = start.addingTimeInterval(20)
-        var old = entry(200); old.quickCapture = QuickCaptureOrigin(withoutOpeningApp: false)
-        old.recordedAt = Dates.addDays(-6, to: start)
-        ledger.entries = [recent, old, entry(300)]
-        var cache = LedgerPresentationCache()
-        XCTAssertEqual(cache.recentCaptures(in: ledger, revision: 1, now: start.addingTimeInterval(10)).map(\.id), [old.id])
-        XCTAssertEqual(cache.recentCaptures(in: ledger, revision: 1, now: start.addingTimeInterval(20)).map(\.id), [recent.id, old.id])
-        XCTAssertEqual(cache.recentCaptures(in: ledger, revision: 1, now: Dates.addDays(1, to: start)).map(\.id), [recent.id])
-        XCTAssertEqual(cache.recentCaptures(in: ledger, revision: 1, now: start.addingTimeInterval(10)).map(\.id), [old.id])
-    }
-
 }

@@ -20,12 +20,12 @@ public enum BillCurrency: String, CaseIterable, Codable, Identifiable, Sendable 
     public func amountText(_ cents: Int64, hidden: Bool = false) -> String {
         hidden ? "••••" : symbol + formatted(cents)
     }
-    /// The number alone, grouped, with this currency's decimals.
+    /// The number alone, grouped, with this currency's decimals. `cents` is hundredths of a unit.
     public func formatted(_ cents: Int64) -> String {
-        guard fractionDigits == 0 else { return Money.text(cents, currency: false) }
-        let formatter = NumberFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0; formatter.roundingMode = .halfUp
-        return formatter.string(from: NSDecimalNumber(decimal: Decimal(cents) / 100)) ?? "0"
+        guard fractionDigits == 0 else { return MoneyDisplay.number(cents, digits: 2) }
+        var value = Decimal(cents) / 100, rounded = Decimal()
+        NSDecimalRound(&rounded, &value, 0, .plain)
+        return MoneyDisplay.number(NSDecimalNumber(decimal: rounded).int64Value, digits: 0)
     }
 }
 

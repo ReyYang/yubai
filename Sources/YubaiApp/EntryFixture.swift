@@ -131,8 +131,6 @@ enum EntryFixture: String, CaseIterable {
             draft.currency = self == .norate ? .jpy : .cad
             draft.accountID = credit.id
             if self != .norate {
-                ledger.preferences.syncedRates = SyncedExchangeRates(date: today, fetchedAt: today,
-                                                                     cnyPerUnit: ["CAD": Decimal(string: "5.1012")!])
                 draft.expression = EntryAmountExpression(expression: "4.25")
                 draft.purpose = "咖啡"
             }
@@ -142,7 +140,9 @@ enum EntryFixture: String, CaseIterable {
         }
 
         if self == .time || self == .calendarPopover { draft.date = EntrySpec.fixtureCalendarSelection }
-        let model = EntrySheetViewModel(fixtureLedger: ledger, draft: draft, now: today)
+        let synced = self == .ccy || self == .rate
+            ? SyncedExchangeRates(date: today, fetchedAt: today, cnyPerUnit: ["CAD": Decimal(string: "5.1012")!]) : nil
+        let model = EntrySheetViewModel(fixtureLedger: ledger, draft: draft, now: today, synced: synced)
         model.fixtureTopCategories = top
         model.fixtureDayLabel = dayLabel
         model.fixtureRepeatDay = repeatDay

@@ -900,8 +900,8 @@ private struct EntryRateLine: View {
                     Text(model.hidesAmounts ? "≈ ••••" : "≈ " + Money.text(local)).dsText(DS.Font.tSub).monospacedDigit()
                         .foregroundStyle(DS.Color.ink3)
                     if model.typedRate != nil {
-                        Text("手动汇率").dsText(EntrySpec.rateTag).foregroundStyle(DS.Color.ink2)
-                            .padding(.horizontal, EntrySpec.rateTagInset).frame(height: EntrySpec.rateTagHeight).dsPill()
+                        Text("手动汇率").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink2)
+                            .padding(.horizontal, SettingsSpec.tagInset).frame(height: SettingsSpec.tagHeight).dsPill()
                     }
                     DS.Icon.chevron.view(size: EntrySpec.currencyChevron, color: DS.Color.chevron)
                 }
@@ -940,7 +940,7 @@ private struct EntryCurrencyList: View {
                         HStack(alignment: .firstTextBaseline, spacing: HomeSpec.gap6) {
                             Text(currency.unit).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink)
                             if currency == main {
-                                Text("主币种").dsText(EntrySpec.rateTag).foregroundStyle(DS.Color.ink3)
+                                Text("主币种").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink3)
                             }
                         }.dsFillWidth()
                         DS.Icon.done.view(size: EntrySpec.checkIcon, color: DS.Color.accentInk)

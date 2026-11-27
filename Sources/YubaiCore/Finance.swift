@@ -415,13 +415,11 @@ public struct LedgerPresentationCache {
     private var candidates: [SubscriptionCandidate]?
     private var settingsValue: (value: LedgerSettingsSummary, at: Date, expires: Date, zone: TimeZone)?
     private var savingsValue: (value: LedgerSavingsTotals, at: Date, expires: Date, zone: TimeZone)?
-    private var capturesValue: (value: [Entry], at: Date, expires: Date, zone: TimeZone)?
     public init() {}
     private mutating func prepare(_ ledger: Ledger, revision: UInt64) {
         guard self.revision != revision || ledgerID != ledger.id else { return }
         self.revision = revision; ledgerID = ledger.id
         entryDates = ledger.entries.filter { $0.deletedAt == nil }.map(\.date).sorted()
-        sortedEntries = nil; byID = nil; flows = [:]; slices = [:]; records = [:]; subcategories = [:]; evidence = [:]; candidates = nil; settingsValue = nil; savingsValue = nil; capturesValue = nil
     }
     // Two half-open intervals in the same gaps between posting dates select exactly
     // the same rows. This also caches a live interval whose end is Dates.now each render,
@@ -515,20 +513,6 @@ public struct LedgerPresentationCache {
             }
         }
         savingsValue = (value, now, expires, zone); return value
-    }
-    public mutating func recentCaptures(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> [Entry] {
-        prepare(ledger, revision: revision)
-        let zone = TimeZone.current
-        if let cached = capturesValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
-        let start = Dates.addDays(-6, to: Dates.day(now))
-        var expires = Dates.addDays(1, to: Dates.day(now))
-        var rows: [Entry] = []
-        for entry in ledger.entries where entry.deletedAt == nil && entry.quickCapture != nil {
-            let date = entry.recordedAt ?? entry.date
-            if date > now { expires = min(expires, date) }
-            if date >= start && date <= now { rows.append(entry) }
-        }
-        capturesValue = (rows, now, expires, zone); return rows
     }
     public mutating func settings(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> LedgerSettingsSummary {
         prepare(ledger, revision: revision)

@@ -60,6 +60,7 @@ enum SettingsFixture: Equatable {
 
     #if DEBUG
     struct Seed {
+        var rateSync = RateSyncState()
         var ledger: Ledger
         var route: [TabRoute] = []
         var sheet: SettingsSheet?
@@ -127,11 +128,15 @@ enum SettingsFixture: Equatable {
         ledger.preferences.billExchangeRates = [
             ManualExchangeRate(currency: .usd, cnyPerUnit: Decimal(string: "7.2")!, updatedAt: Self.date("2026-11-20")),
         ]
-        ledger.preferences.syncedRates = SyncedExchangeRates(
-            date: Self.date("2026-11-22"), fetchedAt: self == .syncFail ? Self.date("2026-11-15 08:00") : Self.date("2026-11-23 08:00"),
+        let fetched = self == .syncFail ? Self.date("2026-11-15 08:00") : Self.date("2026-11-23 08:00")
+        let rates = SyncedExchangeRates(
+            date: Self.date("2026-11-22"), fetchedAt: fetched,
             cnyPerUnit: ["CAD": Decimal(string: "5.1012")!, "USD": Decimal(string: "7.1103")!, "JPY": Decimal(string: "0.0471")!,
                          "HKD": Decimal(string: "0.9134")!, "EUR": Decimal(string: "7.6518")!, "GBP": Decimal(string: "8.9930")!,
                          "SGD": Decimal(string: "5.3021")!, "AUD": Decimal(string: "4.6702")!])
+        let rateSync = RateSyncState(rates: rates, lastAttempt: self == .syncFail ? Self.date("2026-11-23 08:00") : fetched,
+                                     lastSuccess: fetched, failures: self == .syncFail ? 3 : 0,
+                                     lastError: self == .syncFail ? "网络连不上" : nil)
         ledger.preferences.lastBillCurrency = .cad
         // canvas 快速记账: two cards seen, one more given an account; six remembered merchants.
         for (index, (merchant, card)) in [("瑞幸咖啡", "招行 尾号 6214"), ("美团外卖", "招行 尾号 6214"), ("滴滴出行", "招行信用卡 尾号 0938")].enumerated() {
@@ -171,6 +176,7 @@ enum SettingsFixture: Equatable {
         spend(1_284 - 86 - 112, from: "2025-01-01", days: 600)
 
         var seed = Seed(ledger: ledger)
+        seed.rateSync = rateSync
         switch self {
         case .main, .mainEnd: seed.route = [.settings]
         case .cycle: seed.route = [.settings]; seed.sheet = .cycle

@@ -42,7 +42,9 @@ private struct CaptureSnippetView: View {
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
                         if !privateResult { Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.cardTitle) }
                         Spacer()
-                        AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow)
+                        // Siri's reply follows the main currency, like the app.
+                        Text(ledger.preferences.hideAmounts ? "••••" : "−" + DisplayCurrency.current.text(entry.amount, symbol: true))
+                            .yubaiFont(YubaiFont.amountAccount).monospacedDigit()
                     }
                     if !privateResult {
                         let time: String = entry.date.formatted(.dateTime.hour().minute())
@@ -55,7 +57,8 @@ private struct CaptureSnippetView: View {
             Divider()
             HStack(spacing: YubaiSpace.gapGroup) {
                 Text(Finance.spendableBreakdown(ledger).headlineTitle).foregroundStyle(YubaiColor.labelSecondary)
-                Spacer(); AmountLabel(cents: Finance.spendableBreakdown(ledger).headlineAmount, hide: ledger.preferences.hideAmounts, currency: true)
+                Spacer(); Text(ledger.preferences.hideAmounts ? "••••" : DisplayCurrency.current.text(Finance.spendableBreakdown(ledger).headlineAmount, symbol: true))
+                    .monospacedDigit()
             }.yubaiFont(YubaiFont.caption)
             ForEach(entries) { entry in
                 HStack(spacing: YubaiSpace.gapGroup) {

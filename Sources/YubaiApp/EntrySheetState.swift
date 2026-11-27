@@ -139,6 +139,7 @@ struct EntryCategoryState: Equatable {
     let id = UUID()
     @ObservationIgnored private weak var store: AppStore?
     private var fixtureLedger: Ledger
+    @ObservationIgnored private var fixtureSynced: SyncedExchangeRates?
     let settled: Bool
     let isPrefilled: Bool
     let fixtureNow: Date?
@@ -212,8 +213,9 @@ struct EntryCategoryState: Equatable {
         normalizeAccounts()
     }
 
-    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date, editingID: UUID? = nil) {
+    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date, editingID: UUID? = nil, synced: SyncedExchangeRates? = nil) {
         store = nil
+        fixtureSynced = synced
         self.fixtureLedger = fixtureLedger
         self.draft = draft
         settled = true
@@ -229,6 +231,8 @@ struct EntryCategoryState: Equatable {
     }
 
     var ledger: Ledger { store?.current ?? fixtureLedger }
+    /// This device's synced rates (kept out of the ledger).
+    var syncedRates: SyncedExchangeRates? { store?.rateSync.rates ?? fixtureSynced }
     var now: Date { fixtureNow ?? Dates.now }
     var hasReceipt: Bool { draft.screenshot != nil }
     var hidesKeypad: Bool { drawer == .purpose }
@@ -245,7 +249,7 @@ struct EntryCategoryState: Equatable {
            entry.originalCurrency == draft.currency, let original = entry.originalAmount, original > 0 {
             return entry.exchangeRate?.cnyPerUnit ?? Decimal(entry.amount) / Decimal(original)
         }
-        return ExchangeRates.rate(for: draft.currency, in: ledger, now: now)?.cnyPerUnit
+        return ExchangeRates.rate(for: draft.currency, in: ledger, synced: syncedRates, now: now)?.cnyPerUnit
     }
     /// Only a rate typed for this entry is sent as a manual rate.
     var typedRate: Decimal? {
@@ -535,6 +539,7 @@ struct EntryCategoryState: Equatable {
             incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: draft.originalNature,
             relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings, preserveTime: editingID != nil)
         input.keepsRoute = replaysRoute
+        input.syncedRates = syncedRates
         if let people = draft.recoveryParticipants, let localMoney,
            people.reduce(Int64(0), { $0 + $1.amount }) == localMoney - myShare {
             input.recoveryParticipants = editingID == nil
@@ -635,7 +640,7 @@ struct EntryCategoryState: Equatable {
             return "记下时的汇率"
         }
         if FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now) != nil { return "设置里的固定汇率" }
-        if let fetched = ledger.preferences.syncedRates?.fetchedAt { return CurrencySettings.syncTime(fetched, now: now) + " 同步" }
+        if let fetched = syncedRates?.fetchedAt { return CurrencySettings.syncTime(fetched, now: now) + " 同步" }
         return ""
     }
 

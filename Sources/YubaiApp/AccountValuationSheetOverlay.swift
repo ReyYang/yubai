@@ -87,7 +87,7 @@ struct AccountValuationSheetOverlay: View {
         VStack(alignment: .leading, spacing: OverviewSpec.headingGap) {
             Text(label).dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
                 .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
-            let text = input ? inputText : OverviewDisplay.money(owes ? -value : value, hidden: hidden)
+            let text = input ? inputText : SettingsDisplay.cny(owes ? -value : value, hidden: hidden, symbol: true)
             let amountLabel = Text(text)
                 .dsText(DS.Font.tTitle).monospacedDigit()
                 .foregroundStyle(input ? DS.Color.ink : DS.Color.ink2)
@@ -114,20 +114,18 @@ struct AccountValuationSheetOverlay: View {
     }
 
     private var inputText: String {
-        if hidden { return OverviewDisplay.money(amount, hidden: true) }
-        if replace { return OverviewDisplay.money(keypad.amount ?? 0, hidden: false) }
-        return keypad.groupedText
+        SettingsDisplay.typed(replace ? SettingsDisplay.inputMoney(keypad.amount ?? 0) : keypad.groupedText, hidden: hidden)
     }
 
     private var differenceRow: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(target.isInvestment ? "涨跌" : "差额").dsText(DS.Font.tLabel)
             Spacer(minLength: DS.Space.s8)
-            Text(HomeDisplay.signed(difference, hidden: hidden))
+            Text(SettingsDisplay.cnySigned(difference, hidden: hidden))
                 .dsText(OverviewSpec.difference).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                 .contentTransition(reduced ? .identity : .numericText(value: Double(difference)))
                 .animation(reduced ? nil : DSMotion.standardAnimation, value: difference)
-                .accessibilityLabel(hidden ? "金额已隐藏" : HomeDisplay.signed(difference, hidden: false))
+                .accessibilityLabel(hidden ? "金额已隐藏" : SettingsDisplay.cnySigned(difference, hidden: false))
                 .accessibilityIdentifier("overviewValuationDifference")
         }.foregroundStyle(!target.isInvestment && difference != 0 ? DS.Color.warnInk : DS.Color.ink)
     }
@@ -161,7 +159,7 @@ struct AccountValuationSheetOverlay: View {
             close()
             if let adjustment {
                 let delta = adjustment.delta(for: target.accountID)
-                store.toast = "已记调整 " + HomeDisplay.signed(delta, hidden: store.preferences.hideAmounts)
+                store.toast = "已记调整 " + SettingsDisplay.cnySigned(delta, hidden: store.preferences.hideAmounts)
             }
         }
     }
