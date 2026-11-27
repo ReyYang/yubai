@@ -68,6 +68,11 @@ struct EntryCategoryManagerView: View {
                             }
                             .tint(DS.Color.warnStrong)
                         }
+                        // Dragging has no VoiceOver path of its own: move one place at a time.
+                        .accessibilityActions {
+                            if index > 0 { Button("上移") { move(movable, index, by: -1) } }
+                            if index < movable.count - 1 { Button("下移") { move(movable, index, by: 1) } }
+                        }
                 }
                 .onMove { from, to in
                     var names = movable.map(\.name)
@@ -95,6 +100,12 @@ struct EntryCategoryManagerView: View {
         } message: { category in
             Text("已记的 \(model.entryCount(category: category.name, income: category.income)) 笔改到「\(category.income ? "其他收入" : "其他支出")」")
         }
+    }
+
+    private func move(_ movable: [YubaiCore.Category], _ index: Int, by step: Int) {
+        var names = movable.map(\.name)
+        names.swapAt(index, index + step)
+        model.reorderVisibleCategories(names, income: income)
     }
 
     private func categoryRow(_ category: YubaiCore.Category, index: Int, count: Int) -> some View {

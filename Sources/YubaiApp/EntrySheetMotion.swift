@@ -90,7 +90,8 @@ struct SpringFlight {
         if dismiss {
             close(reduced: reduced, velocity: speed, onClose: onClose)
         } else if reduced {
-            offset = 0
+            // No travel, but the scrim fades back instead of jumping.
+            withAnimation(DSMotion.reduceMotionAnimation) { offset = 0 }
             EntryRenderDiagnostics.mark("settled")
         } else {
             spring(to: 0, velocity: offset < 0 ? 0 : speed)
@@ -101,7 +102,7 @@ struct SpringFlight {
     func settleIfDragging(reduced: Bool) {
         guard dragOrigin != nil else { return }
         dragOrigin = nil
-        if reduced { offset = 0 } else { spring(to: 0, velocity: 0) }
+        if reduced { withAnimation(DSMotion.reduceMotionAnimation) { offset = 0 } } else { spring(to: 0, velocity: 0) }
     }
 
     func close(reduced: Bool, velocity: CGFloat = 0, sealed: Bool = false, onClose: @escaping () -> Void) {

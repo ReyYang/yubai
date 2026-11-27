@@ -10,6 +10,21 @@ struct BillUndoNotice: Identifiable, Equatable {
     let deletedAt: Date
     /// Wall-clock end of the 4-second bar; coming back from background keeps it.
     let deadline: Date
+
+    /// Still undoable: before its deadline, or any time while VoiceOver is on (it waits for the next action).
+    @MainActor var isLive: Bool { deadline > Date() || AccessibilityRuntime.voiceOverRunning }
+}
+
+enum AccessibilityRuntime {
+    @MainActor static var voiceOverRunning: Bool {
+        #if os(iOS)
+        UIAccessibility.isVoiceOverRunning
+        #elseif os(macOS)
+        NSWorkspace.shared.isVoiceOverEnabled
+        #else
+        false
+        #endif
+    }
 }
 
 /// What the long-press menu lifts: the row's look and where it sits on screen.
@@ -49,18 +64,44 @@ extension AppStore {
         var deleted: Set<UUID> = []
         guard update("删除", recordUndo: false, { deleted = try EntryRecovery.delete(entry.id, from: &$0, now: at) }) else { return false }
         clearUndo(); unsortedUndo = nil; toast = nil
-        billUndo = BillUndoNotice(label: label, entryIDs: deleted, deletedAt: at, deadline: Date().addingTimeInterval(HomeSpec.undoBarSeconds))
+        let notice = BillUndoNotice(label: label, entryIDs: deleted, deletedAt: at, deadline: Date().addingTimeInterval(HomeSpec.undoBarSeconds))
+        billUndo = notice
+        scheduleBillUndoExpiry(notice)
         return true
     }
 
-    /// 撤销 on one deletion's bar: brings back only that deletion, and only while it is the bar on screen.
+    /// The deadline is the store's, not the bar's: a bar hidden behind a sheet, or ⌘Z, cannot undo late.
+    private func scheduleBillUndoExpiry(_ notice: BillUndoNotice) {
+        billUndoExpiry?.cancel()
+        billUndoExpiry = Task { @MainActor [weak self] in
+            while true {
+                try? await Task.sleep(for: .seconds(max(0.05, notice.deadline.timeIntervalSinceNow)))
+                guard !Task.isCancelled, let self, self.billUndo?.id == notice.id else { return }
+                if !notice.isLive { self.billUndo = nil; return }
+                // VoiceOver keeps it until the next action; look again shortly.
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    /// 撤销 on one deletion's bar: brings back only that deletion, only while it is live.
+    /// A locked or busy ledger keeps the bar; it goes once the bills are back, or once they cannot come back.
     func undoBillDeletion(_ id: UUID) {
         guard let notice = billUndo, notice.id == id else { return }
-        billUndo = nil
-        // Already back (e.g. from 最近删除): the bar just goes, no error.
-        if update("撤销", recordUndo: false, reportError: false, entryMotion: false, {
+        guard notice.isLive else { billUndo = nil; return }
+        guard canEditLedger() else { return }
+        var probe = current
+        guard (try? EntryRecovery.undoDelete(notice.entryIDs, deletedAt: notice.deletedAt, in: &probe)) != nil else {
+            billUndo = nil   // already back, e.g. from 最近删除: no error, the bar just goes
+            return
+        }
+        if update("撤销", recordUndo: false, entryMotion: false, {
             try EntryRecovery.undoDelete(notice.entryIDs, deletedAt: notice.deletedAt, in: &$0)
         }) {
+            billUndo = nil
+            billUndoExpiry?.cancel()
+            // The receipt carries no undo of its own; an older snapshot would delete these bills again.
+            clearUndo()
             undoTrigger &+= 1
             toast = "已撤销"
         }
@@ -97,11 +138,16 @@ struct HomeBillMenuOverlay: View {
     var body: some View {
         GeometryReader { geo in
             let origin = geo.frame(in: .global).origin
-            let card = CGRect(x: DS.Space.s16, y: request.frame.midY - origin.y - HomeSpec.menuCardHeight / 2,
-                              width: geo.size.width - DS.Space.s16 * 2, height: HomeSpec.menuCardHeight)
+            // The lifted row is as tall as the row it lifts (taller with large type).
+            let rowHeight = request.frame.height > 0 ? request.frame.height : HomeSpec.menuCardHeight
+            let card = CGRect(x: DS.Space.s16, y: request.frame.midY - origin.y - rowHeight / 2,
+                              width: geo.size.width - DS.Space.s16 * 2, height: rowHeight)
             let menuHeight = measuredMenu ?? DS.Size.rowSub * (entry.canRecategorize ? 4 : 3)
-            let below = card.maxY + HomeSpec.menuGap + menuHeight <= geo.size.height
-            let menuY = below ? card.maxY + HomeSpec.menuGap : card.minY - HomeSpec.menuGap - menuHeight
+            let top = geo.safeAreaInsets.top, bottom = geo.size.height - geo.safeAreaInsets.bottom
+            let below = card.maxY + HomeSpec.menuGap + menuHeight <= bottom
+            let preferred = below ? card.maxY + HomeSpec.menuGap : card.minY - HomeSpec.menuGap - menuHeight
+            // Never under the status bar or the Home indicator.
+            let menuY = min(max(preferred, top), max(top, bottom - menuHeight))
             ZStack(alignment: .topLeading) {
                 DS.Color.scrim.opacity(shown ? 1 : 0)
                     .ignoresSafeArea()

@@ -24,7 +24,7 @@ final class Batch2HomeRebuildTests: YubaiUITestCase {
     }
 
     /// Spec-Gestures 下拉收起 from on top of a key: the sheet takes the drag and the key never types.
-    func testSheetDragFromAKeyClosesWithoutTyping() {
+    func testSheetDragFromAKeyClosesWithoutTyping() throws {
         launch("-YubaiHomeFixture", "normal")
         tapControl(control("addEntry", in: app), in: app)
         let key = wait("keypad_5", type: .button)
@@ -34,7 +34,8 @@ final class Batch2HomeRebuildTests: YubaiUITestCase {
         XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { !self.app.buttons["keypad_5"].exists }), "sheet did not close")
         tapControl(control("addEntry", in: app), in: app)
         let amount = wait("entryKeypadAmount")
-        XCTAssertFalse(amount.value.map { "\($0)".contains("5") } ?? false, "the key under the drag typed: \(String(describing: amount.value))")
+        let value = try XCTUnwrap(amount.value.map { "\($0)" }, "the amount must be readable")
+        XCTAssertFalse(value.contains("5"), "the key under the drag typed: \(value)")
     }
 
     func testHomeHeroPushAndSearchAcrossLedger() {

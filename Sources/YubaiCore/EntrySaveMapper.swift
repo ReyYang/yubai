@@ -272,6 +272,9 @@ public struct EntrySaveInput: Equatable, Sendable {
     public var amountCents: Int64
     public var currency: BillCurrency
     public var exchangeRate: Decimal?
+    /// Editing only: keep the bill's nature, both accounts (even a missing second one) and 存入 mark;
+    /// amount, date, currency and words still change.
+    public var keepsRoute = false
     /// Set when editing: the rate the entry was recorded with stays frozen.
     var frozenRate: EntryRate?
     public var purpose: String
@@ -393,13 +396,14 @@ public enum EntrySaveMapper {
         return .monthly(amount)
     }
 
-    /// 算作存入 · 本期已存: every bill home tags 存入 (into savings, or an investment buy) in this cycle,
-    /// counted as a positive amount, plus the draft when its date falls in this cycle.
+    /// 算作存入 · 本期已存: every bill home tags 存入 (into savings, or an investment buy) dated in this
+    /// cycle, counted as a positive amount, plus the draft when its date falls in this cycle.
+    /// Bills and the draft use one rule: dated in the cycle, past or future.
     public static func depositedThisCycle(in ledger: Ledger, now: Date, adding draftAmount: Int64, on draftDate: Date) -> Int64 {
         let cycle = Finance.cycle(in: ledger, now: now)
         func inCycle(_ date: Date) -> Bool { Dates.day(date) >= Dates.day(cycle.start) && Dates.day(date) <= Dates.day(cycle.end) }
         let saved = ledger.activeEntries.reduce(Int64(0)) { total, entry in
-            guard entry.intoFixedSavings || entry.nature == .investBuy, entry.date <= now, inCycle(entry.date) else { return total }
+            guard entry.intoFixedSavings || entry.nature == .investBuy, inCycle(entry.date) else { return total }
             return total + abs(entry.amount)
         }
         return saved + (inCycle(draftDate) ? max(0, draftAmount) : 0)
@@ -422,8 +426,29 @@ public enum EntrySaveMapper {
                 units > 0 ? EntryRate(cnyPerUnit: Decimal(original.amount) / Decimal(units), date: Dates.day(original.date), manual: false) : nil
             }
         }
+        if input.keepsRoute {
+            // Shape the amount, date and rate through the plain path; the route itself is the original's.
+            input.recordedNature = nil
+            input.type = .expense
+            input.exception = nil
+            input.accountID = original.accountID
+            input.category = original.category
+            input.subcategory = original.subcategory
+        }
         let change = try makeChange(input, in: ledger, now: now)
-        guard case .addEntry(let draft)? = change.items.first else { throw YubaiError.invalid("无法编辑这笔账单。") }
+        guard case .addEntry(var draft)? = change.items.first else { throw YubaiError.invalid("无法编辑这笔账单。") }
+        if input.keepsRoute {
+            draft.nature = original.nature
+            draft.accountID = original.accountID
+            draft.otherAccountID = original.otherAccountID
+            draft.intoFixedSavings = original.intoFixedSavings
+            draft.fromReserve = original.fromReserve
+            draft.pendingRecovery = original.pendingRecovery
+            draft.personalExpense = original.personalExpense
+            draft.countsFromCycleStart = original.countsFromCycleStart
+            draft.category = original.category
+            draft.subcategory = original.subcategory
+        }
         var edited = original
         edited.nature = draft.nature
         edited.amount = draft.amount

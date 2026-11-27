@@ -2072,6 +2072,7 @@ private struct EmptyGhostDrawing: View {
 
 struct Toast: View {
     @Environment(\.yubaiReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityVoiceOverEnabled) private var voiceOver
     @Environment(\.scenePhase) private var phase
     @Environment(\.dynamicTypeSize) private var textSize
     @State private var visible = false
@@ -2090,20 +2091,21 @@ struct Toast: View {
     private var truncated: Bool { !textSize.isAccessibilitySize && availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
     private var hasChevron: Bool { !textSize.isAccessibilitySize && (truncated || expanded) }
     private var scrollsMessage: Bool { expanded || textSize.isAccessibilitySize }
-    private var timerKey: String { text + "-\(expanded)-\(visible)-\(phase)" }
+    private var timerKey: String { text + "-\(expanded)-\(visible)-\(phase)-\(voiceOver)" }
     var body: some View {
         ZStack { if visible { surface } }
             .task(id: text) {
                 expanded = false
-                if let deadline, deadline <= Date() { onDismiss?(); return }
+                if let deadline, deadline <= Date(), !voiceOver { onDismiss?(); return }
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
                 #if os(iOS)
                 AccessibilityNotification.Announcement(text + (onUndo == nil ? "" : "，可撤销")).post()
                 #endif
             }
             .task(id: timerKey) {
-                // A bar with its own deadline ends there even when expanded.
-                guard visible, deadline != nil || !expanded, phase == .active else { return }
+                // A bar with its own deadline ends there even when expanded; with VoiceOver on it waits
+                // for the next action instead (deviates from the canvas' 4 seconds on purpose).
+                guard visible, deadline != nil || !expanded, phase == .active, deadline == nil || !voiceOver else { return }
                 #if DEBUG && targetEnvironment(simulator)
                 if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
                 #endif

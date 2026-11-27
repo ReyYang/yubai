@@ -122,6 +122,7 @@ private struct HomePage: View {
     @State private var query = HomeFixture.current?.isSearch == true ? "打车" : ""
     @State private var preset: LedgerPreset?
     @State private var frames = BillRowFrames()
+    @State private var groupsCache = HomeBillGroupsCache()
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -217,35 +218,31 @@ private struct HomePage: View {
         }
     }
 
-    private var billDays: some View {
+    /// Bills grouped by day: one `Section` a day, the day line as its header, every row a single view.
+    /// The grouping is cached per ledger version, preset and moment, never sorted again in a body pass.
+    @ViewBuilder private var billDays: some View {
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
         let recoveryIDs = pendingIDs
-        let rows = ledger.activeEntries.filter { entry in
-            guard entry.date <= now, fixture?.shows(entry) ?? true else { return false }
-            guard let preset else { return true }
-            return (preset.entryIDs?.contains(entry.id) ?? true)
-                && (preset.interval.map { $0.start <= entry.date && entry.date < $0.end } ?? true)
-                && (preset.categories?.contains(ledger.normalizedCategory(for: entry).category) ?? true)
-                && (preset.category.map { $0 == ledger.normalizedCategory(for: entry).category } ?? true)
-        }.sorted(by: newestFirst)
-        let groups = Dictionary(grouping: rows, by: { Dates.day($0.date) })
-        let days = groups.keys.sorted(by: >)
-        let offsets = rowOffsets(days: days, groups: groups)
-        return Group {
-            if preset != nil {
-                DSDayHeader(title: "\(rows.count) 笔", total: HomeDisplay.signed(billNet(rows), hidden: hide))
-                    .accessibilityIdentifier("entriesSearchTotal")
-            }
-            ForEach(days, id: \.self) { day in
-                let entries = groups[day] ?? []
-                let net = billNet(entries)
-                DSDayHeader(title: dayTitle(day),
-                            total: net == 0 || fixture == .home(.empty) ? "" : HomeDisplay.signed(net, hidden: hide),
-                            today: day == Dates.day(now), first: day == days.first)
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+        let groups = groupsCache.groups(ledger: ledger, now: now, preset: preset, fixture: fixture)
+        if preset != nil {
+            DSDayHeader(title: "\(groups.count) 笔", total: HomeDisplay.signed(groups.net, hidden: hide))
+                .accessibilityIdentifier("entriesSearchTotal")
+                .homeRow()
+        }
+        ForEach(groups.days) { day in
+            Section {
+                ForEach(Array(day.entries.enumerated()), id: \.element.id) { index, entry in
                     billRow(entry, account: accounts[entry.accountID], pending: recoveryIDs.contains(entry.id), separator: index > 0)
-                        .dsRowEnter(index: min((offsets[day] ?? 0) + index, DailySpending.columnCount))
+                        .dsRowEnter(index: min(day.offset + index, DailySpending.columnCount))
+                        .homeRow()
                 }
+            } header: {
+                DSDayHeader(title: dayTitle(day.day),
+                            total: day.net == 0 || fixture == .home(.empty) ? "" : HomeDisplay.signed(day.net, hidden: hide),
+                            today: day.day == Dates.day(now), first: day.day == groups.days.first?.day)
+                    .textCase(nil)
+                    .homeRow()
+                    .background(DS.Color.bg)
             }
         }
     }
@@ -266,26 +263,7 @@ private struct HomePage: View {
         return label + " " + days[weekday - 1]
     }
 
-    private func rowOffsets(days: [Date], groups: [Date: [Entry]]) -> [Date: Int] {
-        var offset = 0
-        var result: [Date: Int] = [:]
-        for day in days {
-            result[day] = offset
-            offset += groups[day]?.count ?? 0
-        }
-        return result
-    }
-
-    private func newestFirst(_ a: Entry, _ b: Entry) -> Bool {
-        (a.date, a.recordedAt ?? a.date, a.id.uuidString) > (b.date, b.recordedAt ?? b.date, b.id.uuidString)
-    }
-
-    private func billNet(_ rows: [Entry]) -> Int64 {
-        rows.reduce(0) { net, entry in
-            guard !entry.nature.paired else { return net }
-            return net + (entry.nature.inflow ? entry.amount : -entry.amount)
-        }
-    }
+    private func billNet(_ rows: [Entry]) -> Int64 { HomeBillGroups.net(rows) }
 
     private func billRow(_ entry: Entry, account: Account?, pending: Bool, separator: Bool) -> some View {
         let category = ledger.normalizedCategory(for: entry).category
@@ -319,9 +297,12 @@ private struct HomePage: View {
                     Label { Text("删除") } icon: { DS.Icon.delete.templateImage(size: HomeSpec.swipeIcon, scale: displayScale) }
                 }.tint(DS.Color.warnStrong)
             }
-            .accessibilityAction(named: "编辑") { menuAction(entry, .edit) }
-            .accessibilityAction(named: "再记一笔") { menuAction(entry, .duplicate) }
-            .modifier(RecategorizeAction(enabled: entry.canRecategorize) { menuAction(entry, .recategorize) })
+            // 改分类 only where the menu offers it; deleting stays the system swipe's own action.
+            .accessibilityActions {
+                Button("编辑") { menuAction(entry, .edit) }
+                Button("再记一笔") { menuAction(entry, .duplicate) }
+                if entry.canRecategorize { Button("改分类") { menuAction(entry, .recategorize) } }
+            }
     }
 
     private var searchBar: some View {
@@ -390,6 +371,75 @@ private struct HomePage: View {
     }
 }
 
+/// Home's bills by day, newest first, with each day's net and where its rows start (for the entrance stagger).
+struct HomeBillGroups {
+    struct Day: Identifiable {
+        var id: Date { day }
+        let day: Date
+        let entries: [Entry]
+        let net: Int64
+        let offset: Int
+    }
+    let days: [Day]
+    let count: Int
+    let net: Int64
+
+    static func net(_ rows: [Entry]) -> Int64 {
+        rows.reduce(0) { net, entry in
+            guard !entry.nature.paired else { return net }
+            return net + (entry.nature.inflow ? entry.amount : -entry.amount)
+        }
+    }
+
+    init(ledger: Ledger, now: Date, preset: LedgerPreset?, fixture: HomeFixture?) {
+        let rows = ledger.activeEntries.filter { entry in
+            guard entry.date <= now, fixture?.shows(entry) ?? true else { return false }
+            guard let preset else { return true }
+            return (preset.entryIDs?.contains(entry.id) ?? true)
+                && (preset.interval.map { $0.start <= entry.date && entry.date < $0.end } ?? true)
+                && (preset.categories?.contains(ledger.normalizedCategory(for: entry).category) ?? true)
+                && (preset.category.map { $0 == ledger.normalizedCategory(for: entry).category } ?? true)
+        }.sorted { a, b in
+            (a.date, a.recordedAt ?? a.date, a.id.uuidString) > (b.date, b.recordedAt ?? b.date, b.id.uuidString)
+        }
+        let grouped = Dictionary(grouping: rows, by: { Dates.day($0.date) })
+        var offset = 0
+        days = grouped.keys.sorted(by: >).map { day in
+            let entries = grouped[day] ?? []
+            defer { offset += entries.count }
+            return Day(day: day, entries: entries, net: Self.net(entries), offset: offset)
+        }
+        count = rows.count
+        net = Self.net(rows)
+    }
+}
+
+/// Keeps the last grouping; a body pass with the same ledger version, moment and preset reuses it.
+final class HomeBillGroupsCache {
+    private var key: (ledger: UUID, updated: Date, entries: Int, now: Date, preset: LedgerPreset?, fixture: HomeFixture?)?
+    private var value: HomeBillGroups?
+
+    func groups(ledger: Ledger, now: Date, preset: LedgerPreset?, fixture: HomeFixture?) -> HomeBillGroups {
+        if let key, let value, key.ledger == ledger.id, key.updated == ledger.updatedAt, key.entries == ledger.entries.count,
+           key.now == now, key.preset == preset, key.fixture == fixture {
+            return value
+        }
+        let fresh = HomeBillGroups(ledger: ledger, now: now, preset: preset, fixture: fixture)
+        key = (ledger.id, ledger.updatedAt, ledger.entries.count, now, preset, fixture)
+        value = fresh
+        return fresh
+    }
+}
+
+private extension View {
+    /// A home List row: 20 in from each edge, no system separator, page background.
+    func homeRow() -> some View {
+        listRowInsets(EdgeInsets(top: .zero, leading: DS.Space.s20, bottom: .zero, trailing: DS.Space.s20))
+            .listRowSeparator(.hidden)
+            .listRowBackground(DS.Color.bg)
+    }
+}
+
 /// While the long-press menu is up the finger that opened it must not scroll the list.
 /// Read here, not in `HomeView.body`, so opening the menu does not rebuild the page.
 private struct HomeMenuScrollLock: ViewModifier {
@@ -397,16 +447,6 @@ private struct HomeMenuScrollLock: ViewModifier {
 
     func body(content: Content) -> some View {
         content.scrollDisabled(store.billMenu != nil)
-    }
-}
-
-/// VoiceOver's 改分类 appears only where the menu offers it. Deleting stays the system swipe's own action.
-private struct RecategorizeAction: ViewModifier {
-    let enabled: Bool
-    let action: () -> Void
-
-    func body(content: Content) -> some View {
-        if enabled { content.accessibilityAction(named: "改分类", action) } else { content }
     }
 }
 

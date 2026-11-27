@@ -79,9 +79,9 @@ struct EntrySheetOverlay: View {
                         .zIndex(1)
                 }
             }
-            .overlayPreferenceValue(EntryPillAnchors.self) { anchors in
-                if let drawer = model.drawer, drawer.isPopover, let anchor = anchors[drawer] {
-                    popover(drawer, anchor: anchor, pills: anchors)
+            .overlayPreferenceValue(EntryPillAnchors.self) { frames in
+                if let drawer = model.drawer, drawer.isPopover, let anchor = frames.drawn[drawer] {
+                    popover(drawer, anchor: anchor, pills: frames.hit)
                         .transition(.opacity)
                 }
             }
@@ -156,7 +156,7 @@ struct EntrySheetOverlay: View {
                                       pills: [EntryDrawer: Anchor<CGRect>]) -> some View {
         GeometryReader { geometry in
             let pill = geometry[anchor]
-            let targets = pills.filter { $0.key.isPopover }.mapValues { geometry[$0] }
+            let targets = pills.mapValues { geometry[$0] }
             // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
             let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
                 : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
@@ -168,6 +168,7 @@ struct EntrySheetOverlay: View {
                 // A tap on another pill switches straight to its list; anywhere else closes this one.
                 Color.clear.contentShape(Rectangle())
                     .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
+                        // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
                         let hit = targets.first { $0.value.contains(location) }?.key
                         model.drawer = hit == drawer ? nil : hit
                     }
@@ -175,7 +176,9 @@ struct EntrySheetOverlay: View {
                     .accessibilityHidden(true)
                     .ignoresSafeArea()
                 ViewThatFits(in: .vertical) {
-                    popoverContent(drawer)
+                    // Pulling down from a day or an account row closes the list too; the scrolling
+                    // version (largest type) keeps the drag for its scroll.
+                    popoverContent(drawer).simultaneousGesture(closeDrag { model.drawer = nil })
                     ScrollView { popoverContent(drawer) }.scrollIndicators(.hidden)
                 }
                 .frame(width: width, height: available, alignment: .bottom)
@@ -252,22 +255,36 @@ private struct EntryFormScrollTop: ViewModifier {
                 formScroll.atTop = top
             }
         } else {
-            content
+            // macOS 14 cannot read the offset: never claim the top, so a drag always stays with the scroll.
+            content.onAppear { formScroll.atTop = false }
         }
     }
 }
 
-/// Where each pill sits, so its list pops out right above it.
+/// Where each pill is drawn (its list pops out right above it) and where it takes a tap
+/// (the 44 pt target, so a tap on the backdrop can switch straight to it).
+struct EntryPillFrames {
+    var drawn: [EntryDrawer: Anchor<CGRect>] = [:]
+    var hit: [EntryDrawer: Anchor<CGRect>] = [:]
+}
+
 private struct EntryPillAnchors: PreferenceKey {
-    static var defaultValue: [EntryDrawer: Anchor<CGRect>] { [:] }
-    static func reduce(value: inout [EntryDrawer: Anchor<CGRect>], nextValue: () -> [EntryDrawer: Anchor<CGRect>]) {
-        value.merge(nextValue()) { $1 }
+    static var defaultValue: EntryPillFrames { EntryPillFrames() }
+    static func reduce(value: inout EntryPillFrames, nextValue: () -> EntryPillFrames) {
+        let next = nextValue()
+        value.drawn.merge(next.drawn) { $1 }
+        value.hit.merge(next.hit) { $1 }
     }
 }
 
 private extension View {
     func entryAnchor(_ drawer: EntryDrawer) -> some View {
-        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { [drawer: $0] }
+        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(drawn: [drawer: $0]) }
+    }
+
+    /// After the 44 pt frame: the whole target counts as the pill for the backdrop's switch.
+    func entryHit(_ drawer: EntryDrawer) -> some View {
+        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(hit: [drawer: $0]) }
     }
 }
 
@@ -470,6 +487,7 @@ private struct EntryAmountBlockView: View {
                 }
                 .buttonStyle(EntryTactileButtonStyle())
                 .fixedSize()
+                .entryHit(.currency)
                 .accessibilityLabel("币种，" + model.draft.currency.unit)
                 .accessibilityHint("选择外币和汇率")
                 Text(amountText)
@@ -582,7 +600,7 @@ private struct EntryCategoryRowView: View {
                 let selected = category.name == model.draft.category
                 EntryCategoryCircle(name: selected ? model.draft.subcategory ?? category.name : category.name,
                                     icon: category.entryIcon, selected: selected, ring: ring,
-                                    suggested: model.draft.category == nil && model.suggestion?.category == category.name) {
+                                    suggested: model.draft.category == nil && model.shownSuggestion?.category == category.name) {
                     withAnimation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.standardAnimation) {
                         model.toggle(category: category.name)
                     }
@@ -679,6 +697,7 @@ private struct EntryTransferRouteView: View {
             .entryAnchor(drawer)
         }
         .buttonStyle(EntryTactileButtonStyle())
+        .entryHit(drawer)
         .accessibilityFocused(pillFocus, equals: drawer)
         .accessibilityLabel((destination ? "到，" : "从，") + title)
         .accessibilityHint(destination ? "选择转入账户" : "选择转出账户")
@@ -754,6 +773,7 @@ private struct EntryPill: View {
             .modifier(EntryOptionalAnchor(drawer: anchor))
             .padding(.vertical, EntrySpec.pillHitInset)
             .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            .modifier(EntryOptionalAnchor(drawer: anchor, hit: true))
         }
         .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
         .accessibilityLabel(label ?? title ?? "")
@@ -764,8 +784,9 @@ private struct EntryPill: View {
 
 private struct EntryOptionalAnchor: ViewModifier {
     let drawer: EntryDrawer?
+    var hit = false
     func body(content: Content) -> some View {
-        if let drawer { content.entryAnchor(drawer) } else { content }
+        if let drawer { if hit { content.entryHit(drawer) } else { content.entryAnchor(drawer) } } else { content }
     }
 }
 
@@ -798,6 +819,7 @@ private struct EntryFlagPill: View {
         .background(DS.Color.warnSoft, in: DS.Shape.pill)
         .entryAnchor(.more)
         .frame(minHeight: DS.Size.tapMin)
+        .entryHit(.more)
     }
 }
 
@@ -1119,6 +1141,8 @@ private struct EntryBackspaceStyle: PrimitiveButtonStyle {
 
 private struct EntryBackspacePress: View {
     let configuration: PrimitiveButtonStyle.Configuration
+    /// False once the sheet takes the drag: this press is void, no repeat and no release delete.
+    @Environment(\.isEnabled) private var isEnabled
     @GestureState private var fingerDown = false
     @State private var withinKey = true
     @State private var didRepeat = false
@@ -1133,19 +1157,20 @@ private struct EntryBackspacePress: View {
                     if travel > EntrySpec.keyHoldTravel { withinKey = false }
                 }
                 .onEnded { _ in
-                    if withinKey && !didRepeat { configuration.trigger() }
+                    if withinKey && !didRepeat && isEnabled { configuration.trigger() }
                     withinKey = true
                     didRepeat = false
                 })
+            .onChange(of: isEnabled) { _, enabled in if !enabled { withinKey = false } }
             .onChange(of: fingerDown) { _, pressed in
                 if pressed { didRepeat = false }
                 else { withinKey = true }
             }
             .task(id: fingerDown && withinKey) {
-                guard fingerDown, withinKey else { return }
+                guard fingerDown, withinKey, isEnabled else { return }
                 do {
                     try await Task.sleep(for: EntrySpec.backspaceDelay)
-                    while !Task.isCancelled {
+                    while !Task.isCancelled && isEnabled {
                         didRepeat = true
                         configuration.trigger()
                         try await Task.sleep(for: EntrySpec.backspaceInterval)
@@ -1190,6 +1215,8 @@ struct EntryCategoryPanelView: View {
     let maxHeight: CGFloat
     var confirm: (() -> Void)? = nil
     @Environment(\.accessibilityReduceMotion) private var reduced
+    /// The circles are scrolled to the top: a pull down there closes the panel rather than scrolling.
+    @State private var scroll = EntryFormScroll()
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.categoryPanel)
@@ -1244,6 +1271,12 @@ struct EntryCategoryPanelView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
+            .modifier(EntryFormScrollTop(formScroll: $scroll))
+            .simultaneousGesture(DragGesture(minimumDistance: EntrySpec.dragMinimum).onEnded { value in
+                if confirm == nil, scroll.atTop, value.translation.height > abs(value.translation.width) {
+                    model.dismissCategoryPanel()
+                }
+            })
             .padding(.bottom, safeBottom + DS.Space.s8)
         }
         .frame(maxHeight: min(maxHeight, EntrySpec.categoryPanelHeight), alignment: .top)

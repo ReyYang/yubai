@@ -141,7 +141,7 @@ final class EntrySheetRulesTests: XCTestCase {
         let edit = EntrySheetViewModel(fixtureLedger: ledger, draft: EntrySheetDraft(prefill: prefill, ledger: ledger), now: now, editingID: saved.id)
         XCTAssertTrue(edit.savesAsDeposit, "editing keeps it 存入")
         var copy = EntrySheetDraft(prefill: prefill, ledger: ledger)
-        copy.keptRoute = copy.keptRoute.map { EntryKeptRoute(accountID: $0.accountID, destinationID: $0.destinationID, nature: $0.nature, deposit: nil) }
+        copy.keptRoute = copy.keptRoute.map { EntryKeptRoute(accountID: $0.accountID, destinationID: $0.destinationID, nature: $0.nature, intoFixedSavings: $0.intoFixedSavings, deposit: nil) }
         XCTAssertFalse(EntrySheetViewModel(fixtureLedger: ledger, draft: copy, now: now).savesAsDeposit, "再记一笔 招行 → 工行 is a 转账")
     }
 

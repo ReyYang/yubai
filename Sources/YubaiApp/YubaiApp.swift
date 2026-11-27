@@ -99,7 +99,13 @@ enum AppSheet: Identifiable {
                 ask.reset(); askRequest = nil; billUndo = nil
                 resetRootNavigation()
             }
-            if oldValue != ledger { invalidateDerived() }
+            if oldValue != ledger {
+                invalidateDerived()
+                // The long-press menu never outlives its bill (synced away, swiped, deleted by a shortcut).
+                if let id = billMenu?.entryID, !ledger.entries.contains(where: { $0.id == id && $0.deletedAt == nil }) {
+                    billMenu = nil
+                }
+            }
         }
     }
     var current: Ledger { ledger }
@@ -545,6 +551,7 @@ enum AppSheet: Identifiable {
     var billMenu: BillMenuRequest?
     /// The last home deletion's 撤销 bar. Survives the lock screen; ends at its own deadline.
     var billUndo: BillUndoNotice?
+    @ObservationIgnored var billUndoExpiry: Task<Void, Never>?
     func openAsk(_ text: String = "", send: Bool = false) {
         guard !locked else { return }
         askRequest = AskRequest(text: text, send: send)
@@ -737,6 +744,19 @@ enum AppSheet: Identifiable {
         #endif
     }
 
+    #if DEBUG
+    /// Unit tests: a store over `ledger` that writes only into `directory`, never the person's data or iCloud.
+    init(testing ledger: Ledger, directory: URL) {
+        overviewFixture = nil
+        localRepository = LedgerRepository(directory: directory)
+        locations = LedgerLocations(local: localRepository, cloudDirectory: nil)
+        syncAllowed = false
+        self.ledger = ledger
+        loadingLedger = false
+        invalidateDerived()
+    }
+    #endif
+
     func waitForLedger() async { await loadTask?.value }
 
     /// 升级后第一次：发薪日改成「确认到账才开新周期」，只对下一个发薪日起生效，当前周期不变。
@@ -850,12 +870,12 @@ enum AppSheet: Identifiable {
         guard update("导入账单", { $0 = prepared.ledger }) else { return nil }
         return prepared.batch
     }
-    @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, continuingImportOrganization: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
+    @discardableResult func apply(_ changeSet: ChangeSet, label: String, silently: Bool = false, recordUndo: Bool = true, continuingImportOrganization: Bool = false, finishing: (inout Ledger) throws -> Void = { _ in }) -> Bool {
         guard !continuingImportOrganization || organizationExecution != nil else { return false }
         var skipped: [String] = []
         let batchCapture = changeSet.items.count > 1 && changeSet.items.allSatisfy { if case .addEntry = $0 { return true }; return false }
         let saved = update(label, preservingRecovery: !continuingImportOrganization,
-                           undoSnapshot: continuingImportOrganization ? organizationExecution?.before : nil, entryMotion: !silently,
+                           undoSnapshot: continuingImportOrganization ? organizationExecution?.before : nil, recordUndo: recordUndo, entryMotion: !silently,
                            allowLockedCapture: locked && continuingImportOrganization && organizationContinuesInBackground,
                            showToast: !silently, recoveryReason: batchCapture ? "批量记账" : nil) { ledger in
             if !changeSet.items.isEmpty { skipped = try changeSet.apply(to: &ledger) }
@@ -889,7 +909,8 @@ enum AppSheet: Identifiable {
         }
         guard let change = FixedFlows.autoSettle(in: current, now: now) else { return }
         cancelEntrySaveMotion()
-        if apply(change, label: "自动记下", silently: true) { toast = nil }
+        // Background bookkeeping: no undo snapshot, so it can neither be undone by accident nor undo a later 撤销.
+        if apply(change, label: "自动记下", silently: true, recordUndo: false) { toast = nil }
     }
     func clearUndo() {
         undoLedger = nil; undoLabel = nil
@@ -1120,7 +1141,7 @@ enum AppSheet: Identifiable {
                 Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked)
                 Button("问余白") { store.openAsk() }.keyboardShortcut("k").disabled(store.locked)
             }
-            CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled((store.undoLabel == nil && store.billUndo == nil) || store.locked) }
+            CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled((store.undoLabel == nil && store.billUndo?.isLive != true) || store.locked) }
         }
         #endif
     }
@@ -1167,6 +1188,18 @@ enum AppSheet: Identifiable {
     }
 }
 
+/// Hides the pages from VoiceOver and touch while an overlay is up. Its own view, so opening the
+/// long-press menu or a sheet re-renders this modifier, not `RootView.body`.
+private struct RootCoveredByOverlay: ViewModifier {
+    @Environment(AppStore.self) private var store
+
+    func body(content: Content) -> some View {
+        content
+            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.billMenu != nil || store.showsOverviewOverlay || store.askRequest != nil) && !store.locked)
+            .allowsHitTesting((store.entrySheet == nil && store.billCardID == nil && !store.showsOverviewOverlay) || store.locked)
+    }
+}
+
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.scenePhase) private var phase
@@ -1197,8 +1230,7 @@ struct RootView: View {
                 else if store.needsOnboarding { OnboardView().transition(.opacity) }
                 else { mainContentWithInboxLifecycle }
             }
-            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.billMenu != nil || store.showsOverviewOverlay || store.askRequest != nil) && !store.locked)
-            .allowsHitTesting((store.entrySheet == nil && store.billCardID == nil && !store.showsOverviewOverlay) || store.locked)
+            .modifier(RootCoveredByOverlay())
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
         .surfacePresentations()

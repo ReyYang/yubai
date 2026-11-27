@@ -123,8 +123,9 @@ public struct EntryRecovery: Equatable, Sendable {
         return receipt
     }
 
-    /// Deletes the bill and, for a pending recovery, the receipts linked to it.
-    /// Returns every entry this one deletion touched, so its undo can bring back exactly those.
+    /// Deletes the bill and every refund or reimbursement receipt still linked to it, whether or not
+    /// it is still marked 待报销 / 待 AA. Returns every entry this one deletion touched, so its undo
+    /// brings back exactly those.
     @discardableResult public static func delete(_ id: UUID, from ledger: inout Ledger, now: Date) throws -> Set<UUID> {
         guard let index = ledger.entries.firstIndex(where: { $0.id == id && $0.deletedAt == nil }) else {
             throw YubaiError.invalid("账单已删除。")
@@ -133,7 +134,7 @@ public struct EntryRecovery: Equatable, Sendable {
         let original = next.entries[index]
         var deleted: Set<UUID> = [id]
         next.entries[index].deletedAt = now
-        if original.pendingRecovery != nil {
+        if original.nature == .expense {
             for index in next.entries.indices where next.entries[index].relatedEntryID == id
                 && next.entries[index].nature == .refund && next.entries[index].deletedAt == nil {
                 next.entries[index].deletedAt = now
