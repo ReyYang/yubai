@@ -82,8 +82,8 @@ struct EntrySheetDraft: Equatable {
             if let share = entry.personalExpense { personalShare = Money.input(share) }
             incomeNextCycle = entry.countsFromCycleStart != nil
             if let currency = entry.originalCurrency, let original = entry.originalAmount, original > 0 {
+                // Leave the rate field empty: saving an edit keeps the rate frozen in the entry.
                 self.currency = currency
-                exchangeRate = NSDecimalNumber(decimal: Decimal(entry.amount) / Decimal(original)).stringValue
             }
         }
     }
@@ -165,9 +165,20 @@ struct EntrySheetDraft: Equatable {
     var hasReceipt: Bool { draft.screenshot != nil }
     var hidesKeypad: Bool { drawer == .purpose || (drawer == .subcategory && !categoryPanel) }
     var hidesAmounts: Bool { store?.preferences.hideAmounts == true }
+    /// The rate shown and used for the preview: typed, else frozen (editing), else Settings or synced.
     var signedRate: Decimal? {
+        if let typed = typedRate { return typed }
+        guard draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        if let id = editingID, let entry = ledger.entries.first(where: { $0.id == id }),
+           entry.originalCurrency == draft.currency, let original = entry.originalAmount, original > 0 {
+            return entry.exchangeRate?.cnyPerUnit ?? Decimal(entry.amount) / Decimal(original)
+        }
+        return ExchangeRates.rate(for: draft.currency, in: ledger, now: now)?.cnyPerUnit
+    }
+    /// Only a rate typed for this entry is sent as a manual rate.
+    var typedRate: Decimal? {
         let clean = draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines)
-        if clean.isEmpty { return FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now)?.cnyPerUnit }
+        if clean.isEmpty { return nil }
         let separator = Locale.current.decimalSeparator ?? "."
         let normalized = clean.replacingOccurrences(of: separator, with: ".")
         guard normalized.allSatisfy({ "0123456789.".contains($0) }),
@@ -369,7 +380,7 @@ struct EntrySheetDraft: Equatable {
     private func input(category: CategoryAssignment?) -> EntrySaveInput? {
         guard let accountID = draft.accountID, draft.expression.canSave else { return nil }
         guard draft.currency == .cny || (signedRate != nil && (localMoney ?? 0) > 0) else { return nil }
-        var input = EntrySaveInput(type: draft.type, amountCents: money, currency: draft.currency, exchangeRate: signedRate,
+        var input = EntrySaveInput(type: draft.type, amountCents: money, currency: draft.currency, exchangeRate: typedRate,
             purpose: draft.purpose, category: category?.category ?? Classification.pendingCategory,
             subcategory: category?.subcategory, accountID: accountID, destinationAccountID: draft.destinationID,
             date: draft.date, repeatMonthly: draft.repeatMonthly && canRepeat, exception: draft.exception,

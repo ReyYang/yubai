@@ -26,6 +26,12 @@ extension BillImporter {
         entry.fromReserve = manual.fromReserve; entry.intoFixedSavings = manual.intoFixedSavings
         entry.pendingRecovery = manual.pendingRecovery; entry.countsFromCycleStart = manual.countsFromCycleStart
         entry.originalCurrency = manual.originalCurrency; entry.originalAmount = manual.originalAmount
+        // The statement amount is what was really charged; keep the frozen rate
+        // only when it agrees, otherwise freeze the rate the bank applied.
+        if let original = manual.originalAmount, original > 0, manual.originalCurrency != nil {
+            entry.exchangeRate = imported.amount == manual.amount ? manual.exchangeRate
+                : EntryRate(cnyPerUnit: Decimal(imported.amount) / Decimal(original), date: Dates.day(imported.date), manual: false)
+        } else { entry.exchangeRate = nil }
         entry.planID = manual.planID; entry.occurrence = manual.occurrence
         entry.rentID = manual.rentID; entry.rentPeriod = manual.rentPeriod; entry.personalExpense = manual.personalExpense
         entry.userEdited = true; entry.classificationReason = manual.classificationReason

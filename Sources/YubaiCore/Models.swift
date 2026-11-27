@@ -150,6 +150,8 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
     public var countsFromCycleStart: Date? { didSet { if nature != .income { countsFromCycleStart = nil } } }
     public var originalCurrency: BillCurrency?
     public var originalAmount: Int64?
+    /// Frozen when recorded; later syncs never change it.
+    public var exchangeRate: EntryRate?
     public var spreadFrom: Date?
     public var isUnitemized: Bool { spreadFrom != nil }
     public var accountID: UUID; public var otherAccountID: UUID?
@@ -173,7 +175,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         self.intoFixedSavings = (nature == .income || nature == .transfer) && intoFixedSavings
         self.fromReserve = nature == .expense && fromReserve
     }
-    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, pendingRecovery, recoveryParticipants, recoveryParticipantID, recoveryIntoReserve, countsFromCycleStart, originalCurrency, originalAmount, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
+    private enum CodingKeys: String, CodingKey { case fromReserve, spreadFrom, intoFixedSavings, pendingRecovery, recoveryParticipants, recoveryParticipantID, recoveryIntoReserve, countsFromCycleStart, originalCurrency, originalAmount, exchangeRate, partID, id, date, amount, recordedAt, nature, accountID, otherAccountID, title, category, note, purpose, subcategory, subcategoryUserEdited, source, externalID, batchID, sourceIdentity, quickCapture, sourceRow, fingerprint, userEdited, deletedAt, relatedEntryID, planID, occurrence, rentID, rentPeriod, attachmentID, classificationReason, otherDate, mergedIntoID, personalExpense }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id = try c.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
@@ -192,6 +194,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         countsFromCycleStart = nature == .income ? try c.decodeIfPresent(Date.self, forKey: .countsFromCycleStart) : nil
         originalCurrency = try c.decodeIfPresent(BillCurrency.self, forKey: .originalCurrency)
         originalAmount = try c.decodeIfPresent(Int64.self, forKey: .originalAmount)
+        exchangeRate = try? c.decodeIfPresent(EntryRate.self, forKey: .exchangeRate)
         spreadFrom = try c.decodeIfPresent(Date.self, forKey: .spreadFrom)
         accountID = try c.decode(UUID.self, forKey: .accountID)
         otherAccountID = try c.decodeIfPresent(UUID.self, forKey: .otherAccountID)
@@ -258,6 +261,7 @@ public struct Entry: Codable, Identifiable, Equatable, Sendable {
         try c.encodeIfPresent(countsFromCycleStart, forKey: .countsFromCycleStart)
         try c.encodeIfPresent(originalCurrency, forKey: .originalCurrency)
         try c.encodeIfPresent(originalAmount, forKey: .originalAmount)
+        try c.encodeIfPresent(exchangeRate, forKey: .exchangeRate)
     }
     public func delta(for account: UUID) -> Int64 {
         if accountID == account { return nature.inflow ? amount : -amount }
@@ -585,6 +589,12 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var weeklyLetterPush = false
     public var billExchangeRates: [ManualExchangeRate]?
     public var lastBillCurrency: BillCurrency?
+    /// Nil means CNY. Display only; the ledger stays in CNY.
+    public var mainCurrency: BillCurrency?
+    /// Latest daily reference rates.
+    public var syncedRates: SyncedExchangeRates?
+    /// Nil means on.
+    public var autoRateSync: Bool?
     /// Nil, including an old ledger, means enabled.
     public var yearlyBillsSetAside: Bool?
     public var quickCapture = QuickCapturePreferences()
@@ -612,7 +622,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case billExchangeRates, lastBillCurrency, yearlyBillsSetAside, butlerSuggestionsEnabled, cloudShare
+        case billExchangeRates, lastBillCurrency, mainCurrency, syncedRates, autoRateSync, yearlyBillsSetAside, butlerSuggestionsEnabled, cloudShare
         case paydayWeekendShift, cycleStartDay, assistantTone, weeklyReviewTime
         case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
@@ -638,6 +648,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         weeklyLetterPush = try values.decodeIfPresent(Bool.self, forKey: .weeklyLetterPush) ?? false
         billExchangeRates = try values.decodeIfPresent([ManualExchangeRate].self, forKey: .billExchangeRates)
         lastBillCurrency = try values.decodeIfPresent(BillCurrency.self, forKey: .lastBillCurrency)
+        mainCurrency = try? values.decodeIfPresent(BillCurrency.self, forKey: .mainCurrency)
+        syncedRates = try? values.decodeIfPresent(SyncedExchangeRates.self, forKey: .syncedRates)
+        autoRateSync = try? values.decodeIfPresent(Bool.self, forKey: .autoRateSync)
         yearlyBillsSetAside = try values.decodeIfPresent(Bool.self, forKey: .yearlyBillsSetAside)
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
         quickCapture = try values.decodeIfPresent(QuickCapturePreferences.self, forKey: .quickCapture) ?? QuickCapturePreferences()
@@ -665,6 +678,9 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encode(cloudAIEnabled, forKey: .cloudAIEnabled); try c.encode(weeklyLetterPush, forKey: .weeklyLetterPush)
         try c.encodeIfPresent(billExchangeRates, forKey: .billExchangeRates)
         try c.encodeIfPresent(lastBillCurrency, forKey: .lastBillCurrency)
+        try c.encodeIfPresent(mainCurrency, forKey: .mainCurrency)
+        try c.encodeIfPresent(syncedRates, forKey: .syncedRates)
+        if autoRateSync == false { try c.encode(false, forKey: .autoRateSync) }
         try c.encodeIfPresent(yearlyBillsSetAside, forKey: .yearlyBillsSetAside)
         try c.encode(quickCapture, forKey: .quickCapture); try c.encode(categoryOrder, forKey: .categoryOrder)
         try c.encode(onboardingComplete, forKey: .onboardingComplete); try c.encode(profileColdStartDone, forKey: .profileColdStartDone)
@@ -1302,6 +1318,7 @@ public struct Ledger: Codable, Equatable, Sendable {
                   e.occurrence.map(dateValid) ?? true, e.rentPeriod.map(dateValid) ?? true,
                   e.countsFromCycleStart.map(dateValid) ?? true,
                   e.originalAmount.map({ (1...Money.limit).contains($0) }) ?? true,
+                  e.exchangeRate.map({ $0.isValid && e.originalCurrency != nil }) ?? true,
                   e.spreadFrom.map({ dateValid($0) && Dates.day($0) <= Dates.day(e.date) }) ?? true,
                   e.subcategory.map({ !$0.isEmpty && $0.count <= 200 && !$0.contains("/") }) ?? true,
                   (e.purpose?.count ?? 0) <= 4000 else { throw YubaiError.invalid("交易金额、日期或账户无效。") }
