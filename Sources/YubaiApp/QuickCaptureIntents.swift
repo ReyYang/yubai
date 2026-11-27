@@ -34,6 +34,8 @@ struct CaptureSnippetIntent: SnippetIntent {
 }
 private struct CaptureSnippetView: View {
     let entries: [Entry]; let ledger: Ledger; let privateResult: Bool
+    /// One rate for the whole reply.
+    private let display = DisplayCurrency.current
     var body: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
             Label(entries.isEmpty ? "余白 · 已撤销" : "余白 · 已记下", systemImage: "square.righthalf.filled").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
@@ -42,7 +44,9 @@ private struct CaptureSnippetView: View {
                     HStack(alignment: .firstTextBaseline, spacing: YubaiSpace.gapGroup) {
                         if !privateResult { Text(entry.displayTitle).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.cardTitle) }
                         Spacer()
-                        AmountLabel(cents: entry.amount, hide: ledger.preferences.hideAmounts, role: .account, sign: .outflow)
+                        // Siri's reply follows the main currency, like the app.
+                        Text(ledger.preferences.hideAmounts ? "••••" : "−" + display.text(entry.amount, symbol: true))
+                            .yubaiFont(YubaiFont.amountAccount).monospacedDigit()
                     }
                     if !privateResult {
                         let time: String = entry.date.formatted(.dateTime.hour().minute())
@@ -55,7 +59,8 @@ private struct CaptureSnippetView: View {
             Divider()
             HStack(spacing: YubaiSpace.gapGroup) {
                 Text(Finance.spendableBreakdown(ledger).headlineTitle).foregroundStyle(YubaiColor.labelSecondary)
-                Spacer(); AmountLabel(cents: Finance.spendableBreakdown(ledger).headlineAmount, hide: ledger.preferences.hideAmounts, currency: true)
+                Spacer(); Text(ledger.preferences.hideAmounts ? "••••" : display.text(Finance.spendableBreakdown(ledger).headlineAmount, symbol: true))
+                    .monospacedDigit()
             }.yubaiFont(YubaiFont.caption)
             ForEach(entries) { entry in
                 HStack(spacing: YubaiSpace.gapGroup) {

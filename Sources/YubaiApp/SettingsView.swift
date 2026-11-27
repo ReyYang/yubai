@@ -21,18 +21,22 @@ struct SettingsView: View {
                     VStack(spacing: SettingsSpec.groupGap) {
                         DSSettingsCard {
                             link(.cycle, "周期起始日", SettingsDisplay.cycleDay(CycleStart.day(in: ledger, now: now)), brand: true, first: true, id: "settingsCycle") { store.settingsSheet = .cycle }
-                            link(.saveFirst, "先攒", SettingsDisplay.money(SettingsSummary.savingTarget(in: ledger, now: now), hidden: hidden), brand: true, id: "settingsSaving") { store.settingsSheet = .saving }
+                            link(.saveFirst, "先攒", SettingsDisplay.money(store.settingsSummary.savingTarget, hidden: hidden), brand: true, id: "settingsSaving") { store.settingsSheet = .saving }
                             link(.floor, "底线存款", store.profile.floorAmount.map { SettingsDisplay.money($0, hidden: hidden) } ?? "未设", brand: true, id: "settingsFloor") { store.settingsSheet = .floor }
                         }
                         DSSettingsCard {
-                            link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(SettingsSummary.monthlyFixed(in: ledger, now: now).total, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
+                            link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(store.settingsSummary.monthlyFixed, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
                             link(.catAll, "分类", "\(ledger.orderedCategories(income: false).count) 个", id: "openCategories") { store.tabRouteRequest = .categorySettings }
-                            link(.acctBalance, "币种", SettingsDisplay.currencies(store.preferences), id: "settingsCurrency") { store.tabRouteRequest = .currency }
-                            link(.bolt, "快速记账", "Apple Pay", id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
+                            link(.acctDebit, "账户", "\(store.accounts.filter { !$0.archived }.count.formatted()) 个", id: "settingsAccounts") { store.tabRouteRequest = .settingsAccounts }
+                        }
+                        // Canvas S-Settings: 主币种 and 快速记账 share a group.
+                        DSSettingsCard {
+                            link(.exchange, "主币种", SettingsDisplay.mainCurrency(store.preferences), brand: true, first: true, id: "settingsCurrency") { store.tabRouteRequest = .currency }
+                            link(.bolt, "快速记账", "近 7 天 \(store.quickCaptureStats.recent.formatted()) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
                         }
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
-                            link(.memory, "余白记得的", "\(store.settingsSummary.memoryCount) 条", id: "openMemories") { store.tabRouteRequest = .memories }
+                            link(.memory, "余白记得的", "\(store.settingsSummary.memoryCount.formatted()) 条", id: "openMemories") { store.tabRouteRequest = .memories }
                             link(.heart, "心愿与回顾", "\(WishesHub.wishCount(in: ledger)) 件心愿", id: "openWishesHub") { store.tabRouteRequest = .wishesHub }
                             link(.bell, "通知", "\(SettingsDisplay.noticeCount(store.preferences)) 项", id: "openNoticeSettings") { store.tabRouteRequest = .notices }
                         }
@@ -109,6 +113,20 @@ struct SettingsView: View {
     }
 
     static func money(_ cents: Int64, hidden: Bool) -> String { OverviewDisplay.money(cents, hidden: hidden) }
+    /// What a keypad sheet starts from: the stored CNY value, never converted to the main currency,
+    /// because what is typed is saved as CNY.
+    static func inputMoney(_ cents: Int64) -> String { MoneyDisplay.cny.text(cents) }
+    /// A keypad box: what is typed is saved as CNY whatever the main currency, so the box always says ¥.
+    static func typed(_ text: String, hidden: Bool) -> String { "¥" + (hidden ? "••••" : text) }
+    /// Chips and helper numbers beside a keypad box: CNY like the box, never the main currency.
+    static func cny(_ cents: Int64, hidden: Bool, symbol: Bool = false) -> String {
+        if hidden { return (symbol ? "¥" : "") + "••••" }
+        return MoneyDisplay.cny.text(cents, symbol: symbol).replacingOccurrences(of: "-", with: "−")
+    }
+    static func cnySigned(_ cents: Int64, hidden: Bool) -> String {
+        guard !hidden else { return "¥••••" }
+        return (cents < 0 ? "−" : cents > 0 ? "+" : "") + cny(abs(cents), hidden: false, symbol: true)
+    }
 
     static func cycleDay(_ day: Int) -> String { day == CycleStart.lastDay ? "每月最后一天" : "每月 \(day) 日" }
 
@@ -127,9 +145,10 @@ struct SettingsView: View {
         }
     }
 
-    static func currencies(_ preferences: Preferences) -> String {
-        let foreign = preferences.lastBillCurrency ?? (preferences.billExchangeRates ?? []).first?.currency
-        return ([BillCurrency.cny] + [foreign].compactMap { $0 }.filter { $0 != .cny }).map(\.rawValue).joined(separator: " · ")
+    /// 主币种 row: 「人民币 ¥」.
+    static func mainCurrency(_ preferences: Preferences) -> String {
+        let main = preferences.mainCurrency ?? .cny
+        return main.unit + " " + main.symbol
     }
 
     static func noticeCount(_ preferences: Preferences) -> Int {
@@ -138,30 +157,6 @@ struct SettingsView: View {
 
     static func reviewTime(_ time: WeeklyReviewTime) -> String {
         "周" + ["一", "二", "三", "四", "五", "六", "日"][max(0, min(6, time.weekday - 1))] + " " + String(format: "%02d:%02d", time.hour, time.minute)
-    }
-
-    static func symbol(_ currency: BillCurrency) -> String {
-        switch currency {
-        case .cny: "¥"
-        case .jpy: "円"
-        case .usd: "$"
-        default: currency.symbol
-        }
-    }
-
-    static func categoryIcon(_ name: String) -> DS.Icon {
-        switch name {
-        case "吃饭", "餐饮": .catFood
-        case "咖啡": .catCoffee
-        case "交通": .catTransport
-        case "买菜", "买菜做饭": .catGrocery
-        case "购物": .catShopping
-        case "居住": .catHousing
-        case "娱乐": .catFun
-        case "日用": .catDaily
-        case "数码", "数码与电子产品": .catDigital
-        default: .catOther
-        }
     }
 
     static func storage(_ bytes: Int64) -> String {
@@ -269,7 +264,7 @@ struct BackupView: View {
             if let pendingRestore { restorePreview(pendingRestore) }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    NavigationLink { RecentlyDeletedView() } label: { SettingsRow(title: "最近删除", detail: "\(RecentlyDeleted.entries(in: store.current).count) 笔") }.accessibilityIdentifier("recentlyDeleted")
+                    NavigationLink { RecentlyDeletedView() } label: { SettingsRow(title: "最近删除", detail: "\(store.settingsSummary.recentlyDeletedCount.formatted()) 笔") }.accessibilityIdentifier("recentlyDeleted")
                     EntryFormDivider()
                     NavigationLink { RecoveryVersionsView() } label: { SettingsRow(title: "恢复版本") }.accessibilityIdentifier("openRecoveryVersions")
                     EntryFormDivider()
@@ -386,7 +381,7 @@ struct BackupView: View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Text("已验证的备份").yubaiFont(YubaiFont.navTitle)
-                Text("\(ledger.accounts.count) 个账户 · \(ledger.activeEntries.count) 笔有效记录 · \(ledger.attachments.count) 份附件")
+                Text("\(ledger.accounts.count.formatted()) 个账户 · \(ledger.activeEntries.count.formatted()) 笔有效记录 · \(ledger.attachments.count.formatted()) 份附件")
                 Text("最后修改：\(Dates.text(ledger.updatedAt, time: true))").yubaiFont(YubaiFont.caption)
                 Button("确认恢复这份账本") {
                     if store.restore(ledger) { pendingRestore = nil; restoreData = nil; encryptedRestore = false; restorePassword = ""; message = "已恢复" }
@@ -445,7 +440,7 @@ struct ImportHistoryView: View {
                             .navigationTitle("导入结果").yubaiNavigation()
                     } label: { Text(batch.filename).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading) }
                         .disabled(batch.undoneAt != nil).accessibilityIdentifier("openImportBatch_" + batch.id.uuidString)
-                    Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))
+                    Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount.formatted()) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))
                         .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     if batch.undoneAt == nil {
                         Button("整批撤销") { undoBatch = batch }
@@ -467,7 +462,7 @@ struct ImportHistoryView: View {
             }
         }.navigationTitle("导入记录").yubaiNavigation().accessibilityIdentifier("importHistoryPage")
             .sheet(item: $undoBatch) { batch in
-                ConfirmationSheet(title: "撤销这批 \(batch.importedCount) 笔？", consequence: "整理产生的关联和安排也会还原。") {
+                ConfirmationSheet(title: "撤销这批 \(batch.importedCount.formatted()) 笔？", consequence: "整理产生的关联和安排也会还原。") {
                     Button("撤销这一批") { store.undoImport(batch.id); undoBatch = nil }.buttonStyle(DestructiveButtonStyle())
                 }.environment(store)
             }

@@ -246,7 +246,7 @@ private struct ProfileAreaEditor: View {
                 } label: {
                     Group {
                         if monthly.isEmpty { Text("—").yubaiFont(YubaiFont.amountSmall) }
-                        else { AmountLabel(cents: (try? Money.parse(monthly)) ?? 0, hide: store.preferences.hideAmounts, role: .small) }
+                        else { AmountLabel(cents: (try? Money.parse(monthly)) ?? 0, hide: store.preferences.hideAmounts, role: .small, stored: true) }
                     }.yubaiHitTarget()
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileMonthlyLimit")
                 if !monthly.isEmpty {

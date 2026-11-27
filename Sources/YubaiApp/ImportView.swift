@@ -373,7 +373,7 @@ struct ImportView: View {
     private func total(_ title: String, entries: [Entry]) -> some View {
         HStack(spacing: YubaiSpace.space8) {
             Text("\(title) \(entries.count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelMuted)
-            AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.preferences.hideAmounts, role: .small, sign: .none)
+            AmountLabel(cents: entries.reduce(0) { $0 + $1.amount }, hide: store.preferences.hideAmounts, role: .small, sign: .none, stored: true)
         }.accessibilityElement(children: .combine).accessibilityIdentifier("importTotal_" + title)
     }
     private var accountPicker: some View {
@@ -503,7 +503,7 @@ struct ImportView: View {
                 Text(row.entry?.title ?? "第 \(row.line) 行").yubaiFont(YubaiFont.row).lineLimit(textSize.isAccessibilitySize ? nil : 2)
                 Text(rowSubtitle(row)).yubaiFont(YubaiFont.meta).foregroundStyle(needsDecision(row) ? YubaiColor.amberInk : YubaiColor.labelSecondary)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            if let entry = row.entry { AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .none) }
+            if let entry = row.entry { AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .none, stored: true) }
             if screenshot, row.entry != nil {
                 Button { editingScreenshotRow = row } label: { DSIconView(icon: .chevron, size: YubaiFont.meta.size).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     .buttonStyle(PressButtonStyle()).accessibilityLabel("核对这一笔").accessibilityIdentifier("editScreenshotRow_" + String(row.line))
@@ -527,9 +527,9 @@ struct ImportView: View {
         return VStack(spacing: YubaiSpace.gapGroup) {
             if screenshot {
                 HStack(spacing: YubaiSpace.gapGroup) {
-                    Text("选了 \(p.selectedEntries.count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    Text("选了 \(p.selectedEntries.count.formatted()) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                     Spacer()
-                    AmountLabel(cents: p.selectedEntries.filter { !$0.nature.inflow }.reduce(0) { $0 + $1.amount }, hide: store.preferences.hideAmounts, sign: .outflow)
+                    AmountLabel(cents: p.selectedEntries.filter { !$0.nature.inflow }.reduce(0) { $0 + $1.amount }, hide: store.preferences.hideAmounts, sign: .outflow, stored: true)
                 }.padding(.horizontal, YubaiSpace.insetCard)
             }
             layout {
@@ -738,7 +738,7 @@ private struct ImportScreenshotEntryEditor: View {
         Form {
             Section {
                 CardTextFieldRow(title: "用途", text: $entry.title, identifier: "screenshotPurpose", autofocus: true)
-                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts)
+                AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, stored: true)
                 EntryDateRow(date: $entry.date, showsTime: true)
                 Picker("收支", selection: $entry.nature) { Text("支出").tag(Nature.expense); Text("收入").tag(Nature.income) }
                 CategoryPickerField(income: entry.nature.categoryIncome,

@@ -4,6 +4,23 @@ import SwiftUI
 /// Settings, account and first-open numbers with no design token.
 enum SettingsSpec {
     // Shared
+    // design-v2 canvas Main.dc.html 主币种与汇率 / 改主币种确认
+    static let currencyRow: CGFloat = 48 // 主币种 rows
+    static let currencySymbolColumn: CGFloat = 52 // 40 pt symbol + 12 gap; the hairline starts at the name
+    static let tag = DS.TextStyle(size: 11, lineHeight: 18, weight: .semibold, tracking: 0, family: .text, relativeTo: .caption2, monospacedDigit: false) // 手动 tag
+    static let tagInset: CGFloat = 6
+    static let tagHeight: CGFloat = 18
+    /// The small accent-soft action pill: 去更新 / 重试 and 快速记账 · 添加.
+    static let pillLabel = DS.TextStyle(size: 14, lineHeight: 20, weight: .semibold, tracking: 0, family: .text, relativeTo: .subheadline, monospacedDigit: false)
+    static let pillInset: CGFloat = 14
+    static let pillHeight: CGFloat = 32
+    static let confirmWidth: CGFloat = 300
+    static let confirmTop: CGFloat = 24
+    // design-v2 canvas Main.dc.html 快速记账 / 卡对应的账户 / 商户记到哪个分类
+    static let quickCount = DS.TextStyle(size: 26, lineHeight: 30, weight: .semibold, tracking: 0, family: .text, relativeTo: .title2, monospacedDigit: true)
+    static let quickRow: CGFloat = 60
+    static let searchHeight: CGFloat = 40
+    static let pickerMaxHeight: CGFloat = 420
     static let row: CGFloat = 52 // canvas Settings.dc.html: settings rows, SettingsMore.dc.html: account edit rows
     static let groupGap: CGFloat = 22 // canvas Settings.dc.html: gap between cards and above the version
     static let cardInset: CGFloat = 14 // canvas Settings.dc.html: card leading inset, weekend row, key field
@@ -76,8 +93,6 @@ enum SettingsSpec {
     static let chipsTop: CGFloat = 12 // canvas SettingsMore.dc.html: chips and split bar top
 
     // 币种
-    static let symbolColumn: CGFloat = 32 // canvas SettingsMore.dc.html: currency symbol column
-    static let codeColumn: CGFloat = 44 // canvas SettingsMore.dc.html: currency code column
     static let check: CGFloat = 20 // canvas SettingsMore.dc.html: base currency check
 
     // 添加账户 / 编辑账户
@@ -114,7 +129,6 @@ enum SettingsSpec {
     // canvas Settings.dc.html: DeepSeek key field
     static let key = DS.TextStyle(size: 16, lineHeight: 22, weight: .regular, tracking: 1, family: .num, relativeTo: .body, monospacedDigit: true)
     // canvas SettingsMore.dc.html: HK$ symbol
-    static let smallSymbol = DS.TextStyle(size: 11, lineHeight: 14, weight: .semibold, tracking: 0, family: .num, relativeTo: .caption2, monospacedDigit: true)
     // canvas SettingsMore.dc.html: icon picker monogram
     static let pickMonogram = DS.TextStyle(size: 22, lineHeight: 26, weight: .semibold, tracking: 0, family: .text, relativeTo: .title2, monospacedDigit: false)
     // canvas Onboard.dc.html: step titles

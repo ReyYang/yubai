@@ -453,6 +453,9 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
     public var subcategoryKeywords: [String: [String]]
     public var system: Bool
     public var hidden: Bool
+    /// The design-system icon picked in 编辑分类 (e.g. "cat-learning"). Nil keeps the icon from the name or symbol.
+    /// Older ledgers have none; a nil icon is never written.
+    public var icon: String? = nil
     public var id: String { CategoryNamespace.key(name, income: income) }
     public var isCatchAll: Bool { name == (income ? "其他收入" : "其他支出") }
     public init(_ name: String, _ symbol: String = "square.grid.2x2", income: Bool = false,
@@ -461,7 +464,7 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
         self.name = name; self.symbol = symbol; self.income = income; self.subcategories = subcategories
         self.keywords = keywords; self.subcategoryKeywords = subcategoryKeywords; self.system = system; self.hidden = hidden
     }
-    private enum CodingKeys: String, CodingKey { case name, symbol, income, subcategories, keywords, subcategoryKeywords, system, hidden }
+    private enum CodingKeys: String, CodingKey { case name, symbol, income, subcategories, keywords, subcategoryKeywords, system, hidden, icon }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name); symbol = try c.decode(String.self, forKey: .symbol)
@@ -471,6 +474,8 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
         subcategoryKeywords = try c.decodeIfPresent([String: [String]].self, forKey: .subcategoryKeywords) ?? [:]
         system = try c.decodeIfPresent(Bool.self, forKey: .system) ?? false
         hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+        // A malformed icon never blocks opening the ledger.
+        icon = (try? c.decodeIfPresent(String.self, forKey: .icon)) ?? nil
     }
     /// Goods belong to shopping; services/experiences to their domain. Tickets
     /// belong to transport; recurring monthly/yearly services to subscriptions.
@@ -578,6 +583,12 @@ public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {
     public var undo: ImportUndo?
     public init(filename: String, importedCount: Int, duplicateCount: Int, skippedCount: Int) { self.filename = filename; self.importedCount = importedCount; self.duplicateCount = duplicateCount; self.skippedCount = skippedCount }
 }
+/// A value carried along that equality ignores.
+struct OutsideEquality<Value: Sendable>: Equatable, Sendable {
+    var value: Value?
+    static func == (lhs: Self, rhs: Self) -> Bool { true }
+}
+
 public struct Preferences: Codable, Equatable, Sendable {
     // Legacy funds preferences: retained for archive compatibility, ignored by Finance.
     public var horizonDays = 90; public var emergencyReserve: Int64 = 0
@@ -591,13 +602,15 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var lastBillCurrency: BillCurrency?
     /// Nil means CNY. Display only; the ledger stays in CNY.
     public var mainCurrency: BillCurrency?
-    /// Latest daily reference rates.
-    public var syncedRates: SyncedExchangeRates?
     /// Nil means on.
     public var autoRateSync: Bool?
     /// Nil, including an old ledger, means enabled.
     public var yearlyBillsSetAside: Bool?
     public var quickCapture = QuickCapturePreferences()
+    /// What an older build stored as synced rates in the ledger; decoded only, so the next save drops it.
+    /// Never part of equality: a ledger read from an old file equals the same ledger written by this build.
+    public var legacySyncedRates: SyncedExchangeRates? { legacyRates.value }
+    var legacyRates = OutsideEquality<SyncedExchangeRates>()
     public var categoryOrder: [String] = Category.defaults.filter { !$0.system }.map(\.name)
     public var onboardingComplete = false
     public var profileColdStartDone = false
@@ -649,7 +662,8 @@ public struct Preferences: Codable, Equatable, Sendable {
         billExchangeRates = try values.decodeIfPresent([ManualExchangeRate].self, forKey: .billExchangeRates)
         lastBillCurrency = try values.decodeIfPresent(BillCurrency.self, forKey: .lastBillCurrency)
         mainCurrency = try? values.decodeIfPresent(BillCurrency.self, forKey: .mainCurrency)
-        syncedRates = try? values.decodeIfPresent(SyncedExchangeRates.self, forKey: .syncedRates)
+        // syncedRates (older builds) is device-local now: read once for the device to adopt, never written.
+        legacyRates.value = try? values.decodeIfPresent(SyncedExchangeRates.self, forKey: .syncedRates)
         autoRateSync = try? values.decodeIfPresent(Bool.self, forKey: .autoRateSync)
         yearlyBillsSetAside = try values.decodeIfPresent(Bool.self, forKey: .yearlyBillsSetAside)
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder
@@ -679,7 +693,6 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encodeIfPresent(billExchangeRates, forKey: .billExchangeRates)
         try c.encodeIfPresent(lastBillCurrency, forKey: .lastBillCurrency)
         try c.encodeIfPresent(mainCurrency, forKey: .mainCurrency)
-        try c.encodeIfPresent(syncedRates, forKey: .syncedRates)
         if autoRateSync == false { try c.encode(false, forKey: .autoRateSync) }
         try c.encodeIfPresent(yearlyBillsSetAside, forKey: .yearlyBillsSetAside)
         try c.encode(quickCapture, forKey: .quickCapture); try c.encode(categoryOrder, forKey: .categoryOrder)

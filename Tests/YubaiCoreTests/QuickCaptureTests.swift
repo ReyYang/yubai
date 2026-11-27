@@ -12,6 +12,26 @@ final class QuickCaptureTests: XCTestCase {
         guard case .drafts(let result) = try QuickCapture.parse(text, in: ledger ?? fixture(), now: now) else { XCTFail("应识别金额"); return [] }
         return result
     }
+    func testCardSummariesCountRecentApplePayBillsAndKeepMappedCards() throws {
+        var ledger = fixture()
+        let credit = ledger.accounts[1]
+        try QuickCapture.applePay(merchant: "瑞幸咖啡", amount: "¥18.00", card: "招行 尾号 6214", date: now, in: &ledger, now: now)
+        try QuickCapture.applePay(merchant: "盒马", amount: "¥88.00", card: "招行 尾号 6214", date: now.addingTimeInterval(-86_400 * 3), in: &ledger, now: now)
+        try QuickCapture.applePay(merchant: "老店", amount: "¥9.00", card: "招行 尾号 6214", date: now.addingTimeInterval(-86_400 * 40), in: &ledger, now: now)
+        try QuickCapture.setAccount(credit.id, forCard: "Apple Card 尾号 1102", in: &ledger)
+        let cards = QuickCapture.cards(in: ledger, now: now)
+        XCTAssertEqual(cards.map(\.card), ["招行 尾号 6214", "Apple Card 尾号 1102"])
+        XCTAssertEqual(cards[0].recentCount, 2, "the 40-day-old bill is outside 30 days")
+        XCTAssertNil(cards[0].accountID)
+        XCTAssertEqual(cards[1].recentCount, 0)
+        XCTAssertFalse(cards[1].everUsed)
+        XCTAssertTrue(cards[0].everUsed)
+        XCTAssertEqual(cards[1].accountID, credit.id)
+        try QuickCapture.setAccount(credit.id, forCard: " 招行 尾号 6214 ", in: &ledger)
+        XCTAssertEqual(QuickCapture.cards(in: ledger, now: now).first { $0.recentCount == 2 }?.accountID, credit.id)
+        XCTAssertThrowsError(try QuickCapture.setAccount(UUID(), forCard: "x", in: &ledger))
+    }
+
     func testLocalParserSharesAmountsAndMultipleDrafts() throws {
         for text in ["午饭 32", "咖啡 18 和面包 12", "打车24", "两杯咖啡各18"] {
             let entries = try drafts(text)
@@ -182,5 +202,23 @@ final class QuickCaptureTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(QuickCaptureSnapshot.self, from: JSONEncoder().encode(snapshot)), snapshot)
         QuickCapture.undo(entryID: ledger.entries.last!.id, in: &ledger, now: now)
         XCTAssertEqual(QuickCaptureSnapshot(ledger: ledger, now: now).todayCount, 2)
+    }
+
+    func testDeletingAMappingFallsBackToTheDefault() throws {
+        var ledger = fixture()
+        let (cash, credit) = (ledger.accounts[0], ledger.accounts[1])
+        try QuickCapture.setAccount(credit.id, forCard: "招行 尾号 6214", in: &ledger)
+        XCTAssertEqual(QuickCapture.account(forCard: " 招行 尾号 6214", in: ledger), credit.id, "looked up by the normalized key")
+        XCTAssertEqual(try QuickCapture.applePay(merchant: "盒马", amount: "¥88.00", card: "招行 尾号 6214", date: now, in: &ledger, now: now).entry.accountID, credit.id)
+        QuickCapture.removeAccount(forCard: "招行 尾号 6214 ", in: &ledger)
+        XCTAssertNil(QuickCapture.account(forCard: "招行 尾号 6214", in: ledger))
+        XCTAssertEqual(try QuickCapture.applePay(merchant: "瑞幸", amount: "¥18.00", card: "招行 尾号 6214", date: now.addingTimeInterval(600), in: &ledger, now: now).entry.accountID,
+                       ManualBookkeeping.defaultAccount(in: ledger)?.id ?? cash.id)
+
+        ledger.categories = [Category("吃饭"), Category("购物")]
+        try QuickCapture.remember(merchant: "盒马", category: "吃饭", income: false, in: &ledger)
+        let key = try XCTUnwrap(ledger.classificationMemory.keys.first)
+        QuickCapture.forgetMerchant(key: key, in: &ledger)
+        XCTAssertTrue(ledger.classificationMemory.isEmpty)
     }
 }

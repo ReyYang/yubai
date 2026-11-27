@@ -15,7 +15,7 @@ struct WishEditor: View {
                     CardTextFieldRow(title: "名字", text: $title, identifier: "wishTitle", autofocus: true)
                     EntryFormDivider()
                     Button { keypad = EntryKeypad(amount: amount); editingAmount = true } label: {
-                        EntryFormRow(title: "金额") { AmountLabel(cents: amount, hide: store.preferences.hideAmounts) }
+                        EntryFormRow(title: "金额") { AmountLabel(cents: amount, hide: store.preferences.hideAmounts, stored: true) }
                     }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("wishAmount")
                 }
             }

@@ -15,8 +15,17 @@ public enum BillCurrency: String, CaseIterable, Codable, Identifiable, Sendable 
         case .jpy: "日元"; case .sgd: "新加坡元"; case .aud: "澳元"; case .cad: "加拿大元"
         }
     }
+    /// Yen has no minor unit: shown whole.
+    public var fractionDigits: Int { self == .jpy ? 0 : 2 }
     public func amountText(_ cents: Int64, hidden: Bool = false) -> String {
-        hidden ? "••••" : symbol + Money.text(cents, currency: false)
+        hidden ? "••••" : symbol + formatted(cents)
+    }
+    /// The number alone, grouped, with this currency's decimals. `cents` is hundredths of a unit.
+    public func formatted(_ cents: Int64) -> String {
+        guard fractionDigits == 0 else { return MoneyDisplay.number(cents, digits: 2) }
+        var value = Decimal(cents) / 100, rounded = Decimal()
+        NSDecimalRound(&rounded, &value, 0, .plain)
+        return MoneyDisplay.number(NSDecimalNumber(decimal: rounded).int64Value, digits: 0)
     }
 }
 
@@ -73,6 +82,17 @@ extension FixedFlows {
         rates.removeAll { $0.currency == rate.currency }; rates.append(rate)
         next.preferences.billExchangeRates = rates
         next.preferences.lastBillCurrency = rate.currency
+        try next.validate(); ledger = next
+    }
+    /// 用同步的: drop the fixed rate so new entries use the synced one again.
+    /// A 固定收支 billed in this currency still needs it.
+    public static func removeRate(_ currency: BillCurrency, in ledger: inout Ledger) throws {
+        guard !ledger.plans.contains(where: { $0.currency == currency && $0.active }) else {
+            throw YubaiError.invalid("固定收支在用这个汇率。")
+        }
+        var next = ledger
+        next.preferences.billExchangeRates = (next.preferences.billExchangeRates ?? []).filter { $0.currency != currency }
+        if next.preferences.billExchangeRates?.isEmpty == true { next.preferences.billExchangeRates = nil }
         try next.validate(); ledger = next
     }
     public static func exchangeRate(for currency: BillCurrency, in ledger: Ledger, now: Date) -> ManualExchangeRate? {

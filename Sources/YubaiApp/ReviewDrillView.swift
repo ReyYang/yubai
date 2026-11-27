@@ -6,14 +6,19 @@ struct ReviewDrillView: View {
     let categories: [String]
     let isOther: Bool
     let selection: OverviewPeriodSelection
+    /// Opened from the 多花 card: same 口径 as the card, or the plain category page once it is no longer 多花.
+    var anomaly = false
     @Environment(AppStore.self) private var store
 
     var body: some View {
         let _ = OverviewRenderCounts.hit("drillBody")
         let now = store.financialNow
-        let data = OverviewAnalytics.categoryDrill(in: store.current, title: title, categories: categories, isOther: isOther, selection: selection, now: now)
+        let data = (anomaly ? OverviewAnalytics.anomalyDrill(in: store.current, category: title, selection: selection, now: now) : nil)
+            ?? OverviewAnalytics.categoryDrill(in: store.current, title: title, categories: categories, isOther: isOther, selection: selection, now: now)
         let hidden = store.preferences.hideAmounts
-        let colors = DSChartPalette.colors(anomalies: data.slices.map(\.isAnomaly))
+        // The 退款 row is money back, not a share of the spending: neutral, and outside the bar.
+        let colors = DSChartPalette.colors(anomalies: data.slices.filter { $0.amount > 0 }.map(\.isAnomaly))
+            + data.slices.filter { $0.amount < 0 }.map { _ in DS.Color.track }
         VStack(spacing: .zero) {
             OverviewNavigationBar(title: data.title)
             ScrollView {
@@ -44,7 +49,13 @@ struct ReviewDrillView: View {
                 .foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                 .accessibilityLabel(hidden ? "金额已隐藏" : OverviewDisplay.money(data.amount, hidden: false))
                 .accessibilityIdentifier("overviewDrillAmount")
-            if !hidden, let change = data.changePercent {
+            if let cycles = data.baselineCycles {
+                let difference = data.amount - data.previous
+                Text("近 \(cycles) 期同期平均 " + OverviewDisplay.money(data.previous, hidden: hidden)
+                     + (hidden ? "" : " · 多 " + OverviewDisplay.money(difference, hidden: false)))
+                    .dsText(DS.Font.tPill).monospacedDigit().fontWeight(.semibold).foregroundStyle(DS.Color.warnInk)
+                    .accessibilityIdentifier("overviewDrillBaseline")
+            } else if !hidden, let change = data.changePercent {
                 let difference = data.amount - data.previous
                 Text("比上期同期 " + OverviewDisplay.percent(change)
                      + (difference == 0 ? "" : (difference < 0 ? " · 少 " : " · 多 ") + OverviewDisplay.money(abs(difference), hidden: false)))
@@ -55,16 +66,16 @@ struct ReviewDrillView: View {
     }
 
     private func subcategories(_ rows: [OverviewCategorySlice], colors: [Color], hidden: Bool) -> some View {
-        let total = rows.reduce(Int64(0)) { $0 + $1.amount }
+        let total = rows.reduce(Int64(0)) { $0 + max(0, $1.amount) }
         return VStack(alignment: .leading, spacing: .zero) {
             Text("小类").dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.ink3)
                 .accessibilityAddTraits(.isHeader).padding(.bottom, DS.Space.s8)
-            DSStackedBar(segments: rows.enumerated().map { index, row in
+            DSStackedBar(segments: rows.enumerated().filter { $0.element.amount > 0 }.map { index, row in
                 .init(id: row.id, value: Double(row.amount), color: colors[index])
             }, hidesAmounts: hidden).padding(.bottom, DS.Space.s4)
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
-                DSOverviewLegendRow(name: row.category, amount: OverviewDisplay.money(row.amount, hidden: hidden), color: colors[index],
-                                    share: hidden ? nil : OverviewDisplay.share(row.amount, of: total),
+                DSOverviewLegendRow(name: row.title, amount: OverviewDisplay.money(row.amount, hidden: hidden), color: colors[index],
+                                    share: hidden || row.amount < 0 ? nil : OverviewDisplay.share(row.amount, of: total),
                                     delta: hidden ? nil : row.changePercent.map(OverviewDisplay.percent),
                                     isAnomaly: row.isAnomaly, isDrill: true)
                     .frame(minHeight: OverviewSpec.drillRowHeight)
@@ -83,7 +94,7 @@ struct ReviewDrillView: View {
             case .previous: "上期"
             case .custom: ""
             }
-            Text("\(choice)\(data.title)账单 · \(data.totalCount) 笔")
+            Text("\(choice)\(data.title)账单 · \(data.totalCount.formatted()) 笔")
                 .dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.ink3)
                 .accessibilityAddTraits(.isHeader).padding(.bottom, DS.Space.s4)
             ForEach(Array(data.entries.prefix(5).enumerated()), id: \.element.id) { index, entry in
@@ -98,7 +109,7 @@ struct ReviewDrillView: View {
                     store.tabRouteRequest = .overviewBills(Set(categories), data.window.interval, Set(data.entries.map(\.id)))
                 } label: {
                     HStack(spacing: DS.Space.s4) {
-                        Text("看全部 \(data.totalCount) 笔").dsText(DS.Font.tLabelStrong)
+                        Text("看全部 \(data.totalCount.formatted()) 笔").dsText(DS.Font.tLabelStrong)
                         DSIconView(icon: .chevron, size: DS.Space.s12, color: DS.Color.accentInk)
                     }
                     .foregroundStyle(DS.Color.accentInk).frame(minHeight: DS.Size.tapMin)

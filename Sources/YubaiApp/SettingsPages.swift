@@ -25,7 +25,7 @@ struct RecurringView: View {
                     HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
                         Text(OverviewDisplay.money(total.total, hidden: hidden)).dsText(SettingsSpec.total).foregroundStyle(DS.Color.ink)
                             .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).accessibilityIdentifier("recurringTotal")
-                        Text("每月 · \(total.count) 项").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3)
+                        Text("每月 · \(total.count.formatted()) 项").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3)
                     }
                     .padding(.horizontal, DS.Space.s20).padding(.top, SettingsSpec.headerTop)
                     SubscriptionCalendar(month: shown, now: now, ledger: ledger) { offset in
@@ -56,7 +56,7 @@ struct RecurringView: View {
         let days = Dates.calendar.dateComponents([.day], from: Dates.day(now), to: due).day ?? 0
         let schedule = plan.frequency == .yearly ? "每年 " + SettingsDisplay.monthDay(due)
             : "每月 \(plan.monthlyDay ?? Dates.calendar.component(.day, from: plan.dueDate)) 日"
-        let detail = [OverviewDisplay.money(plan.amount, hidden: hidden) + (plan.currency == .cny ? "" : " " + plan.currency.rawValue),
+        let detail = [plan.currency == .cny ? OverviewDisplay.money(plan.amount, hidden: hidden) : plan.currency.amountText(plan.amount, hidden: hidden),
                       schedule, plan.accountID.map { store.accountName($0) }].compactMap { $0 }.joined(separator: " · ")
         return Button { store.sheet = .editPlan(plan.id) } label: {
             HStack(spacing: DS.Space.s12) {
@@ -233,13 +233,13 @@ struct CategorySettingsView: View {
                 withAnimation(reduced ? nil : DSMotion.smoothAnimation) { open = isOpen ? nil : category.name }
             } label: {
                 HStack(spacing: DS.Space.s12) {
-                    DSIconView(icon: SettingsDisplay.categoryIcon(category.name), size: DS.Size.icon, color: isOpen ? DS.Color.accentInk : DS.Color.ink2)
+                    DSIconView(icon: category.entryIcon, size: DS.Size.icon, color: isOpen ? DS.Color.accentInk : DS.Color.ink2)
                         .frame(width: DS.Size.iconTile, height: DS.Size.iconTile)
                         .background(isOpen ? DS.Color.accentSoft : DS.Color.surface, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
                     Text(category.name).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).lineLimit(1)
                     Spacer(minLength: DS.Space.s8)
                     if !category.subcategories.isEmpty {
-                        Text("\(category.subcategories.count) 个小类").dsText(DS.Font.tPill).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                        Text("\(category.subcategories.count.formatted()) 个小类").dsText(DS.Font.tPill).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     }
                     DSIconView(icon: .chevron, size: SettingsSpec.categoryChevron, color: isOpen ? DS.Color.ink : DS.Color.chevron)
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
@@ -368,7 +368,7 @@ struct AISettingsView: View {
                         .padding(.trailing, DS.Space.s12).frame(minHeight: SettingsSpec.row)
                         .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
                         Button { store.tabRouteRequest = .memories } label: {
-                            DSSettingsRow(icon: nil, name: "余白记得的", accessory: .link("\(store.settingsSummary.memoryCount) 条"))
+                            DSSettingsRow(icon: nil, name: "余白记得的", accessory: .link("\(store.settingsSummary.memoryCount.formatted()) 条"))
                         }.dsPressStyle().accessibilityIdentifier("openMemories")
                         Button { store.settingsSheet = .weeklyTime } label: {
                             DSSettingsRow(icon: nil, name: "每周回顾", accessory: .link(SettingsDisplay.reviewTime(preferences.reviewTime)))
@@ -416,58 +416,88 @@ struct AISettingsView: View {
 
 // MARK: 币种
 
+/// Canvas S-Currency 主币种与汇率 (Spec-Currency): pick the main currency (display only, asks first),
+/// 每天自动更新, the age of the last sync, and one row per foreign currency in use.
 struct CurrencyView: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
         let _ = SettingsRenderCounts.hit("currencyBody")
-        let rates = (store.preferences.billExchangeRates ?? []).filter(\.isValid)
-        let updated = rates.map(\.updatedAt).max()
+        let ledger = store.current, now = store.financialNow
+        let main = store.preferences.mainCurrency ?? .cny
+        let used = CurrencySettings.usedCurrencies(in: ledger).filter { $0 != .cny }
         VStack(spacing: .zero) {
-            OverviewNavigationBar(title: "币种")
+            OverviewNavigationBar(title: "主币种与汇率")
             ScrollView {
-                VStack(alignment: .leading, spacing: .zero) {
-                    Text("记账币种").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3).frame(height: DS.Space.s28, alignment: .leading)
-                    HStack(spacing: DS.Space.s12) {
-                        currency(.cny)
-                        Spacer(minLength: DS.Space.s8)
-                        DSIconView(icon: .done, size: SettingsSpec.check, color: DS.Color.accentInk)
-                    }
-                    .padding(.leading, DS.Space.s16).padding(.trailing, SettingsSpec.cardInset).frame(minHeight: SettingsSpec.subRow)
-                    .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
-                    .accessibilityElement(children: .combine).accessibilityAddTraits(.isSelected)
-                    HStack {
-                        Text("常用外币")
-                        Spacer(minLength: DS.Space.s8)
-                        if let updated { Text("汇率 " + SettingsDisplay.monthDay(updated) + " 更新").monospacedDigit() }
-                    }.dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3).frame(height: DS.Space.s28).padding(.top, SettingsSpec.groupGap)
+                VStack(alignment: .leading, spacing: DS.Space.s8) {
+                    sectionTitle("主币种")
                     DSSettingsCard(leading: DS.Space.s16) {
-                        ForEach(Array(rates.enumerated()), id: \.element.currency) { index, rate in
-                            Button { store.settingsSheet = .rate(rate.currency) } label: {
-                                HStack(spacing: DS.Space.s12) {
-                                    currency(rate.currency)
-                                    Spacer(minLength: DS.Space.s8)
-                                    Text("1 = " + rate.valueText).dsText(DS.Font.tPill).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                        ForEach(Array(BillCurrency.allCases.enumerated()), id: \.element) { index, currency in
+                            // A currency with no rate yet (never synced, none fixed) cannot be the main one.
+                            let available = currency == .cny || ExchangeRates.rate(for: currency, in: ledger, synced: store.rateSync.rates, now: now) != nil
+                            Button {
+                                guard currency != main else { return }
+                                if currency == .cny {
+                                    // Back to 人民币: the stored numbers again, nothing to confirm (Spec-Currency).
+                                    _ = store.update("主币种", recordUndo: false, entryMotion: false, showToast: false) {
+                                        try ExchangeRates.setMainCurrency(.cny, in: &$0, synced: nil, now: now)
+                                    }
+                                } else {
+                                    store.settingsSheet = .mainCurrency(currency)
                                 }
-                                .padding(.trailing, SettingsSpec.cardInset).frame(minHeight: SettingsSpec.subRow)
-                                .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                            } label: {
+                                HStack(spacing: .zero) {
+                                    Text(currency.symbol).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink2)
+                                        .fixedSize().padding(.trailing, DS.Space.s8).frame(minWidth: SettingsSpec.currencySymbolColumn, alignment: .leading)
+                                    Text(currency.unit).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).dsFillWidth()
+                                    DSIconView(icon: .done, size: SettingsSpec.check, color: DS.Color.accentInk)
+                                        .opacity(currency == main ? 1 : 0)
+                                }
+                                .padding(.trailing, DS.Space.s16)
+                                .frame(minHeight: SettingsSpec.currencyRow)
+                                .overlay(alignment: .top) {
+                                    if index > 0 {
+                                        DS.Color.separator.frame(height: DS.Stroke.hairline).padding(.leading, SettingsSpec.currencySymbolColumn)
+                                    }
+                                }
                                 .contentShape(Rectangle())
-                            }.dsPressStyle().accessibilityIdentifier("currency_" + rate.currency.rawValue)
+                            }
+                            .dsPressStyle()
+                            .disabled(!available)
+                            .opacity(available ? 1 : SettingsSpec.disabledOpacity)
+                            .accessibilityAddTraits(currency == main ? .isSelected : [])
+                            .accessibilityIdentifier("mainCurrency_" + currency.rawValue)
                         }
-                        if rates.count < BillCurrency.allCases.count - 1 {
-                            Button { store.settingsSheet = .addCurrency } label: {
-                                HStack(spacing: HomeSpec.gap6) {
-                                    DSIconView(icon: .add, size: SettingsSpec.calendarArrow, color: DS.Color.accentInk)
-                                    Text("添加币种").dsText(DS.Font.tBody).fontWeight(.semibold).foregroundStyle(DS.Color.accentInk)
+                    }
+                    sectionTitle("汇率").padding(.top, DS.Space.s12)
+                    DSSettingsCard(leading: DS.Space.s16) {
+                        DSSettingsRow(icon: nil, name: "每天自动更新", accessory: .toggle(Binding(
+                            get: { store.preferences.autoRateSync != false },
+                            set: { on in _ = store.update("汇率自动更新", recordUndo: false, entryMotion: false, showToast: false) { $0.preferences.autoRateSync = on ? nil : false } }
+                        )), separator: false)
+                        .accessibilityIdentifier("autoRateSync")
+                        lastSync(ledger, now: now)
+                        ForEach(used) { currency in
+                            Button { store.settingsSheet = .rate(currency) } label: {
+                                HStack(spacing: DS.Space.s8) {
+                                    Text(currency.unit).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).dsFillWidth()
+                                    let rate = ExchangeRates.rate(for: currency, in: ledger, synced: store.rateSync.rates, now: now)
+                                    if rate?.manual == true {
+                                        Text("手动").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink2)
+                                            .padding(.horizontal, SettingsSpec.tagInset).frame(height: SettingsSpec.tagHeight).dsPill()
+                                    }
+                                    Text(rate.map { "1 " + currency.symbol + " = " + CurrencySettings.rateText($0.cnyPerUnit) } ?? "未设")
+                                        .dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                                    DSIconView(icon: .chevron, size: SettingsSpec.chevron, color: DS.Color.chevron)
                                 }
-                                .frame(maxWidth: .infinity, minHeight: SettingsSpec.row, alignment: .leading)
-                                .overlay(alignment: .top) { if !rates.isEmpty { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                                .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
+                                .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
                                 .contentShape(Rectangle())
-                            }.dsPressStyle().accessibilityIdentifier("addCurrency")
+                            }.dsPressStyle().accessibilityIdentifier("currency_" + currency.rawValue)
                         }
                     }
                 }
-                .padding(.horizontal, DS.Space.s20).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s28)
+                .padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s28)
             }.scrollIndicators(.hidden).accessibilityIdentifier("currencyScroll")
         }
         .background(DS.Color.bg.ignoresSafeArea())
@@ -477,13 +507,144 @@ struct CurrencyView: View {
         #endif
     }
 
-    private func currency(_ code: BillCurrency) -> some View {
-        HStack(spacing: DS.Space.s12) {
-            Text(SettingsDisplay.symbol(code)).dsText(code == .hkd ? SettingsSpec.smallSymbol : DS.Font.tLabelStrong).monospacedDigit()
-                .foregroundStyle(DS.Color.ink).frame(width: SettingsSpec.symbolColumn)
-            Text(code.rawValue).dsText(DS.Font.tBody).fontWeight(.semibold).foregroundStyle(DS.Color.ink)
-                .frame(width: SettingsSpec.codeColumn, alignment: .leading)
-            Text(code.unit).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text).dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.ink3).padding(.horizontal, DS.Space.s4)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// 上次更新: when fresh, just the time. After 7 days without a success (X-sync-fail) the age turns amber
+    /// and 去更新 fetches now; while it runs the refresh glyph turns; a failure says why and offers 重试.
+    private func lastSync(_ ledger: Ledger, now: Date) -> some View {
+        let sync = store.rateSync
+        let fetched = sync.lastSuccess
+        let stale = ExchangeRates.isStale(sync, now: now)
+        let failed = sync.failures > 0 && sync.lastError != nil
+        return HStack(spacing: DS.Space.s8) {
+            VStack(alignment: .leading, spacing: .zero) {
+                Text("上次更新").dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink)
+                if stale {
+                    Text(fetched.map { CurrencySettings.syncTime($0, now: now) + " · " + CurrencySettings.age($0, now: now) } ?? "还没更新过")
+                        .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.warnInk)
+                }
+                if failed, let reason = sync.lastError {
+                    Text(reason).dsText(DS.Font.tSub).foregroundStyle(DS.Color.warnInk).accessibilityIdentifier("rateSyncError")
+                }
+            }.dsFillWidth()
+            if store.rateSyncRunning {
+                RateSyncSpinner().accessibilityLabel("更新中")
+            } else if stale || failed {
+                Button { Task { await store.syncExchangeRatesIfNeeded(force: true) } } label: {
+                    Text(failed ? "重试" : "去更新").dsText(SettingsSpec.pillLabel).foregroundStyle(DS.Color.accentInk)
+                        .padding(.horizontal, SettingsSpec.pillInset).frame(height: SettingsSpec.pillHeight)
+                        .dsPill(DS.Color.accentSoft)
+                        .frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
+                }
+                .dsPressStyle()
+                .accessibilityIdentifier("syncRatesNow")
+            } else if let fetched {
+                Text(CurrencySettings.syncTime(fetched, now: now)).dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink3)
+            }
+        }
+        .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
+        .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("lastRateSync")
+    }
+}
+
+/// The refresh glyph turning while rates are fetched; still under Reduce Motion.
+private struct RateSyncSpinner: View {
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var turning = false
+
+    var body: some View {
+        DSIconView(icon: .refresh, size: DS.Size.icon, color: DS.Color.accentInk)
+            .rotationEffect(.degrees(turning && !reduced ? 360 : 0))
+            .animation(reduced ? nil : .linear(duration: 1).repeatForever(autoreverses: false), value: turning)
+            .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            .onAppear { turning = true }
+    }
+}
+
+/// Facts for the 主币种与汇率 page.
+enum CurrencySettings {
+    /// Foreign currencies this ledger has used: in bills, in fixed bills, or with a fixed rate.
+    static func usedCurrencies(in ledger: Ledger) -> [BillCurrency] {
+        var used = Set(ledger.activeEntries.compactMap(\.originalCurrency))
+        used.formUnion(ledger.plans.map(\.currency))
+        used.formUnion((ledger.preferences.billExchangeRates ?? []).map(\.currency))
+        if let last = ledger.preferences.lastBillCurrency { used.insert(last) }
+        return BillCurrency.allCases.filter { used.contains($0) }
+    }
+
+    static func rateText(_ value: Decimal) -> String {
+        var raw = value, rounded = Decimal()
+        NSDecimalRound(&rounded, &raw, 4, .plain)
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.minimumFractionDigits = 4; formatter.maximumFractionDigits = 4
+        return formatter.string(from: NSDecimalNumber(decimal: rounded)) ?? "\(rounded)"
+    }
+
+    /// 今天 08:00 · 昨天 08:00 · 11月19日 08:00
+    static func syncTime(_ date: Date, now: Date) -> String {
+        let time = String(format: "%02d:%02d", Dates.calendar.component(.hour, from: date), Dates.calendar.component(.minute, from: date))
+        let day = Dates.day(date)
+        if day == Dates.day(now) { return "今天 " + time }
+        if day == Dates.day(Dates.addDays(-1, to: now)) { return "昨天 " + time }
+        let parts = Dates.calendar.dateComponents([.month, .day], from: date)
+        return "\(parts.month ?? 1)月\(parts.day ?? 1)日 " + time
+    }
+
+    static func age(_ date: Date, now: Date) -> String {
+        "\(max(0, Dates.calendar.dateComponents([.day], from: Dates.day(date), to: Dates.day(now)).day ?? 0)) 天前"
+    }
+}
+
+/// Canvas S-Currency-Confirm: a centered card — what changes, then 取消 / 改成X.
+struct MainCurrencyConfirm: View {
+    let currency: BillCurrency
+    @Environment(AppStore.self) private var store
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    @State private var shown = false
+
+    var body: some View {
+        let count = store.current.activeEntries.count
+        ZStack {
+            DS.Color.scrim.opacity(shown ? 1 : 0).ignoresSafeArea()
+                .contentShape(Rectangle()).onTapGesture(perform: close).accessibilityHidden(true)
+            VStack(spacing: DS.Space.s8) {
+                Text("主币种改成\(currency.unit)？").dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
+                    .multilineTextAlignment(.center).accessibilityAddTraits(.isHeader)
+                Text("已记的 \(count.formatted()) 笔按当天汇率折成\(currency.unit)显示，会随汇率变。").dsText(DS.Font.tLabel).monospacedDigit()
+                    .foregroundStyle(DS.Color.ink2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: DS.Space.s8) {
+                    DSButton("取消", kind: .secondary, action: close).accessibilityIdentifier("mainCurrencyCancel")
+                    DSButton("改成" + currency.unit, action: confirm).accessibilityIdentifier("mainCurrencyConfirm")
+                }.padding(.top, DS.Space.s12)
+            }
+            .padding(.horizontal, DS.Space.s20).padding(.top, SettingsSpec.confirmTop).padding(.bottom, DS.Space.s16)
+            .frame(width: SettingsSpec.confirmWidth)
+            .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.float, style: .continuous))
+            .dsShadow(DS.Shadow.float)
+            .scaleEffect(shown || reduced ? 1 : DSMotion.Role.floatCard.initialScale)
+            .opacity(shown ? 1 : 0)
+            .accessibilityElement(children: .contain).accessibilityAddTraits(.isModal)
+            .accessibilityAction(.escape, close)
+        }
+        .onAppear { withAnimation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation) { shown = true } }
+    }
+
+    private func close() {
+        withAnimation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation,
+                      completionCriteria: .logicallyComplete) { shown = false } completion: { store.settingsSheet = nil }
+    }
+
+    private func confirm() {
+        let now = store.financialNow
+        let synced = store.rateSync.rates
+        if store.update("主币种", recordUndo: false, entryMotion: false, showToast: false, { try ExchangeRates.setMainCurrency(currency, in: &$0, synced: synced, now: now) }) {
+            close()
         }
     }
 }
@@ -629,5 +790,22 @@ struct WishesHubView: View {
         Button(action: action) {
             DSSettingsRow(icon: icon, name: name, accessory: .link(value), separator: !first)
         }.dsPressStyle().accessibilityIdentifier(id)
+    }
+}
+
+/// 设置 › 账户: the same accounts and balances as 全景 · 资产, pushed with its own back.
+struct SettingsAccountsPage: View {
+    var body: some View {
+        VStack(spacing: .zero) {
+            OverviewNavigationBar(title: "账户")
+            ScrollView {
+                AssetsView().padding(.horizontal, DS.Space.s20).padding(.bottom, DS.Space.s28)
+            }.scrollIndicators(.hidden)
+        }
+        .background(DS.Color.bg.ignoresSafeArea())
+        .dsEdgeSwipeBack()
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
     }
 }

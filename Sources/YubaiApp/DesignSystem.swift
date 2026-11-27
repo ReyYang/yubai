@@ -1622,16 +1622,27 @@ struct AmountLabel: View {
     var sign: Sign = .automatic
     var currency: Bool? = nil
     var ink: Color = YubaiColor.label
+    /// An amount being typed or checked before it is saved: CNY, like what gets stored. Otherwise the
+    /// main currency, like every other amount the app shows.
+    var stored = false
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
     private var showsCurrency: Bool { currency ?? (resolvedRole == .hero || resolvedRole == .display) }
-    private var text: String { Self.text(cents, sign: sign, currency: showsCurrency) }
+    private var text: String {
+        // Next to amounts in another main currency, a CNY figure always says ¥.
+        if stored { return Self.text(cents, sign: sign, currency: showsCurrency || DisplayCurrency.current.currency != .cny) }
+        let prefix: String
+        switch sign { case .automatic: prefix = cents < 0 ? "−" : ""; case .inflow: prefix = "+"; case .outflow: prefix = "−"; case .none: prefix = "" }
+        let magnitude = cents == .min ? Int64.max : abs(cents)
+        return prefix + DisplayCurrency.current.text(magnitude, symbol: showsCurrency)
+    }
+    private var hiddenSymbol: String { stored ? "¥" : DisplayCurrency.current.symbol(for: cents) }
     private var numericValue: Double {
         switch sign { case .automatic: Double(cents) / 100; case .inflow, .none: abs(Double(cents)) / 100; case .outflow: -abs(Double(cents)) / 100 }
     }
     var body: some View {
         let font = resolvedRole.font
         Group {
-            if hide { Text(showsCurrency ? "¥••••" : "••••").transition(.opacity) }
+            if hide { Text(showsCurrency ? hiddenSymbol + "••••" : "••••").transition(.opacity) }
             else { Text(text).numberTransition(value: numericValue).transition(.opacity) }
         }.yubaiFont(font).foregroundStyle(ink)
             // Page headline numerals are the one scale-to-fit exception.
@@ -2534,7 +2545,11 @@ private struct NumberKeyboardAccessory: UIViewRepresentable {
 // MARK: - Round 45 shell
 
 /// 金额文字，永远两位小数；隐藏金额时只留圆点。拼接文案用，单独显示金额用 `AmountLabel`。
-func amount2(_ cents: Int64, hide: Bool) -> String { hide ? "••••" : AmountLabel.text(cents) }
+func amount2(_ cents: Int64, hide: Bool) -> String {
+    guard !hide else { return "••••" }
+    // In the main currency, like `AmountLabel` beside it; amounts being typed or checked use `AmountLabel.text` (CNY).
+    return (cents < 0 ? "−" : "") + DisplayCurrency.current.text(cents == .min ? .max : abs(cents))
+}
 
 /// 三个标签页的图标：底栏和 macOS 侧栏共用。
 struct DestinationGlyph: View {
@@ -3394,7 +3409,7 @@ struct LedgerCategoryIcon: View {
     private var icon: DS.Icon {
         let name = category.components(separatedBy: " · ").first ?? category
         let match = store.current.categories.first { $0.name == name && (income == nil || $0.income == income) }
-        return match.map { DS.Icon(category: $0.name, symbol: $0.symbol, income: $0.income) } ?? .catOther
+        return match.map(\.entryIcon) ?? .catOther
     }
     var body: some View {
         Group {

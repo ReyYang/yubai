@@ -966,7 +966,7 @@ public struct ImportOrganizer: Sendable {
     }
     private static func fallbackQuestion(for entries: [Entry]) -> ImportQuestion {
         let rows = entries.sorted { $0.id.uuidString < $1.id.uuidString }
-        return ImportQuestion(text: "\(rows.count) 笔还没分类", entryIDs: rows.map(\.id), options: [], groupsByParty: true)
+        return ImportQuestion(text: "\(rows.count.formatted()) 笔还没分类", entryIDs: rows.map(\.id), options: [], groupsByParty: true)
     }
     static func group(_ input: [ImportQuestion], ledger: Ledger) -> [ImportQuestion] {
         let entries = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
@@ -976,11 +976,11 @@ public struct ImportOrganizer: Sendable {
             if question.isFallback {
                 if let i = result.firstIndex(where: \.isFallback) {
                     result[i].entryIDs = Array(Set(result[i].entryIDs + question.entryIDs)).sorted { $0.uuidString < $1.uuidString }
-                    result[i].text = "\(result[i].entryIDs.count) 笔还没分类"
+                    result[i].text = "\(result[i].entryIDs.count.formatted()) 笔还没分类"
                 } else {
                     var fallback = question
                     fallback.groupsByParty = true; fallback.options = []
-                    fallback.text = "\(fallback.entryIDs.count) 笔还没分类"
+                    fallback.text = "\(fallback.entryIDs.count.formatted()) 笔还没分类"
                     result.append(fallback)
                 }
                 continue

@@ -85,6 +85,18 @@ enum EntrySpec {
     static let categoryColumns = 5 // SPEC §8
     static let categorySecondaryGap: CGFloat = 14 // SPEC §8
     static let backspaceIcon: CGFloat = 24 // SPEC §7
+    // design-v2 canvas Main.dc.html 币种弹出列表 / 汇率弹层 / Extra.dc.html 填汇率
+    static let currencyListWidth: CGFloat = 248
+    static let currencySymbolColumn: CGFloat = 40
+    /// The rate card at its tallest (field, source line, 用同步的: three 44 pt rows) must fit under the ≈ line,
+    /// else it opens above.
+    static let rateCardMinHeight: CGFloat = DS.Size.tapMin * 3
+    static let ratePopoverWidth: CGFloat = 280
+    static let rateField = DS.TextStyle(size: 18, lineHeight: 24, weight: .semibold, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: true)
+    static let rateFillInset: CGFloat = 10
+    static let rateFillHeight: CGFloat = 22
+    static let rateCaret: CGFloat = 22
+    static let iconColumns = 6 // Main.dc.html S-CatEdit icon grid: repeat(6, 1fr)
     static let popoverSpace = "entryPopover" // coordinate space shared by the pills and their pop-out list
     static let dragMinimum: CGFloat = 6 // design-v2 Spec-Gestures: 竖向位移 > 6 才接管
     static let dismissVelocity: CGFloat = 600 // design-v2 Spec-Gestures: 下行速度 > 600 → 收起

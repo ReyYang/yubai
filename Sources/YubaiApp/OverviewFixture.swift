@@ -3,12 +3,21 @@ import YubaiCore
 
 enum OverviewFixture {
     case review, period, drill, assets, account, reconcile, reconcileCredit, invest
+    /// Extra.dc.html 全景 · 兜底类最大: a third of this period still 待整理.
+    case unsorted
+    /// The 多花 card's page.
+    case anomaly
 
     static let current: Self? = {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
         if let index = args.firstIndex(of: "-YubaiReviewFixture") {
-            return args.dropFirst(index + 1).first == "period" ? .period : .review
+            switch args.dropFirst(index + 1).first {
+            case "period": return .period
+            case "unsorted": return .unsorted
+            case "anomaly": return .anomaly
+            default: return .review
+            }
         }
         if args.contains("-YubaiReviewDrillFixture") { return .drill }
         if args.contains("-YubaiAssetsFixture") { return .assets }
@@ -42,7 +51,7 @@ enum OverviewFixture {
 
     func makeSeed() -> Seed {
         switch self {
-        case .review, .period, .drill: reviewSeed()
+        case .review, .period, .drill, .unsorted, .anomaly: reviewSeed()
         case .assets, .account, .reconcile, .reconcileCredit, .invest: accountSeed()
         }
     }
@@ -111,7 +120,21 @@ enum OverviewFixture {
                                         accountID: bank.id, title: "工资", category: "工资奖金"))
         }
 
+        if self == .anomaly {
+            // A second earlier period, so 购物 has a 近 2 期 baseline to beat.
+            for (name, amount) in [("衣服", 30_000), ("数码配件", 20_000), ("日用杂货", 26_000)] {
+                ledger.entries.append(spending("2026-09-12", name, Int64(amount), category: "购物", subcategory: name))
+            }
+        }
+        if self == .unsorted {
+            for day in 11...22 {
+                ledger.entries.append(spending("2026-11-\(day)", "便利店 \(day)", 30_000, category: Classification.pendingCategory, subcategory: nil))
+            }
+        }
         var seed = Seed(ledger: ledger)
+        if self == .anomaly, let found = OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly {
+            seed.route = .anomaly(category: found.category, selection: .current)
+        }
         if self == .drill { seed.route = .whereCategory(title: "购物", categories: ["购物"], isOther: false, selection: .current) }
         if self == .period { seed.periodSheet = .custom(start: Self.date("2026-10-01"), end: Self.date("2026-11-23")) }
         return seed

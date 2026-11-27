@@ -59,7 +59,7 @@ struct EntryCategoryManagerView: View {
                     .padding(.top, DS.Space.s8)
                     .padding(.bottom, DS.Space.s16)
                     .padding(.horizontal, DS.Space.s16)
-                    .entryPlainRow()
+                    .dsPlainRow()
                 ForEach(Array(movable.enumerated()), id: \.element.id) { index, category in
                     categoryRow(category, index: index, count: count)
                         .nativeSwipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -82,7 +82,7 @@ struct EntryCategoryManagerView: View {
                 ForEach(fixed) { category in
                     categoryRow(category, index: count - 1, count: count)
                 }
-                Color.clear.frame(height: DS.Space.s28).entryPlainRow()
+                Color.clear.frame(height: DS.Space.s28).dsPlainRow()
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -98,7 +98,7 @@ struct EntryCategoryManagerView: View {
             get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible, presenting: deleting) { category in
             Button("删除", role: .destructive) { model.deleteCategory(category.name, income: category.income) }
         } message: { category in
-            Text("已记的 \(model.entryCount(category: category.name, income: category.income)) 笔改到「\(category.income ? "其他收入" : "其他支出")」")
+            Text("已记的 \(model.entryCount(category: category.name, income: category.income).formatted()) 笔改到「\(category.income ? "其他收入" : "其他支出")」")
         }
     }
 
@@ -138,7 +138,7 @@ struct EntryCategoryManagerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(EntryTactileButtonStyle())
-        .entryCardRow(first: index == 0, last: index == count - 1)
+        .dsCardRow(first: index == 0, last: index == count - 1)
         .accessibilityHint(category.isCatchAll ? "查看这个分类" : "编辑这个分类，按住拖动排序")
     }
 }
@@ -183,10 +183,17 @@ private struct EntryCategoryEditView: View {
                     .padding(.top, DS.Space.s12)
                     .padding(.bottom, DS.Space.s20)
                     .accessibilityHidden(true)
-                    .entryPlainRow()
+                    .dsPlainRow()
                 if !readOnly {
                     nameRow
-                        .entryCardRow(first: true, last: true)
+                        .dsCardRow(first: true, last: true)
+                }
+                // The picks are expense icons; income categories keep theirs.
+                if let category, !readOnly, !category.income {
+                    iconGrid(category)
+                        .padding(.vertical, DS.Space.s12)
+                        .dsCardRow(first: true, last: true)
+                        .padding(.top, DS.Space.s20)
                 }
                 if let category { subcategories(category) }
                 if category != nil && !readOnly {
@@ -198,9 +205,9 @@ private struct EntryCategoryEditView: View {
                     .buttonStyle(EntryTactileButtonStyle())
                     .padding(.top, DS.Space.s20)
                     .padding(.horizontal, DS.Space.s16)
-                    .entryPlainRow()
+                    .dsPlainRow()
                 }
-                Color.clear.frame(height: DS.Space.s28).entryPlainRow()
+                Color.clear.frame(height: DS.Space.s28).dsPlainRow()
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -215,14 +222,46 @@ private struct EntryCategoryEditView: View {
         .confirmationDialog("删除「\(current ?? "")」？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("删除", role: .destructive, action: delete)
         } message: {
-            Text("已记的 \(model.entryCount(category: current ?? "", income: target.income)) 笔改到「\(fallback)」")
+            Text("已记的 \(model.entryCount(category: current ?? "", income: target.income).formatted()) 笔改到「\(fallback)」")
         }
         .confirmationDialog(deletingSub.map { "删除「\($0)」？" } ?? "", isPresented: Binding(
             get: { deletingSub != nil }, set: { if !$0 { deletingSub = nil } }), titleVisibility: .visible, presenting: deletingSub) { sub in
             Button("删除", role: .destructive) { remove(sub) }
         } message: { sub in
-            Text("已记的 \(model.entryCount(category: current ?? "", subcategory: sub, income: target.income)) 笔改到「\(current ?? "")」")
+            Text("已记的 \(model.entryCount(category: current ?? "", subcategory: sub, income: target.income).formatted()) 笔改到「\(current ?? "")」")
         }
+    }
+
+    /// Canvas S-CatEdit 图标: six to a row, 44 high, the picked one on accent-soft.
+    private func iconGrid(_ category: YubaiCore.Category) -> some View {
+        let picked = category.entryIcon
+        // Spec-Issues 4: every category's icon is its own — one another category shows cannot be picked.
+        let taken = Set(model.ledger.categories.filter { $0.income == category.income && !$0.system && $0.name != category.name }.map(\.entryIcon))
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: EntrySpec.iconColumns),
+                         spacing: DS.Space.s8) {
+            ForEach(DS.Icon.categoryChoices, id: \.self) { icon in
+                let on = icon == picked
+                let used = taken.contains(icon) && !on
+                Button { pick(icon) } label: {
+                    icon.view(size: DS.Size.icon, color: on ? DS.Color.accentInk : DS.Color.ink2)
+                        .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin)
+                        .background(on ? DS.Color.accentSoft : DS.Color.surface,
+                                    in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
+                }
+                .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+                .disabled(used)
+                .opacity(used ? SettingsSpec.disabledOpacity : 1)
+                .accessibilityLabel(icon.choiceName)
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, DS.Space.s12)
+    }
+
+    private func pick(_ icon: DS.Icon) {
+        guard let current else { return }
+        let income = target.income
+        model.mutateLedger("分类图标") { try CategoryModel.setIcon(icon.rawValue, category: current, income: income, in: &$0) }
     }
 
     private var nameRow: some View {
@@ -246,7 +285,7 @@ private struct EntryCategoryEditView: View {
                 .padding(.bottom, DS.Space.s8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
-                .entryPlainRow()
+                .dsPlainRow()
             ForEach(Array(subs.enumerated()), id: \.element) { index, sub in
                 HStack {
                     Text(sub).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).dsFillWidth()
@@ -261,7 +300,7 @@ private struct EntryCategoryEditView: View {
                         DS.Color.separator.frame(height: DS.Stroke.hairline).padding(.leading, DS.Space.s16)
                     }
                 }
-                .entryCardRow(first: index == 0, last: index == rows - 1)
+                .dsCardRow(first: index == 0, last: index == rows - 1)
                 .modifier(EntrySubSwipe(enabled: !readOnly, scale: displayScale) { deletingSub = sub })
             }
             .onMove(perform: readOnly ? nil : { from, to in
@@ -270,7 +309,7 @@ private struct EntryCategoryEditView: View {
                 reorder(moved)
             })
             if !readOnly {
-                addRow.entryCardRow(first: subs.isEmpty, last: true)
+                addRow.dsCardRow(first: subs.isEmpty, last: true)
             }
         }
     }
@@ -309,8 +348,11 @@ private struct EntryCategoryEditView: View {
                 if model.draftUses(category: old, income: income) { model.draft.category = cleaned }
                 current = cleaned
             }
-        } else if model.mutateLedger("添加分类", { try CategoryModel.add(YubaiCore.Category(cleaned, income: income), in: &$0) }) {
-            current = cleaned
+        } else {
+            // Every category gets its own icon (Spec-Issues 4).
+            var added = YubaiCore.Category(cleaned, income: income)
+            added.icon = DS.Icon.newCategoryIcon(name: cleaned, income: income, in: model.ledger)
+            if model.mutateLedger("添加分类", { try CategoryModel.add(added, in: &$0) }) { current = cleaned }
         }
     }
 
@@ -368,16 +410,16 @@ private struct EntrySubSwipe: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     /// A List row that draws nothing of its own: spacing, headers, the segmented control.
-    func entryPlainRow() -> some View {
+    func dsPlainRow() -> some View {
         listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
     }
 
     /// A row of a raised, radius-m group 16 in from each edge; the group's ends round.
-    func entryCardRow(first: Bool, last: Bool) -> some View {
+    func dsCardRow(first: Bool, last: Bool) -> some View {
         let radius = DS.Radius.m
         return listRowInsets(EdgeInsets(top: .zero, leading: DS.Space.s16, bottom: .zero, trailing: DS.Space.s16))
             .listRowSeparator(.hidden)
@@ -414,4 +456,18 @@ struct EntryPageHeader<Trailing: View>: View {
         .frame(height: DS.Size.tapMin)
         .padding(.horizontal, DS.Space.s8)
     }
+}
+
+extension DS.Icon {
+    /// The icon a new category starts with, stored so it stays put: what its name means if no category
+    /// already shows it (by meaning or by a stored icon), else the first pick none shows. Nil when the
+    /// meaning icon is free, so nothing needs storing. Income categories show no icon cell.
+    static func newCategoryIcon(name: String, income: Bool, in ledger: Ledger) -> String? {
+        guard !income else { return nil }
+        let shown = Set(categoryIcons(ledger.categories).filter { !$0.key.income }.values)
+        let natural = DS.Icon(category: name, symbol: YubaiCore.Category(name).symbol, income: false)
+        if natural != .catOther && !shown.contains(natural) { return nil }
+        return categoryChoices.first { !shown.contains($0) && $0 != .catOther && $0 != .incInvestment }?.rawValue
+    }
+
 }

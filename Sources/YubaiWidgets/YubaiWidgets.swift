@@ -60,8 +60,8 @@ private struct CaptureWidgetView: View {
             case .accessoryRectangular:
                 VStack(alignment: .leading, spacing: 2) {
                     if let snapshot = entry.snapshot {
-                        Text((snapshot.headlineTitle ?? "还能花") + " " + Money.text(snapshot.available)).font(.headline).monospacedDigit().privacySensitive()
-                        Text("今天记了 \(snapshot.todayCount) 笔").font(.caption).privacySensitive()
+                        Text((snapshot.headlineTitle ?? "还能花") + " " + snapshot.money(snapshot.available)).font(.headline).monospacedDigit().privacySensitive()
+                        Text("今天记了 \(snapshot.todayCount.formatted()) 笔").font(.caption).privacySensitive()
                     } else { Label("记一笔", icon: .add, size: 17) }
                 }
             case .systemMedium: medium
@@ -75,8 +75,8 @@ private struct CaptureWidgetView: View {
         VStack(alignment: .leading, spacing: 4) {
             if let snapshot = entry.snapshot {
                 Text(snapshot.headlineTitle ?? "还能花").font(.caption).foregroundStyle(.secondary)
-                Text(Money.text(snapshot.available)).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit().minimumScaleFactor(0.5).lineLimit(1).privacySensitive()
-                Text("今天记了 \(snapshot.todayCount) 笔 · " + Money.text(snapshot.todayTotal)).font(.system(size: 11)).foregroundStyle(.secondary).privacySensitive()
+                Text(snapshot.money(snapshot.available)).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit().minimumScaleFactor(0.5).lineLimit(1).privacySensitive()
+                Text("今天记了 \(snapshot.todayCount.formatted()) 笔 · " + snapshot.money(snapshot.todayTotal)).font(.system(size: 11)).foregroundStyle(.secondary).privacySensitive()
             } else { Label("余白", systemImage: "square.righthalf.filled").font(.headline) }
             Spacer(minLength: 4)
             Link(destination: CaptureSnapshotBridge.addURL()) { Label("记一笔", icon: .add, size: 15).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 40).background(brand, in: Capsule()).foregroundStyle(scheme == .dark ? .black : .white) }
@@ -87,7 +87,7 @@ private struct CaptureWidgetView: View {
             HStack {
                 Text(entry.snapshot?.headlineTitle ?? "余白").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                if let snapshot = entry.snapshot { Text(Money.text(snapshot.available)).font(.system(size: 20, weight: .semibold, design: .rounded)).monospacedDigit().privacySensitive() }
+                if let snapshot = entry.snapshot { Text(snapshot.money(snapshot.available)).font(.system(size: 20, weight: .semibold, design: .rounded)).monospacedDigit().privacySensitive() }
             }
             Spacer(minLength: 0)
             HStack(spacing: 8) {
@@ -95,7 +95,7 @@ private struct CaptureWidgetView: View {
                     ForEach(snapshot.frequent.indices, id: \.self) { index in
                         let item = snapshot.frequent[index]
                         Link(destination: CaptureSnapshotBridge.addURL(category: item.category, amount: item.amount, purpose: item.purpose)) {
-                            VStack(spacing: 2) { Text(item.purpose).fontWeight(.medium).lineLimit(1); Text(Money.text(item.amount)).monospacedDigit().foregroundStyle(.secondary) }
+                            VStack(spacing: 2) { Text(item.purpose).fontWeight(.medium).lineLimit(1); Text(snapshot.money(item.amount)).monospacedDigit().foregroundStyle(.secondary) }
                                 .font(.caption).frame(maxWidth: .infinity, minHeight: 44).background(raised, in: RoundedRectangle(cornerRadius: 14)).privacySensitive()
                         }
                     }
@@ -122,3 +122,8 @@ private struct ScreenshotCaptureControl: ControlWidget {
     }
 }
 #endif
+
+extension QuickCaptureSnapshot {
+    /// Amounts in the app's main currency, as the app published them; plain CNY from older snapshots.
+    func money(_ cents: Int64) -> String { (display ?? .cny).text(cents, symbol: true) }
+}

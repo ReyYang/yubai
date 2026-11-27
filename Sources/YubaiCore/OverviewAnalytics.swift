@@ -30,6 +30,8 @@ public struct OverviewPeriodWindow: Equatable, Sendable {
 
 public struct OverviewCategorySlice: Equatable, Sendable, Identifiable {
     public var id: String { category }
+    /// What the row is called: the refunds row is 退款.
+    public var title: String { category == OverviewAnalytics.refundGroup ? OverviewAnalytics.refundTitle : category }
     public let category: String
     public let categories: [String]
     public let amount: Int64
@@ -58,6 +60,8 @@ public struct OverviewReviewSnapshot: Equatable, Sendable {
     public var unsorted: (count: Int, amount: Int64)? { unsortedCount > 0 ? (unsortedCount, unsortedAmount) : nil }
     var unsortedCount = 0
     var unsortedAmount: Int64 = 0
+    /// The 待整理 expenses behind `unsorted`, for 去整理.
+    public internal(set) var unsortedEntryIDs: [UUID] = []
 }
 
 public struct OverviewCategoryDrill: Equatable, Sendable {
@@ -72,6 +76,8 @@ public struct OverviewCategoryDrill: Equatable, Sendable {
     public var totalCount: Int { entries.count }
     public let budget: HomeBudget?
     public let window: OverviewPeriodWindow
+    /// Set for the 多花 drill: `previous` is then the average of this many earlier periods.
+    public var baselineCycles: Int? = nil
 }
 
 public extension Account {
@@ -182,6 +188,7 @@ public enum OverviewAnalytics {
         if spent > 0, Decimal(unsortedAmount) * 10 > Decimal(spent) * 3 {
             snapshot.unsortedCount = unsorted.filter { $0.entry.nature == .expense }.count
             snapshot.unsortedAmount = unsortedAmount
+            snapshot.unsortedEntryIDs = unsorted.filter { $0.entry.nature == .expense }.map(\.entry.id)
         }
         return snapshot
     }
@@ -195,13 +202,10 @@ public enum OverviewAnalytics {
         let anomaly = !isOther && categories.count == 1 && categories.first == self.anomaly(
             in: ledger, selection: selection, window: data.window, current: data.current, now: now)?.category
         func group(_ row: Spending) -> String {
-            isOther ? row.assignment.category : row.assignment.subcategory ?? "未分类"
+            row.amount < 0 ? refundGroup : isOther ? row.assignment.category : row.assignment.subcategory ?? "未分类"
         }
         let earlier = totals(previous, by: group)
-        let ordered = orderedTotals(totals(current, by: group))
-        let slices = ordered.enumerated().map { index, pair in
-            slice(pair.key, amount: pair.value, previous: earlier[pair.key, default: 0], anomaly: anomaly && index == 0)
-        }
+        let slices = drillSlices(totals(current, by: group), anomaly: anomaly) { earlier[$0, default: 0] }
         let budget = !isOther && categories.count == 1 ? HomeBudgets(in: ledger, now: now).ordered.first {
             $0.categories.contains(categories[0])
         } : nil
@@ -359,16 +363,38 @@ public enum OverviewAnalytics {
     /// category never count. Needs 2 earlier periods with spending, a nonzero
     /// baseline, and an excess over 30% that is at least ¥100. The largest
     /// excess wins.
+    /// Everyday spending, the only kind 多花 compares: no plan, rent, pending 报销/AA, 待整理 or 其他支出.
+    static func isEveryday(_ row: Spending, lookup: [UUID: Entry]) -> Bool {
+        let source = row.entry.relatedEntryID.flatMap { lookup[$0] } ?? row.entry
+        return source.planID == nil && source.rentID == nil && source.pendingRecovery == nil
+            && row.entry.planID == nil && row.entry.rentID == nil
+            && !Classification.isPending(row.assignment.category)
+            && row.assignment.category != "其他支出"
+    }
+
+    /// The page behind the 多花 card: the same everyday bills, amount and baseline as the card.
+    /// Nil when the category is no longer the period's 多花.
+    public static func anomalyDrill(in ledger: Ledger, category: String, selection: OverviewPeriodSelection, now: Date) -> OverviewCategoryDrill? {
+        let data = spending(in: ledger, selection: selection, now: now)
+        guard let found = anomaly(in: ledger, selection: selection, window: data.window, current: data.current, now: now),
+              found.category == category else { return nil }
+        let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        let rows = data.current.filter { $0.assignment.category == category && isEveryday($0, lookup: lookup) }
+        func group(_ row: Spending) -> String { row.amount < 0 ? refundGroup : row.assignment.subcategory ?? "未分类" }
+        let slices = drillSlices(totals(rows, by: group), anomaly: true) { _ in 0 }
+        let budget = HomeBudgets(in: ledger, now: now).ordered.first { $0.categories.contains(category) }
+        var drill = OverviewCategoryDrill(title: category, amount: found.amount, previous: found.baseline, isAnomaly: true,
+                                          slices: slices, entries: sortedEntries(rows.map(\.entry)),
+                                          entryGroups: Dictionary(uniqueKeysWithValues: rows.map { ($0.entry.id, group($0)) }),
+                                          budget: budget, window: data.window)
+        drill.baselineCycles = found.cycles
+        return drill
+    }
+
     static func anomaly(in ledger: Ledger, selection: OverviewPeriodSelection, window: OverviewPeriodWindow,
                         current: [Spending], now: Date) -> (category: String, amount: Int64, baseline: Int64, cycles: Int)? {
         let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
-        func everyday(_ row: Spending) -> Bool {
-            let source = row.entry.relatedEntryID.flatMap { lookup[$0] } ?? row.entry
-            return source.planID == nil && source.rentID == nil && source.pendingRecovery == nil
-                && row.entry.planID == nil && row.entry.rentID == nil
-                && !Classification.isPending(row.assignment.category)
-                && row.assignment.category != "其他支出"
-        }
+        func everyday(_ row: Spending) -> Bool { isEveryday(row, lookup: lookup) }
         let windows = baselineWindows(selection: selection, window: window, in: ledger, now: now)
         var history: [[String: Int64]] = Array(repeating: [:], count: windows.count)
         var active = Array(repeating: false, count: windows.count)
@@ -402,6 +428,22 @@ public enum OverviewAnalytics {
 
     private static func totals(_ entries: [Spending], by key: (Spending) -> String) -> [String: Int64] {
         entries.reduce(into: [:]) { $0[key($1), default: 0] += $1.amount }
+    }
+
+    /// A drill's own row for money that came back, so the rows add up to the page's amount. The key cannot
+    /// be a category or subcategory name (a person may name one 退款); the row shows `refundTitle`.
+    public static let refundGroup = "\u{1}refunds"
+    public static let refundTitle = "退款"
+
+    /// Spending groups largest first, then the refunds row, negative, last.
+    private static func drillSlices(_ values: [String: Int64], anomaly: Bool, previous: (String) -> Int64) -> [OverviewCategorySlice] {
+        var slices = orderedTotals(values.filter { $0.key != refundGroup }).enumerated().map { index, pair in
+            slice(pair.key, amount: pair.value, previous: previous(pair.key), anomaly: anomaly && index == 0)
+        }
+        if let refunds = values[refundGroup], refunds < 0 {
+            slices.append(slice(refundGroup, amount: refunds, previous: 0, anomaly: false))
+        }
+        return slices
     }
 
     private static func orderedTotals(_ values: [String: Int64]) -> [(key: String, value: Int64)] {

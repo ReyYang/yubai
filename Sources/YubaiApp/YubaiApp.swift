@@ -30,9 +30,12 @@ struct LedgerPreset: Equatable {
 }
 enum TabRoute: Hashable {
     case profile, wishlist
-    case quickCapture, importHistory, backup, storage, frequent
+    case quickCapture, quickCards, quickMerchants, settingsAccounts, importHistory, backup, storage, frequent
     case formula, settings, savingRule, reserve
     case weekly(UUID?), whereCategory(title: String, categories: [String], isOther: Bool, selection: OverviewPeriodSelection), memories
+    /// The 多花 card's page: the same everyday bills, amount and baseline as the card.
+    case anomaly(category: String, selection: OverviewPeriodSelection)
+    case triage([UUID])
     case entryDetail(UUID)
     case assets, accountDetail(UUID), overviewBills(Set<String>, DateInterval, Set<UUID>)
     case cycleBills
@@ -100,6 +103,11 @@ enum AppSheet: Identifiable {
                 resetRootNavigation()
             }
             if oldValue != ledger {
+                // Before `invalidateDerived`, which publishes the widget snapshot in the new main currency.
+                if oldValue.preferences != ledger.preferences, DisplayCurrency.configure(ledger, synced: rateSync.rates, now: Dates.now) {
+                    moneyDisplay = DisplayCurrency.current
+                }
+                if rateSync.rates == nil, ledger.preferences.legacySyncedRates != nil { rateSync.adoptLegacy(ledger.preferences.legacySyncedRates) }
                 invalidateDerived()
                 // The long-press menu never outlives its bill (synced away, swiped, deleted by a shortcut).
                 if let id = billMenu?.entryID, !ledger.entries.contains(where: { $0.id == id && $0.deletedAt == nil }) {
@@ -160,10 +168,6 @@ enum AppSheet: Identifiable {
         _ = ledgerRevision
         return presentationCache.savings(in: derivedSource, revision: sourceRevision)
     }
-    var recentCaptures: [Entry] {
-        _ = ledgerRevision
-        return presentationCache.recentCaptures(in: derivedSource, revision: sourceRevision)
-    }
     private struct AssessmentKey: Hashable {
         let amount: Int64; let title: String; let category: String?; let subcategory: String?
     }
@@ -185,6 +189,35 @@ enum AppSheet: Identifiable {
     var settingsSummary: LedgerSettingsSummary {
         _ = ledgerRevision
         return presentationCache.settings(in: derivedSource, revision: sourceRevision)
+    }
+    /// 快速记账's counts and cards, worked out once per ledger change and clock tick rather than on every render.
+    struct QuickCaptureStats {
+        let recent: Int, withoutOpening: Int, applePay: Int, siri: Int
+        let cards: [QuickCapture.CardSummary]
+    }
+    @ObservationIgnored private var cachedQuickStats: (revision: UInt64, at: Date, value: QuickCaptureStats)?
+    var quickCaptureStats: QuickCaptureStats {
+        _ = ledgerRevision
+        let now = financialNow
+        if let cached = cachedQuickStats, cached.revision == sourceRevision, cached.at == now { return cached.value }
+        // One window for the headline and the rows, so 23 笔 is always the sum of the entrances.
+        let recent = QuickCapture.recentEntries(in: derivedSource, now: now)
+        let applePay = recent.filter { $0.source == QuickCapture.Entrance.applePay.rawValue }.count
+        let value = QuickCaptureStats(recent: recent.count,
+                                      withoutOpening: recent.filter { $0.quickCapture?.withoutOpeningApp == true }.count,
+                                      applePay: applePay, siri: recent.count - applePay,
+                                      cards: QuickCapture.cards(in: derivedSource, now: now))
+        cachedQuickStats = (sourceRevision, now, value)
+        return value
+    }
+    @ObservationIgnored private var cachedMerchantRules: (revision: UInt64, value: [QuickMerchantRule])?
+    /// 商户记到哪个分类, read from the merchant memory once per ledger change.
+    var merchantRules: [QuickMerchantRule] {
+        _ = ledgerRevision
+        if let cached = cachedMerchantRules, cached.revision == sourceRevision { return cached.value }
+        let value = QuickMerchantRule.all(in: derivedSource)
+        cachedMerchantRules = (sourceRevision, value)
+        return value
     }
     func accountName(_ id: UUID?) -> String { accounts.first { $0.id == id }?.name ?? "未指定账户" }
     var freshLetter: ButlerCard? {
@@ -432,7 +465,18 @@ enum AppSheet: Identifiable {
         cachedEntryTimeline = (month, search, filter, allMonths, calendar, value)
         return value
     }
+    /// What `DisplayCurrency` holds, observed: pages that show amounts read it to redraw on a new rate.
+    private(set) var moneyDisplay = MoneyDisplay.cny
+    /// The rate behind the main currency changed with no ledger change: redraw what shows amounts.
+    /// Only the observed display and the widget: no ledger revision moves, so a write in flight is never
+    /// mistaken for a stale one.
+    func displayCurrencyChanged() {
+        moneyDisplay = DisplayCurrency.current
+        CaptureSnapshotBridge.publish(ledger)
+    }
     private func invalidateDerived() {
+        // Here rather than in `ledger`'s didSet: fixtures set the ledger in init, where didSet does not run.
+        CategoryIcons.configure(ledger.categories)
         let previousEntries = derivedSource.entries
         derivedSource = ledger
         if preferences != ledger.preferences { preferences = ledger.preferences }
@@ -549,6 +593,10 @@ enum AppSheet: Identifiable {
     var askRequest: AskRequest?
     /// The bill whose long-press menu is open.
     var billMenu: BillMenuRequest?
+    /// A rate fetch is in flight (主币种与汇率 · 去更新 turns while it runs).
+    var rateSyncRunning = false
+    /// This device's synced rates and sync attempts (not in the ledger, not on iCloud).
+    var rateSync = RateSyncStore.load() { didSet { if rateSync != oldValue { rateSyncChanged() } } }
     /// The last home deletion's 撤销 bar. Survives the lock screen; ends at its own deadline.
     var billUndo: BillUndoNotice?
     @ObservationIgnored var billUndoExpiry: Task<Void, Never>?
@@ -684,6 +732,8 @@ enum AppSheet: Identifiable {
             settingsSheet = seed.sheet
             subscriptionDraft = seed.draft
             if let draft = seed.onboarding { onboarding = draft }
+            rateSync = seed.rateSync
+            DisplayCurrency.configure(ledger, synced: rateSync.rates, now: Dates.now)
             loadingLedger = false
             invalidateDerived()
             return
@@ -813,6 +863,10 @@ enum AppSheet: Identifiable {
             if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
             ledger = next
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
+            if !recordUndo && !preservingUpdatedAt {
+                // A whole-ledger snapshot taken before this write would now roll it back too (主币种, 分类…).
+                clearUndo()
+            }
             if recordUndo {
                 unsortedUndo = nil
                 // Only a change the person sees replaces the delete bar; quiet background writes leave it.
@@ -843,7 +897,7 @@ enum AppSheet: Identifiable {
     func purgeExpiredEntries() {
         var next = current
         guard RecentlyDeleted.purge(in: &next) > 0 else { return }
-        if update("清掉过期账目", recordUndo: false, entryMotion: false, showToast: false, { $0 = next }) { clearUndo() }
+        _ = update("清掉过期账目", recordUndo: false, entryMotion: false, showToast: false) { $0 = next }
     }
     /// Prepare the full import off the main actor, then publish one atomic update.
     func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = []) async throws -> ImportBatch? {
@@ -1110,6 +1164,8 @@ enum AppSheet: Identifiable {
         do {
             if try await context.evaluatePolicy(available ? policy : .deviceOwnerAuthentication, localizedReason: "解锁你的余白账本") {
                 locked = false; if syncChoice != nil { sheet = .syncVersions }
+                // A foreground return that found the ledger locked skipped the rate check; catch up now (backoff applies).
+                Task { await syncExchangeRatesIfNeeded() }
             }
         } catch let error as LAError where error.code == .userFallback { await unlock(useBiometrics: false) }
         catch { self.error = "未能解锁。可以重试 Face ID、Touch ID 或设备密码。" }
@@ -1125,6 +1181,12 @@ enum AppSheet: Identifiable {
     @NSApplicationDelegateAdaptor(LedgerTerminationDelegate.self) private var terminationDelegate
     #endif
     @State private var store = AppStore.shared
+    init() {
+        #if os(iOS)
+        // Background handlers must be registered before launch finishes.
+        RateRefreshTask.register(store: AppStore.shared)
+        #endif
+    }
     private var colorScheme: ColorScheme? {
         switch store.preferences.appearance {
         case "dark": .dark
@@ -1312,10 +1374,17 @@ struct RootView: View {
         #endif
         .onChange(of: phase) { _, newValue in
             guard !store.loadingLedger, !store.isDesignFixture else { return }
-            if newValue == .background { store.flushBeforeSuspension() }
+            if newValue == .background {
+                store.flushBeforeSuspension()
+                #if os(iOS)
+                // Keeps a daily rate refresh queued for when the app is not opened.
+                RateRefreshTask.schedule()
+                #endif
+            }
             if newValue == .active {
                 store.purgeExpiredEntries(); store.ask.expireIfNeeded(ledgerID: store.current.id); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
-                Task { await store.configureSync(); store.runCycleMaintenance() }
+                // Rates after iCloud has settled (skipped while it is busy).
+                Task { await store.configureSync(); store.runCycleMaintenance(); await store.syncExchangeRatesIfNeeded() }
             }
             if newValue == .background && store.preferences.lockEnabled {
                 store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.billMenu = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true
@@ -1334,6 +1403,7 @@ struct RootView: View {
             if !store.locked, store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }
             if !store.locked, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             await store.configureSync(); store.runCycleMaintenance()
+            await store.syncExchangeRatesIfNeeded()
         }
         .modifier(RootBackgroundTasks())
         .overlay(alignment: .top) {
@@ -1529,12 +1599,17 @@ struct RootView: View {
         case .savingRule: SavingsView()
         case .reserve: ReserveView()
         case .weekly(let id): weeklyDestination(id)
+        case .settingsAccounts: SettingsAccountsPage()
         case .assets, .overviewBills: EmptyView()
         case .accountDetail(let id): AccountDetailView(accountID: id)
         case let .whereCategory(title, categories, isOther, selection): ReviewDrillView(title: title, categories: categories, isOther: isOther, selection: selection)
+        case let .anomaly(category, selection): ReviewDrillView(title: category, categories: [category], isOther: false, selection: selection, anomaly: true)
+        case .triage(let ids): LetterTriageView(entryIDs: ids)
         case .memories: MemoryView()
         case .frequent: FrequentEntriesView()
         case .quickCapture: QuickCaptureSettingsView()
+        case .quickCards: QuickCardsView()
+        case .quickMerchants: QuickMerchantsView()
         case .importHistory: ImportHistoryView()
         case .backup: BackupView()
         case .storage: StorageView()

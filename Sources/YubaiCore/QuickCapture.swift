@@ -33,7 +33,10 @@ public struct QuickCaptureSnapshot: Codable, Equatable, Sendable {
     public var headlineTitle: String?
     public var generatedAt: Date; public var available: Int64; public var todayCount: Int; public var todayTotal: Int64
     public var frequent: [Frequent]
-    public init(ledger: Ledger, now: Date = Dates.now) {
+    /// How the widget shows amounts: the main currency at this device's rate.
+    public var display: MoneyDisplay?
+    public init(ledger: Ledger, now: Date = Dates.now, display: MoneyDisplay = .cny) {
+        self.display = display
         let value = Finance.spendableBreakdown(ledger, now: now)
         generatedAt = now; available = value.headlineAmount; headlineTitle = value.headlineTitle
         let entries = ledger.activeEntries.filter { $0.date <= now }
@@ -74,10 +77,84 @@ public enum QuickCapture {
     public enum Entrance: String, CaseIterable, Sendable { case applePay = "Apple Pay", siri = "Siri／快捷指令" }
     /// 「近 7 天 N 笔」 per entrance, counted from each entry's recorded source.
     public static func recentCount(_ entrance: Entrance, in ledger: Ledger, now: Date = Dates.now, days: Int = 7) -> Int {
-        let start = Dates.addDays(-(days - 1), to: Dates.day(now))
-        let sources: Set<String> = entrance == .siri ? [entrance.rawValue, "快捷指令"] : [entrance.rawValue]
-        return ledger.activeEntries.filter { sources.contains($0.source) && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= now }.count
+        recentEntries([entrance], in: ledger, now: now, days: days).count
     }
+    /// The bills the given entrances recorded in the last `days` days; 快速记账's headline adds these up.
+    public static func recentEntries(_ entrances: [Entrance] = Entrance.allCases, in ledger: Ledger, now: Date = Dates.now, days: Int = 7) -> [Entry] {
+        let start = Dates.addDays(-(days - 1), to: Dates.day(now))
+        let sources = Set(entrances.flatMap { $0 == .siri ? [$0.rawValue, "快捷指令"] : [$0.rawValue] })
+        return ledger.activeEntries.filter { sources.contains($0.source) && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= now }
+    }
+    /// 卡对应的账户 (S-Quick-Cards): every card seen in Apple Pay bills or given an account, with its
+    /// bills in the last `days` days and the account it records to.
+    public struct CardSummary: Equatable, Sendable, Identifiable {
+        public var id: String { card }
+        public let card: String
+        public let recentCount: Int
+        public let accountID: UUID?
+        /// Some Apple Pay bill ever came from this card (else it was only given an account).
+        public let everUsed: Bool
+    }
+
+    public static func cards(in ledger: Ledger, now: Date = Dates.now, days: Int = 30) -> [CardSummary] {
+        let start = Dates.addDays(-(days - 1), to: Dates.day(now))
+        var names: [String: String] = [:]   // card key → shown name
+        var counts: [String: Int] = [:]
+        var seen = Set<String>()
+        for entry in ledger.activeEntries {
+            guard let card = entry.quickCapture?.card?.trimmingCharacters(in: .whitespacesAndNewlines), !card.isEmpty else { continue }
+            let key = cardKey(card)
+            names[key] = names[key] ?? card
+            seen.insert(key)
+            let when = entry.quickCapture?.transactionDate ?? entry.recordedAt ?? entry.date
+            if when >= start && when <= now { counts[key, default: 0] += 1 }
+        }
+        var accounts: [String: UUID] = [:]
+        for (name, id) in ledger.preferences.quickCapture.cardAccounts {
+            let key = cardKey(name)
+            names[key] = name
+            accounts[key] = id
+        }
+        return names.map { key, name in
+            CardSummary(card: name, recentCount: counts[key, default: 0], accountID: accounts[key], everUsed: seen.contains(key))
+        }.sorted { $0.recentCount == $1.recentCount ? $0.card < $1.card : $0.recentCount > $1.recentCount }
+    }
+
+    /// 卡对应的账户 · 选账户: later Apple Pay bills on this card go to `accountID`.
+    public static func setAccount(_ accountID: UUID, forCard card: String, in ledger: inout Ledger) throws {
+        let clean = card.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, ledger.accounts.contains(where: { $0.id == accountID && !$0.archived }) else {
+            throw YubaiError.invalid("请选择账户。")
+        }
+        var next = ledger
+        for name in next.preferences.quickCapture.cardAccounts.keys where cardKey(name) == cardKey(clean) {
+            next.preferences.quickCapture.cardAccounts.removeValue(forKey: name)
+        }
+        next.preferences.quickCapture.cardAccounts[clean] = accountID
+        try next.validate(); ledger = next
+    }
+
+    /// The account a card records to, looked up by the card's normalized key.
+    public static func account(forCard card: String, in ledger: Ledger) -> UUID? {
+        let map = ledger.preferences.quickCapture.cardAccounts
+        if let exact = map[card] { return exact }
+        let key = cardKey(card)
+        return map.first { cardKey($0.key) == key }?.value
+    }
+
+    /// 卡对应的账户 · 左滑删除: the card's bills go to the default account again.
+    public static func removeAccount(forCard card: String, in ledger: inout Ledger) {
+        let key = cardKey(card)
+        for name in ledger.preferences.quickCapture.cardAccounts.keys where cardKey(name) == key {
+            ledger.preferences.quickCapture.cardAccounts.removeValue(forKey: name)
+        }
+    }
+
+    /// 商户记到哪个分类 · 左滑删除: the merchant is guessed again like any other.
+    public static func forgetMerchant(key: String, in ledger: inout Ledger) {
+        ledger.classificationMemory.removeValue(forKey: key)
+    }
+
     @discardableResult public static func record(_ drafts: [EntryDraft], in ledger: inout Ledger, source: String = "快捷指令", withoutOpeningApp: Bool = true, now: Date = Dates.now) throws -> [UUID] {
         guard !drafts.isEmpty else { return [] }
         var next = ledger
@@ -104,7 +181,7 @@ public enum QuickCapture {
         // 不按两分钟时间桶分组，跨桶重触发也能识别。软删除仍保留去重凭据。
         let identity = "apple-pay:" + LedgerCodec.checksum(try JSONEncoder().encode([cardKey(card), cardKey(merchant), String(cents)]))
         if let duplicate = ledger.entries.first(where: { $0.source == "Apple Pay" && $0.sourceIdentity == identity && abs(($0.quickCapture?.transactionDate ?? $0.date).timeIntervalSince(date)) <= 120 }) { return (duplicate, false) }
-        let mapped = ledger.preferences.quickCapture.cardAccounts.first { cardKey($0.key) == cardKey(card) }?.value
+        let mapped = account(forCard: card, in: ledger)
         let account = mapped.flatMap { id in ledger.accounts.first { $0.id == id && !$0.archived } } ?? ManualBookkeeping.defaultAccount(in: ledger)
         guard let account else { throw YubaiError.invalid("请先添加账户。") }
         let rule = CategoryMemory.value(key(merchant), income: false, in: ledger)

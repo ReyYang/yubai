@@ -2,10 +2,12 @@ import SwiftUI
 import YubaiCore
 
 enum EntryDrawer: Equatable {
-    case purpose, currency, calendar, source, destination, more, split
+    case purpose, currency, rate, calendar, source, destination, more, split
 
     /// Lists that pop out of a pill above the sheet; only one is open at a time.
-    var isPopover: Bool { [.calendar, .source, .destination, .more].contains(self) }
+    var isPopover: Bool { [.currency, .rate, .calendar, .source, .destination, .more].contains(self) }
+    /// 币种 and 汇率 hang under the amount (S-Entry-Ccy, S-Entry-Rate); the others rise above their pill.
+    var opensBelow: Bool { self == .currency || self == .rate }
 }
 
 /// The two accounts of a 转账 read back, its nature and whether it was 存入. While the draft keeps
@@ -137,6 +139,7 @@ struct EntryCategoryState: Equatable {
     let id = UUID()
     @ObservationIgnored private weak var store: AppStore?
     private var fixtureLedger: Ledger
+    @ObservationIgnored private var fixtureSynced: SyncedExchangeRates?
     let settled: Bool
     let isPrefilled: Bool
     let fixtureNow: Date?
@@ -152,6 +155,7 @@ struct EntryCategoryState: Equatable {
     /// 记下 was pressed without a category: the row keeps its amber ring until one is picked.
     var needsCategory = false
     var amountPulse = 0
+    var ratePulse = 0
     var suggestion: CategoryAssignment?
     var effect: EntryEffect?
     /// 算作存入: what this cycle will have saved once this transfer lands.
@@ -209,8 +213,9 @@ struct EntryCategoryState: Equatable {
         normalizeAccounts()
     }
 
-    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date, editingID: UUID? = nil) {
+    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date, editingID: UUID? = nil, synced: SyncedExchangeRates? = nil) {
         store = nil
+        fixtureSynced = synced
         self.fixtureLedger = fixtureLedger
         self.draft = draft
         settled = true
@@ -226,6 +231,8 @@ struct EntryCategoryState: Equatable {
     }
 
     var ledger: Ledger { store?.current ?? fixtureLedger }
+    /// This device's synced rates (kept out of the ledger).
+    var syncedRates: SyncedExchangeRates? { store?.rateSync.rates ?? fixtureSynced }
     var now: Date { fixtureNow ?? Dates.now }
     var hasReceipt: Bool { draft.screenshot != nil }
     var hidesKeypad: Bool { drawer == .purpose }
@@ -234,11 +241,15 @@ struct EntryCategoryState: Equatable {
     var signedRate: Decimal? {
         if let typed = typedRate { return typed }
         guard draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return autoRate
+    }
+    /// The rate this entry gets without a typed one: frozen (editing), else Settings' fixed, else synced.
+    var autoRate: Decimal? {
         if let id = editingID, let entry = ledger.entries.first(where: { $0.id == id }),
            entry.originalCurrency == draft.currency, let original = entry.originalAmount, original > 0 {
             return entry.exchangeRate?.cnyPerUnit ?? Decimal(entry.amount) / Decimal(original)
         }
-        return ExchangeRates.rate(for: draft.currency, in: ledger, now: now)?.cnyPerUnit
+        return ExchangeRates.rate(for: draft.currency, in: ledger, synced: syncedRates, now: now)?.cnyPerUnit
     }
     /// Only a rate typed for this entry is sent as a manual rate.
     var typedRate: Decimal? {
@@ -283,7 +294,7 @@ struct EntryCategoryState: Equatable {
             || (!categoryTouched && initialCategory?.route == false && initialCategory?.category == nil
                 && initialCategory == EntryCategoryState(draft))
     }
-    var canSave: Bool { draft.expression.canSave && money > 0 && categoryReady }
+    var canSave: Bool { draft.expression.canSave && money > 0 && (draft.currency == .cny || (localMoney ?? 0) > 0) && categoryReady }
     var localMoney: Int64? {
         guard draft.currency != .cny else { return money }
         guard let rate = signedRate else { return nil }
@@ -467,10 +478,8 @@ struct EntryCategoryState: Equatable {
     @discardableResult func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
         // Never an undo snapshot: it would replace a delete's 撤销 with this edit.
         if let store {
-            guard store.update(reason, recordUndo: false, entryMotion: false, showToast: false, update) else { return false }
-            // An older whole-ledger snapshot would now roll this edit back too; drop it. The delete bar stays.
-            store.clearUndo()
-            return true
+            // `update` drops an older whole-ledger snapshot, which would roll this edit back too. The delete bar stays.
+            return store.update(reason, recordUndo: false, entryMotion: false, showToast: false, update)
         }
         do { try update(&fixtureLedger); return true }
         catch { failure = error.localizedDescription; return false }
@@ -528,6 +537,7 @@ struct EntryCategoryState: Equatable {
             incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: draft.originalNature,
             relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings, preserveTime: editingID != nil)
         input.keepsRoute = replaysRoute
+        input.syncedRates = syncedRates
         if let people = draft.recoveryParticipants, let localMoney,
            people.reduce(Int64(0), { $0 + $1.amount }) == localMoney - myShare {
             input.recoveryParticipants = editingID == nil
@@ -601,18 +611,70 @@ struct EntryCategoryState: Equatable {
     }
 
     func pressAmountKey(_ key: String) {
+        // With the rate open, the sheet's own keypad types the rate (no system keyboard over the sheet).
+        if drawer == .rate { pressRateKey(key); return }
         if shouldReplacePrefill && (key.first?.isNumber == true || key == ".") { draft.expression.reset() }
         shouldReplacePrefill = false
         draft.expression.press(key)
     }
 
     /// Why 记下 did nothing, so the sheet can point at the row that needs it.
-    enum SaveBlock { case amount, category }
+    enum SaveBlock { case amount, rate, category }
 
     func blockedSave() -> SaveBlock? {
         if !draft.expression.canSave || money <= 0 { return .amount }
+        if draft.currency != .cny, (localMoney ?? 0) <= 0 { return .rate }
         if !categoryReady { return .category }
         return nil
+    }
+
+    /// The ≈ line has a rate to show; otherwise it asks for one (X-entry-norate).
+    var hasRate: Bool { draft.currency == .cny || signedRate != nil }
+
+    /// Where the rate on the ≈ line comes from, said under the rate field.
+    var rateSource: String {
+        if typedRate != nil { return "只用于这一笔" }
+        if let id = editingID, let entry = ledger.entries.first(where: { $0.id == id }), entry.originalCurrency == draft.currency {
+            return "记下时的汇率"
+        }
+        if FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now) != nil { return "设置里的固定汇率" }
+        if let synced = syncedRates, let quoted = synced.quoteDate(for: draft.currency) {
+            // A quote kept from an older sync says its own date, not the latest sync's time.
+            return quoted < synced.date ? Dates.monthDay(quoted) + " 的汇率" : CurrencySettings.syncTime(synced.fetchedAt, now: now) + " 同步"
+        }
+        return ""
+    }
+
+    /// Typing a rate for this entry: digits, one point, up to four decimals; ⌫ back to the synced one.
+    func pressRateKey(_ key: String) {
+        var text = draft.exchangeRate
+        switch key {
+        case "⌫": text = String(text.dropLast())
+        case ".": if !text.contains(".") { text = (text.isEmpty ? "0" : text) + "." }
+        case "+", "−": return
+        default:
+            for digit in key where digit.isNumber {
+                let decimals = text.split(separator: ".", omittingEmptySubsequences: false).dropFirst().first?.count ?? 0
+                guard text.count < 12, !(text.contains(".") && decimals >= 4) else { break }
+                text = text == "0" ? String(digit) : text + String(digit)
+            }
+        }
+        draft.exchangeRate = text
+    }
+
+    /// The reset under a typed rate names what it goes back to.
+    var rateResetTitle: String {
+        if let id = editingID, let entry = ledger.entries.first(where: { $0.id == id }), entry.originalCurrency == draft.currency {
+            return "用记下时的"
+        }
+        if FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now) != nil { return "用固定汇率" }
+        return "用同步的"
+    }
+
+    func pickCurrency(_ currency: BillCurrency) {
+        if draft.currency != currency { draft.exchangeRate = "" }
+        draft.currency = currency
+        drawer = nil
     }
 
     func save() -> Bool {
@@ -621,6 +683,10 @@ struct EntryCategoryState: Equatable {
         case .amount:
             amountPulse &+= 1
             AccessibilityNotification.Announcement("先输入金额").post()
+            return false
+        case .rate:
+            ratePulse &+= 1
+            AccessibilityNotification.Announcement("先填汇率").post()
             return false
         case .category:
             needsCategory = true

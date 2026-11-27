@@ -272,6 +272,8 @@ public struct EntrySaveInput: Equatable, Sendable {
     public var amountCents: Int64
     public var currency: BillCurrency
     public var exchangeRate: Decimal?
+    /// This device's synced rates (they are not in the ledger).
+    public var syncedRates: SyncedExchangeRates?
     /// Editing only: keep the bill's nature, both accounts (even a missing second one) and 存入 mark;
     /// amount, date, currency and words still change.
     public var keepsRoute = false
@@ -365,7 +367,7 @@ public enum EntrySaveMapper {
         guard input.currency != .cny else { return nil }
         if let typed = input.exchangeRate { return EntryRate(cnyPerUnit: typed, date: Dates.day(now), manual: true) }
         if let frozen = input.frozenRate { return frozen }
-        return ExchangeRates.rate(for: input.currency, in: ledger, now: now)
+        return ExchangeRates.rate(for: input.currency, in: ledger, synced: input.syncedRates, now: now)
     }
 
     public static func cnyAmount(for input: EntrySaveInput, in ledger: Ledger, now: Date) -> Int64? {

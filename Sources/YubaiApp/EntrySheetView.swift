@@ -60,7 +60,8 @@ struct EntrySheetOverlay: View {
                         // Spec-Gestures: alongside the keys and the scroll. The sheet decides by direction first.
                         .simultaneousGesture(sheetDrag, including: model.drawer == nil ? .all : .subviews)
                         .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
-                        .accessibilityHidden(model.categoryPanel || model.drawer?.isPopover == true)
+                        // The rate card types on the sheet's keypad, so the sheet stays reachable under it.
+                        .accessibilityHidden(model.categoryPanel || (model.drawer?.isPopover == true && model.drawer != .rate))
                 }
                 if model.categoryPanel && !model.categoryOnly {
                     DS.Color.scrim
@@ -81,11 +82,14 @@ struct EntrySheetOverlay: View {
             }
             .overlayPreferenceValue(EntryPillAnchors.self) { frames in
                 if let drawer = model.drawer, drawer.isPopover, let anchor = frames.drawn[drawer] {
-                    popover(drawer, anchor: anchor, pills: frames.hit)
+                    popover(drawer, anchor: anchor, pills: frames.hit, drawn: frames.drawn, keypad: frames.keypad)
                         .transition(.opacity)
                 }
             }
             .ignoresSafeArea(.container, edges: .bottom)
+            // The rate card types on the sheet's keypad: card and keypad are one modal, so VoiceOver reaches both.
+            .accessibilityElement(children: .contain)
+            .accessibilityAddTraits(model.drawer == .rate ? .isModal : [])
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation, value: model.drawer?.isPopover == true ? model.drawer : nil)
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.categoryPanel)
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.managingCategories)
@@ -153,23 +157,40 @@ struct EntrySheetOverlay: View {
     }
 
     @ViewBuilder private func popover(_ drawer: EntryDrawer, anchor: Anchor<CGRect>,
-                                      pills: [EntryDrawer: Anchor<CGRect>]) -> some View {
+                                      pills: [EntryDrawer: Anchor<CGRect>], drawn: [EntryDrawer: Anchor<CGRect>],
+                                      keypad: Anchor<CGRect>?) -> some View {
         GeometryReader { geometry in
             let pill = geometry[anchor]
+            let keys = keypad.map { geometry[$0] }
             let targets = pills.mapValues { geometry[$0] }
+            let shapes = drawn.mapValues { geometry[$0] }
             // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
             let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
                 : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
-            let available = max(0, pill.minY - EntrySpec.popoverGap)
+            // Lists rise above their pill; 币种 and 汇率 hang under the amount.
+            // The rate card stops above the keypad, which types the rate; at large type it scrolls instead.
+            let floor = drawer == .rate ? keys.map(\.minY) ?? geometry.size.height : geometry.size.height
+            let roomBelow = max(0, floor - pill.maxY - EntrySpec.popoverGap), roomAbove = max(0, pill.minY - EntrySpec.popoverGap)
+            // A short screen at large type leaves no room under the rate line: the card rises above it instead.
+            let below = drawer.opensBelow && !(drawer == .rate && roomBelow < EntrySpec.rateCardMinHeight && roomAbove > roomBelow)
+            let available = below ? roomBelow : roomAbove
             let margin = typeSize.isAccessibilitySize ? DS.Space.s16 : DS.Space.s20
             let leading = min(max(margin, pill.midX - width * EntrySpec.midpoint),
                               geometry.size.width - margin - width)
             ZStack(alignment: .topLeading) {
                 // A tap on another pill switches straight to its list; anywhere else closes this one.
-                Color.clear.contentShape(Rectangle())
+                // The rate card's backdrop leaves the keypad free: the keypad types the rate.
+                // It covers the safe areas too: a tap up by the status bar closes this list, not the whole sheet.
+                let inset = geometry.safeAreaInsets
+                Color.clear
+                    .contentShape(EntryBackdropShape(hole: drawer == .rate ? keys?.offsetBy(dx: inset.leading, dy: inset.top) : nil), eoFill: true)
                     .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
                         // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
-                        let hit = targets.first { $0.value.contains(location) }?.key
+                        // Where two 44 pt targets overlap (the ≈ line's reaches up to ¥), the one drawn under the
+                        // finger wins; between them, this list closes.
+                        let hits = targets.filter { $0.value.contains(location) }.map(\.key)
+                        let hit = hits.first { shapes[$0]?.contains(location) == true }
+                            ?? (hits.contains(drawer) ? drawer : hits.first)
                         model.drawer = hit == drawer ? nil : hit
                     }
                     .gesture(closeDrag { model.drawer = nil })
@@ -181,9 +202,9 @@ struct EntrySheetOverlay: View {
                     popoverContent(drawer).simultaneousGesture(closeDrag { model.drawer = nil })
                     ScrollView { popoverContent(drawer) }.scrollIndicators(.hidden)
                 }
-                .frame(width: width, height: available, alignment: .bottom)
-                .offset(x: leading)
-                .transition(reduced ? .opacity : .scale(scale: EntrySpec.popoverScale, anchor: .bottom).combined(with: .opacity))
+                .frame(width: width, height: available, alignment: below ? .top : .bottom)
+                .offset(x: leading, y: below ? pill.maxY + EntrySpec.popoverGap : 0)
+                .transition(reduced ? .opacity : .scale(scale: EntrySpec.popoverScale, anchor: below ? .top : .bottom).combined(with: .opacity))
                 .focusable()
                 .focusEffectDisabled()
                 .focused($calendarFocus, equals: .calendar)
@@ -191,7 +212,7 @@ struct EntrySheetOverlay: View {
                     model.drawer = nil
                     return .handled
                 }
-                .accessibilityAddTraits(.isModal)
+                .accessibilityAddTraits(drawer == .rate ? [] : .isModal)
                 .accessibilityAction(.escape) { model.drawer = nil }
             }
         }
@@ -208,6 +229,8 @@ struct EntrySheetOverlay: View {
         switch drawer {
         case .calendar: EntrySpec.calendarWidth
         case .more: DS.Size.menuW
+        case .currency: EntrySpec.currencyListWidth
+        case .rate: EntrySpec.ratePopoverWidth
         default: EntrySpec.accountListWidth
         }
     }
@@ -223,6 +246,10 @@ struct EntrySheetOverlay: View {
             EntryAccountList(model: model, destination: drawer == .destination, firstFocus: $listFocus)
         case .more:
             EntryMoreList(model: model, firstFocus: $listFocus)
+        case .currency:
+            EntryCurrencyList(model: model, firstFocus: $listFocus)
+        case .rate:
+            EntryRatePopover(model: model, firstFocus: $listFocus)
         default:
             EmptyView()
         }
@@ -266,6 +293,8 @@ private struct EntryFormScrollTop: ViewModifier {
 struct EntryPillFrames {
     var drawn: [EntryDrawer: Anchor<CGRect>] = [:]
     var hit: [EntryDrawer: Anchor<CGRect>] = [:]
+    /// The keypad tray: the rate card's backdrop leaves it free, because the keypad types the rate.
+    var keypad: Anchor<CGRect>?
 }
 
 private struct EntryPillAnchors: PreferenceKey {
@@ -274,17 +303,20 @@ private struct EntryPillAnchors: PreferenceKey {
         let next = nextValue()
         value.drawn.merge(next.drawn) { $1 }
         value.hit.merge(next.hit) { $1 }
+        value.keypad = next.keypad ?? value.keypad
     }
 }
 
 private extension View {
+    /// Merged into what the subtree already reported: a plain `anchorPreference` would replace it,
+    /// and the hit frame set outside a pill would erase the drawn frame set inside it.
     func entryAnchor(_ drawer: EntryDrawer) -> some View {
-        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(drawn: [drawer: $0]) }
+        transformAnchorPreference(key: EntryPillAnchors.self, value: .bounds) { $0.drawn[drawer] = $1 }
     }
 
     /// After the 44 pt frame: the whole target counts as the pill for the backdrop's switch.
     func entryHit(_ drawer: EntryDrawer) -> some View {
-        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(hit: [drawer: $0]) }
+        transformAnchorPreference(key: EntryPillAnchors.self, value: .bounds) { $0.hit[drawer] = $1 }
     }
 }
 
@@ -342,7 +374,8 @@ struct EntrySheetView: View {
         .background(DS.Color.bg)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isModal)
+        // With the rate card open the card and the keypad are the modal (set on the root); the form waits.
+        .accessibilityAddTraits(model.drawer == .rate ? [] : .isModal)
         .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.tab)
         .animation(reduced ? nil : DSMotion.smoothAnimation, value: model.drawer == .purpose)
         .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.exception == .split)
@@ -352,7 +385,7 @@ struct EntrySheetView: View {
     private var form: some View {
         VStack(spacing: .zero) {
             EntryTopHeaderView(model: model)
-            EntryAmountBlockView(model: model)
+            EntryAmountBlockView(model: model, pillFocus: pillFocus)
                 .padding(.top, EntrySpec.amountTop)
                 .padding(.horizontal, DS.Space.s20)
             typeBody
@@ -366,7 +399,7 @@ struct EntrySheetView: View {
                     .padding(.horizontal, DS.Space.s20)
                     .padding(.bottom, DS.Space.s8)
             }
-            if model.drawer == .currency || model.drawer == .split {
+            if model.drawer == .split {
                 EntryExpandedPanelView(model: model)
                     .padding(.horizontal, DS.Space.s20)
                     .padding(.bottom, DS.Space.s8)
@@ -376,6 +409,7 @@ struct EntrySheetView: View {
             }
         }
         .padding(.bottom, EntrySpec.aboveTray)
+        .accessibilityHidden(model.drawer == .rate)
     }
 
     @ViewBuilder private var footer: some View {
@@ -466,6 +500,7 @@ struct EntryTopHeaderView: View {
 /// Spec-Redlines 金额行 + ≈ 行 + 用途.
 private struct EntryAmountBlockView: View {
     @Bindable var model: EntrySheetViewModel
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
@@ -474,7 +509,7 @@ private struct EntryAmountBlockView: View {
             HStack(spacing: DS.Space.s8) {
                 Button { model.toggleDrawer(.currency) } label: {
                     HStack(spacing: EntrySpec.currencyGap) {
-                        Text(model.draft.currency == .cny ? "¥" : model.draft.currency.rawValue)
+                        Text(model.draft.currency.symbol)
                             .dsText(DS.Font.tBody).fontWeight(.semibold).monospacedDigit()
                         DS.Icon.chevronDown.view(size: EntrySpec.currencyChevron, color: DS.Color.ink3)
                     }
@@ -482,14 +517,16 @@ private struct EntryAmountBlockView: View {
                     .padding(.leading, EntrySpec.currencyInset)
                     .padding(.trailing, DS.Space.s8)
                     .frame(minHeight: EntrySpec.currencyHeight)
-                    .dsPill()
+                    .dsPill(model.drawer == .currency ? DS.Color.selected : DS.Color.surface)
+                    .entryAnchor(.currency)
                     .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
                 }
                 .buttonStyle(EntryTactileButtonStyle())
                 .fixedSize()
                 .entryHit(.currency)
                 .accessibilityLabel("币种，" + model.draft.currency.unit)
-                .accessibilityHint("选择外币和汇率")
+                .accessibilityHint("选择币种")
+                .accessibilityFocused(pillFocus, equals: .currency)
                 Text(amountText)
                     .dsText(DS.Font.nEntry)
                     .foregroundStyle(amountColor)
@@ -505,18 +542,22 @@ private struct EntryAmountBlockView: View {
             }
             .frame(minHeight: EntrySpec.amountRow)
             .modifier(EntryShake(trigger: model.amountPulse))
+            // Above the ≈ line, whose 44 pt target reaches up into this row: the currency pill keeps its taps.
+            .zIndex(1)
             if model.draft.expression.isExpression {
                 Text(model.hidesAmounts ? "••••" : model.draft.expression.formattedDisplay + " = " + Money.text(model.money, currency: false))
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
-                    .frame(height: DS.Space.s20)
+                    .frame(minHeight: DS.Space.s20)
                     .transition(.opacity)
             }
-            if model.draft.currency != .cny, let rate = model.signedRate, let local = model.localMoney {
-                Text(model.hidesAmounts ? "••••" : "≈ \(Money.text(local)) · 1 \(model.draft.currency.rawValue) = \(NSDecimalNumber(decimal: rate).stringValue)")
-                    .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
-                    .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
-                    .frame(height: DS.Space.s20)
+            if model.draft.currency != .cny {
+                // 20 pt at the default size; grows with the type instead of spilling onto its neighbours.
+                EntryRateLine(model: model)
+                    .frame(minHeight: DS.Space.s20)
+                    .accessibilityFocused(pillFocus, equals: .rate)
+                    .modifier(EntryShake(trigger: model.ratePulse))
+                    .transition(.opacity)
             }
             purpose
         }
@@ -871,6 +912,139 @@ private struct EntryPillsRowView: View {
     }
 }
 
+/// Spec-Currency 记一笔: 「≈ ¥21.68」 under a foreign amount — tap to change this entry's rate. With no rate
+/// at all (never synced, none fixed) it is an amber 「填汇率」 and 记下 waits for it (X-entry-norate).
+private struct EntryRateLine: View {
+    let model: EntrySheetViewModel
+
+    var body: some View {
+        Button { model.toggleDrawer(.rate) } label: {
+            if model.hasRate, let local = model.localMoney {
+                HStack(spacing: DS.Space.s4) {
+                    Text(model.hidesAmounts ? "≈ ••••" : "≈ " + Money.text(local)).dsText(DS.Font.tSub).monospacedDigit()
+                        .foregroundStyle(DS.Color.ink3)
+                    if model.typedRate != nil {
+                        Text("手动汇率").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink2).fixedSize()
+                            .padding(.horizontal, SettingsSpec.tagInset).frame(minHeight: SettingsSpec.tagHeight).dsPill()
+                    }
+                    DS.Icon.chevron.view(size: EntrySpec.currencyChevron, color: DS.Color.chevron)
+                }
+                .entryAnchor(.rate)
+                .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            } else {
+                Text("填汇率").dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.warnInk)
+                    .padding(.horizontal, EntrySpec.rateFillInset).frame(minHeight: EntrySpec.rateFillHeight)
+                    .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.warn, lineWidth: DS.Stroke.hairline))
+                    .entryAnchor(.rate)
+                    .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            }
+        }
+        .buttonStyle(EntryTactileButtonStyle())
+        .entryHit(.rate)
+        .accessibilityLabel(model.hasRate ? "汇率" : "填汇率")
+        .accessibilityValue(model.hasRate && !model.hidesAmounts ? "约 " + Money.text(model.localMoney ?? 0) : "")
+        .accessibilityIdentifier("entryRateLine")
+    }
+}
+
+/// Canvas S-Entry-Ccy: the nine currencies, the main one marked; picking closes the list.
+private struct EntryCurrencyList: View {
+    let model: EntrySheetViewModel
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
+
+    var body: some View {
+        let main = model.ledger.preferences.mainCurrency ?? .cny
+        let all = BillCurrency.allCases
+        VStack(spacing: .zero) {
+            ForEach(Array(all.enumerated()), id: \.element) { index, currency in
+                Button { model.pickCurrency(currency) } label: {
+                    HStack(spacing: .zero) {
+                        Text(currency.symbol).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink2)
+                            .fixedSize().padding(.trailing, DS.Space.s8).frame(minWidth: EntrySpec.currencySymbolColumn, alignment: .leading)
+                        HStack(alignment: .firstTextBaseline, spacing: HomeSpec.gap6) {
+                            Text(currency.unit).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink)
+                            if currency == main {
+                                Text("主币种").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink3)
+                            }
+                        }.dsFillWidth()
+                        DS.Icon.done.view(size: EntrySpec.checkIcon, color: DS.Color.accentInk)
+                            .opacity(currency == model.draft.currency ? 1 : 0)
+                    }
+                    .padding(.horizontal, DS.Space.s16)
+                    .frame(minHeight: EntrySpec.listRow)
+                    .overlay(alignment: .bottom) {
+                        if index < all.count - 1 {
+                            DS.Color.separator.frame(height: DS.Stroke.hairline).padding(.leading, DS.Space.s16)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+                .accessibilityAddTraits(currency == model.draft.currency ? .isSelected : [])
+                .accessibilityIdentifier("entryCurrency_" + currency.rawValue)
+                .dsAccessibilityFocus(index == 0 ? firstFocus : nil)
+            }
+        }
+        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("币种")
+    }
+}
+
+/// Canvas S-Entry-Rate: 「1 C$ = [5.1012] ¥」, where the rate comes from, and 用同步的 after typing one.
+private struct EntryRatePopover: View {
+    @Bindable var model: EntrySheetViewModel
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Space.s12) {
+            HStack(spacing: DS.Space.s8) {
+                Text("1 " + model.draft.currency.symbol + " =").dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink2)
+                    .fixedSize()
+                    .dsAccessibilityFocus(firstFocus)
+                // Typed on the sheet's keypad. The rate in use shows quietly until one is typed (手动, this entry only).
+                HStack(spacing: DS.Space.s4) {
+                    Spacer(minLength: .zero)
+                    Text(model.draft.exchangeRate.isEmpty ? (model.autoRate.map(CurrencySettings.rateText) ?? "0") : model.draft.exchangeRate)
+                        .dsText(EntrySpec.rateField).monospacedDigit()
+                        .foregroundStyle(model.draft.exchangeRate.isEmpty ? DS.Color.ink3 : DS.Color.ink)
+                        .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
+                    Capsule(style: .continuous).fill(DS.Color.accent)
+                        .frame(width: EntrySpec.caretWidth, height: EntrySpec.rateCaret).accessibilityHidden(true)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("汇率")
+                .accessibilityValue(model.draft.exchangeRate.isEmpty ? (model.autoRate.map(CurrencySettings.rateText) ?? "") : model.draft.exchangeRate)
+                .accessibilityHint("用下方键盘输入")
+                .padding(.horizontal, DS.Space.s12)
+                .frame(minHeight: DS.Size.tapMin)
+                .background(DS.Color.bg, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous).strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus))
+                .accessibilityIdentifier("entryRateField")
+                Text("¥").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).fixedSize()
+            }
+            HStack(spacing: DS.Space.s8) {
+                if !model.rateSource.isEmpty {
+                    Text(model.rateSource).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                }
+                Spacer(minLength: .zero)
+                if model.typedRate != nil, model.autoRate != nil {
+                    Button { model.draft.exchangeRate = "" } label: {
+                        Text(model.rateResetTitle).dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
+                            .frame(minHeight: DS.Size.tapMin)
+                    }.buttonStyle(EntryTactileButtonStyle()).accessibilityIdentifier("entryRateReset")
+                }
+            }
+        }
+        .padding(DS.Space.s16)
+        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("汇率")
+    }
+}
+
 /// Spec-Redlines 弹出列表 · 账户: name, balance, a check on the current one. Picking closes it.
 private struct EntryAccountList: View {
     let model: EntrySheetViewModel
@@ -984,31 +1158,6 @@ private struct EntryExpandedPanelView: View {
     var body: some View {
         Group {
             switch model.drawer {
-            case .currency:
-                VStack(alignment: .leading, spacing: DS.Space.s8) {
-                    Text("外币").dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
-                        .accessibilityAddTraits(.isHeader)
-                    FlowLayout(centered: false) {
-                        ForEach(BillCurrency.allCases) { currency in
-                            EntryPill(title: currency.rawValue, selected: currency == model.draft.currency,
-                                      label: currency.unit, hint: "切换记账币种") {
-                                if model.draft.currency != currency { model.draft.exchangeRate = "" }
-                                model.draft.currency = currency
-                                if currency == .cny { model.drawer = nil }
-                            }
-                        }
-                    }
-                    if model.draft.currency != .cny {
-                        HStack(spacing: DS.Space.s8) {
-                            Text("汇率").dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink2)
-                            DSInlineTextField(title: "汇率", text: $model.draft.exchangeRate, decimal: true,
-                                              autoFocus: false) { model.drawer = nil }
-                            EntryPill(title: nil, icon: .done, label: "完成汇率", hint: "保留币种和汇率") {
-                                model.drawer = nil
-                            }
-                        }
-                    }
-                }
             case .split:
                 VStack(alignment: .leading, spacing: DS.Space.s8) {
                     HStack {
@@ -1065,8 +1214,19 @@ private struct EntryKeypadTrayView: View {
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.keypad)
         DSKeypad(saveReady: model.canSave, onKey: model.pressAmountKey, onSave: save)
+            .transformAnchorPreference(key: EntryPillAnchors.self, value: .bounds) { $0.keypad = $1 }
             .padding(.bottom, safeBottom)
             .background(DS.Color.tray)
+    }
+}
+
+/// The popover backdrop: everything, less an optional hole (the keypad under the rate card).
+private struct EntryBackdropShape: Shape {
+    let hole: CGRect?
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        if let hole { path.addRect(hole) }
+        return path
     }
 }
 
@@ -1389,5 +1549,8 @@ struct FlowLayout: Layout {
 }
 
 extension YubaiCore.Category {
-    var entryIcon: DS.Icon { DS.Icon(category: name, symbol: symbol, income: income) }
+    /// This category's icon in the open ledger (no two alike), else what its name or symbol means.
+    var entryIcon: DS.Icon {
+        CategoryIcons.current[DS.Icon.CategoryKey(name: name, income: income)] ?? DS.Icon(category: name, symbol: symbol, income: income, icon: icon)
+    }
 }

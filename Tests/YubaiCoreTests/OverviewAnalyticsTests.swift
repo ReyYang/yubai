@@ -78,6 +78,74 @@ final class OverviewAnalyticsTests: XCTestCase {
         XCTAssertTrue(OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false, selection: .current, now: now).isAnomaly)
     }
 
+    func testAnomalyDrillMatchesTheCardAndLeavesExcludedBillsOut() {
+        var (ledger, account) = sample()
+        var fixed = expense(70_000, "购物", account: account); fixed.planID = UUID()
+        var pending = expense(40_000, "购物", account: account); pending.pendingRecovery = .reimbursement
+        ledger.entries = history(["购物": 200_000], account: account) + [
+            expense(180_000, "购物", account: account, subcategory: "衣服"),
+            expense(120_000, "购物", account: account, subcategory: "数码"),
+            fixed, pending
+        ]
+        let card = OverviewAnalytics.review(in: ledger, selection: .current, now: now)
+        let anomaly = try! XCTUnwrap(card.anomaly)
+        let drill = try! XCTUnwrap(OverviewAnalytics.anomalyDrill(in: ledger, category: "购物", selection: .current, now: now))
+        XCTAssertEqual(drill.amount, anomaly.amount)
+        XCTAssertEqual(drill.amount, 300_000, "the planned bill and the pending reimbursement stay out")
+        XCTAssertEqual(drill.previous, anomaly.previous)
+        XCTAssertEqual(drill.baselineCycles, card.anomalyBaselineCycles)
+        XCTAssertEqual(drill.entries.count, 2)
+        XCTAssertEqual(drill.slices.map(\.category), ["衣服", "数码"])
+        XCTAssertNil(OverviewAnalytics.anomalyDrill(in: ledger, category: "吃饭", selection: .current, now: now))
+        // The plain category page still counts everything in 购物.
+        XCTAssertEqual(OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false,
+                                                       selection: .current, now: now).amount, 410_000)
+    }
+
+    func testAnomalyDrillRowsAddUpToTheCardWithRefundsAsTheirOwnRow() {
+        var (ledger, account) = sample()
+        let coat = expense(250_000, "购物", account: account, subcategory: "衣服")
+        var refund = Entry(date: date("2026-11-14"), amount: 30_000, nature: .refund, accountID: account.id, title: "退大衣", category: "购物")
+        refund.relatedEntryID = coat.id
+        ledger.entries = history(["购物": 200_000], account: account) + [
+            coat, expense(120_000, "购物", account: account, subcategory: "数码"), refund
+        ]
+        let anomaly = try! XCTUnwrap(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly)
+        let drill = try! XCTUnwrap(OverviewAnalytics.anomalyDrill(in: ledger, category: "购物", selection: .current, now: now))
+        XCTAssertEqual(anomaly.amount, 340_000)
+        XCTAssertEqual(drill.slices.map(\.category), ["衣服", "数码", OverviewAnalytics.refundGroup])
+        XCTAssertEqual(drill.slices.last?.amount, -30_000)
+        XCTAssertFalse(drill.slices.last!.isAnomaly)
+        XCTAssertEqual(drill.slices.reduce(0) { $0 + $1.amount }, anomaly.amount, "the rows add up to the card")
+        XCTAssertEqual(drill.entryGroups[refund.id], OverviewAnalytics.refundGroup)
+        XCTAssertEqual(drill.slices.last?.title, "退款")
+        // The plain category page reconciles the same way.
+        let page = OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false, selection: .current, now: now)
+        XCTAssertEqual(page.slices.reduce(0) { $0 + $1.amount }, page.amount)
+    }
+
+    func testASubcategoryNamedRefundStaysSpending() {
+        var (ledger, account) = sample()
+        let returned = expense(250_000, "购物", account: account, subcategory: "衣服")
+        var refund = Entry(date: date("2026-11-14"), amount: 30_000, nature: .refund, accountID: account.id, title: "退大衣", category: "购物")
+        refund.relatedEntryID = returned.id
+        ledger.entries = history(["购物": 200_000], account: account) + [
+            returned, expense(100_000, "购物", account: account, subcategory: "退款"), refund
+        ]
+        let drill = try! XCTUnwrap(OverviewAnalytics.anomalyDrill(in: ledger, category: "购物", selection: .current, now: now))
+        XCTAssertEqual(drill.slices.map(\.title), ["衣服", "退款", "退款"], "the person's 退款 spending and the refunds row")
+        XCTAssertEqual(drill.slices.map(\.amount), [250_000, 100_000, -30_000])
+        XCTAssertEqual(drill.slices.reduce(0) { $0 + $1.amount }, drill.amount)
+        XCTAssertEqual(Set(drill.slices.map(\.id)).count, 3, "row ids stay unique")
+    }
+
+    func testUnsortedListsTheEntriesToOrganize() {
+        var (ledger, bank) = sample()
+        let pending = expense(50_000, Classification.pendingCategory, account: bank)
+        ledger.entries = [pending, expense(80_000, "购物", account: bank)]
+        XCTAssertEqual(OverviewAnalytics.review(in: ledger, selection: .current, now: now).unsortedEntryIDs, [pending.id])
+    }
+
     func testAnomalyNeedsExcessOverThirtyPercentAndAtLeastOneHundred() {
         var (ledger, account) = sample()
         ledger.entries = history(["吃饭": 100_000, "交通": 9_000], account: account)

@@ -82,9 +82,64 @@ extension Label where Title == Text, Icon == DSIconView {
 extension DS.Icon {
     /// Ledgers store SF Symbol names for categories; every screen draws them through this table.
     /// Unknown names, including ones from older ledgers, fall back to `.catOther`.
-    /// A category's icon: a known name wins (custom categories keep the generic symbol), then its stored symbol.
-    init(category name: String, symbol: String, income: Bool) {
-        self = Self.categoryNames[name] ?? DS.Icon(symbol: symbol, income: income)
+    /// A category's icon: the one picked in 编辑分类, then a known name, then its stored symbol.
+    init(category name: String, symbol: String, income: Bool, icon: String? = nil) {
+        self = icon.flatMap(DS.Icon.init(rawValue:)) ?? Self.categoryNames[name] ?? DS.Icon(symbol: symbol, income: income)
+    }
+
+    /// 编辑分类 · 图标: the 18 picks, in the canvas order (Main.dc.html iconChoices).
+    static let categoryChoices: [DS.Icon] = [
+        .catLearning, .catFood, .catCoffee, .catTransport, .catShopping, .catHousing, .catHealth, .catBeauty, .catFun,
+        .catTravel, .catFamily, .catInsurance, .catFees, .catDigital, .catDaily, .catGrocery, .catOther, .incInvestment,
+    ]
+
+    /// What VoiceOver says for each pick in 编辑分类 · 图标.
+    var choiceName: String {
+        switch self {
+        case .catLearning: "书本"; case .catFood: "碗"; case .catCoffee: "咖啡杯"; case .catTransport: "地铁"
+        case .catShopping: "购物袋"; case .catHousing: "房子"; case .catHealth: "药箱"; case .catBeauty: "剪刀"
+        case .catFun: "游戏"; case .catTravel: "行李箱"; case .catFamily: "礼物"; case .catInsurance: "盾牌"
+        case .catFees: "票据"; case .catDigital: "手机"; case .catDaily: "商店"; case .catGrocery: "菜篮"
+        case .catOther: "三个点"; case .incInvestment: "走势"
+        default: "图标"
+        }
+    }
+
+    struct CategoryKey: Hashable { let name: String; let income: Bool }
+
+    /// Every category's icon in one ledger, with no two expense categories alike unless the person chose so.
+    /// Picks made in 编辑分类 stay as chosen; then each category keeps what its name or symbol means while
+    /// no earlier category has it by meaning; the rest take the first free pick, in the order the categories were added,
+    /// so an icon does not move when the list is reordered. Income categories show no icon cell and keep
+    /// their own; the catch-all keeps its three dots.
+    static func categoryIcons(_ categories: [YubaiCore.Category]) -> [CategoryKey: DS.Icon] {
+        var result: [CategoryKey: DS.Icon] = [:]
+        // A hand pick may repeat a meaning icon (the person saw it there); it never pushes that one off.
+        var picked = Set<DS.Icon>(), taken = Set<DS.Icon>()
+        for category in categories {
+            guard let icon = category.icon.flatMap(DS.Icon.init(rawValue:)) else { continue }
+            result[CategoryKey(name: category.name, income: category.income)] = icon
+            if !category.income { picked.insert(icon) }
+        }
+        var waiting: [CategoryKey] = []
+        for category in categories {
+            let key = CategoryKey(name: category.name, income: category.income)
+            guard result[key] == nil else { continue }
+            let natural = DS.Icon(category: category.name, symbol: category.symbol, income: category.income)
+            if category.income || category.system || category.name == "其他支出" {
+                result[key] = natural
+            } else if natural != .catOther && !taken.contains(natural) {
+                result[key] = natural; taken.insert(natural)
+            } else {
+                waiting.append(key)
+            }
+        }
+        for key in waiting {
+            let free = categoryChoices.first { !taken.contains($0) && !picked.contains($0) && $0 != .catOther && $0 != .incInvestment } ?? .catOther
+            result[key] = free
+            if free != .catOther { taken.insert(free) }
+        }
+        return result
     }
 
     init(symbol: String, income: Bool = false) {
@@ -97,6 +152,8 @@ extension DS.Icon {
         "交通": .catTransport, "出行": .catTransport, "买菜": .catGrocery, "生鲜买菜": .catGrocery,
         "购物": .catShopping, "居住": .catHousing, "住房": .catHousing, "娱乐": .catFun,
         "日用": .catDaily, "日用百货": .catDaily, "数码": .catDigital, "数码电器": .catDigital,
+        // 通讯 is talking to people, not a device: its own bubble, so it never looks like 数码.
+        "通讯": .chat,
         "工资": .incSalary, "奖金": .incSalary, "工资奖金": .incSalary, "兼职劳务": .incSideJob,
         "礼金赠与": .incGift, "投资收益": .incInvestment, "二手转卖": .incResale,
         "报销": .reimburse, "退款": .refund,
@@ -133,5 +190,17 @@ extension AccountKind {
         case .cash: .acctCash
         case .receivable: .acctReceivable
         }
+    }
+}
+
+/// The open ledger's category icons, worked out once whenever its categories change.
+enum CategoryIcons {
+    nonisolated(unsafe) private(set) static var current: [DS.Icon.CategoryKey: DS.Icon] = [:]
+    nonisolated(unsafe) private static var source: [YubaiCore.Category] = []
+
+    @MainActor static func configure(_ categories: [YubaiCore.Category]) {
+        guard categories != source else { return }
+        source = categories
+        current = DS.Icon.categoryIcons(categories)
     }
 }

@@ -52,6 +52,27 @@ final class BillEditingStoreTests: XCTestCase {
         return try XCTUnwrap(store.current.entries.first { $0.id == entry.id })
     }
 
+    // MARK: 0 · undo
+
+    func testAWriteWithoutItsOwnUndoDropsTheOlderSnapshot() throws {
+        let store = try store(book().ledger)
+        XCTAssertTrue(store.update("先攒", entryMotion: false, showToast: false) { $0.savingRule = .fixed(100_000) })
+        XCTAssertEqual(store.undoLabel, "先攒")
+        // Changing the main currency is not undoable; 撤销 afterwards must not roll it back with the saving.
+        XCTAssertTrue(store.update("主币种", recordUndo: false, entryMotion: false, showToast: false) { $0.preferences.hideAmounts = true })
+        XCTAssertNil(store.undoLabel)
+        store.undo()
+        XCTAssertTrue(store.current.preferences.hideAmounts)
+        XCTAssertEqual(store.current.savingRule, .fixed(100_000))
+    }
+
+    func testQuietMetadataWritesKeepTheUndo() throws {
+        let store = try store(book().ledger)
+        XCTAssertTrue(store.update("先攒", entryMotion: false, showToast: false) { $0.savingRule = .fixed(100_000) })
+        XCTAssertTrue(store.update("记录备份时间", preservingUpdatedAt: true, recordUndo: false, entryMotion: false, showToast: false) { _ in })
+        XCTAssertEqual(store.undoLabel, "先攒")
+    }
+
     // MARK: 1 · editing keeps the route
 
     func testEditingAOneSidedInvestBuyKeepsItOneSided() throws {

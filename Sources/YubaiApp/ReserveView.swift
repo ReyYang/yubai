@@ -51,6 +51,6 @@ struct ReserveLineRow: View {
             Text(title).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, alignment: .leading)
             amountView
         }.frame(minHeight: YubaiSize.rowDouble).accessibilityElement(children: .combine)
-            .accessibilityLabel(dateText + "，" + title + "，" + (hide ? "金额已隐藏" : AmountLabel.text(line.amount, sign: .automatic)))
+            .accessibilityLabel(dateText + "，" + title + "，" + (hide ? "金额已隐藏" : amount2(line.amount, hide: false)))
     }
 }

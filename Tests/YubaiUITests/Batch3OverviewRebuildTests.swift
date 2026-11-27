@@ -112,11 +112,11 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         XCTAssertFalse(element("saveQuickEntry").exists)
         keys("32056.40")
         label("overviewValuationAmount", contains: "32,056.40")
-        label("overviewValuationDifference", contains: "−123.60")
+        label("overviewValuationDifference", contains: "−¥123.60")
         tap("reconcileApply")
         label("overviewAccountBalance", contains: "32,056.40")
         label("overviewAccountReconciled", contains: "11.23")
-        label("toastMessage", contains: "已记调整 −123.60")
+        label("toastMessage", contains: "已记调整 −¥123.60")
     }
 
     func testInvestmentValuationLeavesSpendableUnchanged() {
@@ -125,11 +125,12 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         let headline = element("fundsFormula")
         XCTAssertTrue(headline.waitForExistence(timeout: 5))
         let before = headline.value as? String
-        XCTAssertEqual(before, "¥18,500.00")
+        // No take-home yet: the headline is 这个月花了 (headlineTitle); a valuation must not move it either way.
+        XCTAssertNotNil(before)
         tap("tab_insights"); tap("overviewInvest_基金")
         label("overviewValuationAmount", contains: "41,236.00")
         keys("42018.50")
-        label("overviewValuationDifference", contains: "+782.50")
+        label("overviewValuationDifference", contains: "+¥782.50")
         tap("overviewInvestApply")
         label("overviewInvestmentValue_基金", contains: "42,018.50")
         label("overviewInvestmentDate_基金", contains: "11.23")
@@ -146,13 +147,13 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         label("overviewBookAmount", contains: "3,216.80")
         keys("3300")
         label("overviewValuationAmount", contains: "3,300")
-        label("overviewValuationDifference", contains: "−83.20")
+        label("overviewValuationDifference", contains: "−¥83.20")
         tap("reconcileApply")
         label("overviewAccountBalance", contains: "−3,300.00")
 
         tap("reconcileAccount"); keys("0")
-        XCTAssertEqual(element("overviewValuationAmount").label, "0")
-        label("overviewValuationDifference", contains: "+3,300.00")
+        XCTAssertEqual(element("overviewValuationAmount").label, "¥0")
+        label("overviewValuationDifference", contains: "+¥3,300.00")
         tap("reconcileApply")
         XCTAssertTrue(waitForDisappearance(element("reconcileSheet")))
         XCTAssertEqual(element("overviewAccountBalance").label, "0.00")

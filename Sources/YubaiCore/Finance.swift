@@ -415,13 +415,12 @@ public struct LedgerPresentationCache {
     private var candidates: [SubscriptionCandidate]?
     private var settingsValue: (value: LedgerSettingsSummary, at: Date, expires: Date, zone: TimeZone)?
     private var savingsValue: (value: LedgerSavingsTotals, at: Date, expires: Date, zone: TimeZone)?
-    private var capturesValue: (value: [Entry], at: Date, expires: Date, zone: TimeZone)?
     public init() {}
     private mutating func prepare(_ ledger: Ledger, revision: UInt64) {
         guard self.revision != revision || ledgerID != ledger.id else { return }
         self.revision = revision; ledgerID = ledger.id
         entryDates = ledger.entries.filter { $0.deletedAt == nil }.map(\.date).sorted()
-        sortedEntries = nil; byID = nil; flows = [:]; slices = [:]; records = [:]; subcategories = [:]; evidence = [:]; candidates = nil; settingsValue = nil; savingsValue = nil; capturesValue = nil
+        sortedEntries = nil; byID = nil; flows = [:]; slices = [:]; records = [:]; subcategories = [:]; evidence = [:]; candidates = nil; settingsValue = nil; savingsValue = nil
     }
     // Two half-open intervals in the same gaps between posting dates select exactly
     // the same rows. This also caches a live interval whose end is Dates.now each render,
@@ -516,20 +515,6 @@ public struct LedgerPresentationCache {
         }
         savingsValue = (value, now, expires, zone); return value
     }
-    public mutating func recentCaptures(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> [Entry] {
-        prepare(ledger, revision: revision)
-        let zone = TimeZone.current
-        if let cached = capturesValue, cached.zone == zone, now >= cached.at, now < cached.expires { return cached.value }
-        let start = Dates.addDays(-6, to: Dates.day(now))
-        var expires = Dates.addDays(1, to: Dates.day(now))
-        var rows: [Entry] = []
-        for entry in ledger.entries where entry.deletedAt == nil && entry.quickCapture != nil {
-            let date = entry.recordedAt ?? entry.date
-            if date > now { expires = min(expires, date) }
-            if date >= start && date <= now { rows.append(entry) }
-        }
-        capturesValue = (rows, now, expires, zone); return rows
-    }
     public mutating func settings(in ledger: Ledger, revision: UInt64, now: Date = Dates.now) -> LedgerSettingsSummary {
         prepare(ledger, revision: revision)
         let zone = TimeZone.current
@@ -542,7 +527,10 @@ public struct LedgerPresentationCache {
             followUpCount: ledger.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= now } == true }.count,
             memoryCount: ledger.memories.count,
             weeklyMemoryCount: ledger.memories.filter { ButlerCards.isoWeek($0.createdAt) == week }.count,
-            fixedFlowTitles: FixedFlowArrangement.rows(in: ledger).map(\.title))
+            fixedFlowTitles: FixedFlowArrangement.rows(in: ledger).map(\.title),
+            savingTarget: SettingsSummary.savingTarget(in: ledger, now: now),
+            monthlyFixed: SettingsSummary.monthlyFixed(in: ledger, now: now).total,
+            recentlyDeletedCount: RecentlyDeleted.entries(in: ledger, now: now).count)
         var expires = Dates.addDays(1, to: Dates.day(now))
         for entry in ledger.entries where entry.deletedAt == nil {
             if entry.date > now { expires = min(expires, entry.date) }
@@ -550,6 +538,12 @@ public struct LedgerPresentationCache {
         }
         for wish in ledger.wishlist {
             if let date = wish.followUpAt, date > now { expires = min(expires, date) }
+        }
+        // 最近删除 drops a bill 30 days after it was deleted, at that time of day.
+        for entry in ledger.entries {
+            guard let deleted = entry.deletedAt else { continue }
+            let leaves = Dates.calendar.date(byAdding: .day, value: 30, to: deleted) ?? deleted
+            if leaves > now { expires = min(expires, leaves) }
         }
         settingsValue = (value, now, expires, zone); return value
     }
@@ -562,6 +556,10 @@ public struct LedgerSettingsSummary: Equatable, Sendable {
     public let memoryCount: Int
     public let weeklyMemoryCount: Int
     public let fixedFlowTitles: [String]
+    /// 设置's own rows: read once per ledger change instead of on every render.
+    public let savingTarget: Int64
+    public let monthlyFixed: Int64
+    public let recentlyDeletedCount: Int
 }
 
 public struct LedgerSavingsTotals: Equatable, Sendable {

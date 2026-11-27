@@ -2,8 +2,11 @@ import SwiftUI
 import YubaiCore
 
 enum HomeDisplay {
+    /// Every amount on home, overview and settings: in the main currency (display only), CNY by default.
     static func money(_ cents: Int64, hidden: Bool, currency: Bool = false) -> String {
-        hidden ? (currency ? "¥••••" : "••••") : Money.text(cents, currency: currency)
+        let display = DisplayCurrency.current
+        if hidden { return currency ? display.symbol(for: cents) + "••••" : "••••" }
+        return display.text(cents, symbol: currency)
     }
 
     static func signed(_ cents: Int64, hidden: Bool) -> String {
@@ -14,11 +17,19 @@ enum HomeDisplay {
     static func billAmount(_ entry: Entry, hidden: Bool) -> String {
         guard !hidden else { return money(entry.amount, hidden: true) }
         let sign = entry.nature.paired || entry.intoFixedSavings ? "" : entry.nature.inflow ? "+" : "−"
-        if let currency = entry.originalCurrency, let original = entry.originalAmount {
-            let value = money(original, hidden: false)
-            return sign + (currency == .jpy && original.isMultiple(of: 100) ? String(value.dropLast(3)) : value) + " " + currency.rawValue
+        // Spec-Currency 首页和列表: the main-currency amount; the original goes on the second line —
+        // unless it was paid in the main currency, then that amount as paid, and no second line.
+        if let currency = entry.originalCurrency, currency == DisplayCurrency.current.currency, let original = entry.originalAmount {
+            return sign + currency.formatted(original)
         }
         return sign + money(entry.amount, hidden: false)
+    }
+
+    /// The second line of a foreign bill: what was paid, in its own currency (「C$4.25」).
+    static func originalAmount(_ entry: Entry, hidden: Bool) -> String? {
+        guard let currency = entry.originalCurrency, let original = entry.originalAmount,
+              currency != DisplayCurrency.current.currency else { return nil }
+        return currency.amountText(original, hidden: hidden)
     }
 
     static func dsBudget(_ row: HomeBudget, hidden: Bool) -> DSBudget {
@@ -47,23 +58,15 @@ enum HomeDisplay {
         return (days, daily.evenPace.map { fixture ? HomeSpec.barGuide : height($0) })
     }
 
-    static func icon(_ entry: Entry, category: String) -> DS.Icon {
+    /// A bill's icon: savings, transfers and income by what they are; spending by its category,
+    /// the same icon the category shows everywhere else in the ledger.
+    static func icon(_ entry: Entry, category: YubaiCore.Category?, name: String) -> DS.Icon {
         if entry.intoFixedSavings || entry.nature == .investBuy { return .saveFirst }
         if entry.nature.paired { return .transfer }
         if entry.nature == .income { return .acctWallet }
+        if let category { return category.entryIcon }
         if entry.planID != nil { return .subscription }
-        switch category {
-        case "吃饭", "餐饮": return entry.displayTitle.contains("咖啡") || entry.displayTitle.contains("瑞幸") ? .catCoffee : .catFood
-        case "咖啡": return .catCoffee
-        case "交通": return .catTransport
-        case "买菜", "买菜做饭": return .catGrocery
-        case "购物": return .catShopping
-        case "居住": return .catHousing
-        case "娱乐": return .catFun
-        case "日用": return .catDaily
-        case "数码", "数码与电子产品": return .catDigital
-        default: return .catOther
-        }
+        return DS.Icon(category: name, symbol: "", income: false)
     }
 
     static func icon(_ account: Account) -> DS.Icon {
@@ -82,6 +85,8 @@ struct HomeView: View {
     @Environment(AppStore.self) private var store
 
     var body: some View {
+        // Amounts are formatted through `DisplayCurrency`; reading this redraws home when a new rate lands.
+        let _ = store.moneyDisplay
         HomePage(ledger: store.current, now: store.financialNow, request: request, fixture: HomeFixture.current, scrollRequest: store.rootScrollRequest[.ledger, default: 0],
                  openBudget: { store.tabRouteRequest = .formula },
                  openSettings: { store.tabRouteRequest = .settings },
@@ -183,7 +188,8 @@ private struct HomePage: View {
         let series = DailySpending(in: chartLedger, period: period)
         let bars = HomeDisplay.bars(series, fixture: fixture != nil)
         let over = period.showsSpendableDeficit
-        let amount = period.spendableDisplayAmount
+        // 超支 / 这个月花了 (no take-home yet) / 还能花: the title and its amount come as one pair.
+        let amount = period.headlineAmount
         let days = HomeDisplay.daysLeft(period)
         let daily = Int64((Double(period.available) / Double(days)).rounded())
         let elapsed = max(1, period.daysTotal - days + 1)
@@ -199,9 +205,10 @@ private struct HomePage: View {
         let budgets = HomeBudgets(in: ledger, now: now).home.map { HomeDisplay.dsBudget($0, hidden: hide) }
         return VStack(spacing: .zero) {
             DSHero(amount: HomeDisplay.money(amount, hidden: hide, currency: true),
-                   daily: !over && period.income > 0 ? HomeDisplay.money(daily, hidden: hide) : "",
+                   // Spec-Issues 7: overspent shows 每天 0.00, not an empty slot.
+                   daily: over ? HomeDisplay.money(0, hidden: hide) : period.income > 0 ? HomeDisplay.money(daily, hidden: hide) : "",
                    remainingDays: days, days: bars.days, budgets: [], onAmount: openBudget,
-                   title: over ? "超出" : "还能花", tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
+                   title: period.headlineTitle, tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
                    guide: bars.guide)
             if period.income == 0 {
                 HomeStatus(text: "工资未到账", action: "记工资", onAction: recordSalary, identifier: "recordSalary")
@@ -225,7 +232,7 @@ private struct HomePage: View {
         let recoveryIDs = pendingIDs
         let groups = groupsCache.groups(ledger: ledger, now: now, preset: preset, fixture: fixture)
         if preset != nil {
-            DSDayHeader(title: "\(groups.count) 笔", total: HomeDisplay.signed(groups.net, hidden: hide))
+            DSDayHeader(title: "\(groups.count.formatted()) 笔", total: HomeDisplay.signed(groups.net, hidden: hide))
                 .accessibilityIdentifier("entriesSearchTotal")
                 .homeRow()
         }
@@ -271,9 +278,10 @@ private struct HomePage: View {
         let secondLine = searching
             ? [Dates.monthDay(entry.date), account?.name].compactMap { $0 }.joined(separator: " · ")
             : entry.originalCurrency != nil || account?.kind == .credit ? account?.name : nil
-        let icon = HomeDisplay.icon(entry, category: category)
+        let icon = HomeDisplay.icon(entry, category: ledger.categories.first { $0.name == category && $0.income == entry.nature.categoryIncome },
+                                    name: category)
         let amount = HomeDisplay.billAmount(entry, hidden: hide)
-        let detailAmount = entry.originalCurrency.map { _ in "≈ " + HomeDisplay.money(entry.amount, hidden: hide) }
+        let detailAmount = HomeDisplay.originalAmount(entry, hidden: hide)
         let amountColor = entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink
         let frames = frames
         return HomeBillButton(onTap: {
@@ -344,7 +352,7 @@ private struct HomePage: View {
                 }.foregroundStyle(DS.Color.accentInk).frame(height: SettingsSpec.row).contentShape(Rectangle())
             }.dsPressStyle().padding(.top, DS.Space.s4).accessibilityIdentifier("askHomeSearch")
             DS.Color.separator.frame(height: DS.Stroke.hairline)
-            DSDayHeader(title: "\(results.count) 笔", total: HomeDisplay.signed(billNet(results), hidden: hide))
+            DSDayHeader(title: "\(results.count.formatted()) 笔", total: HomeDisplay.signed(billNet(results), hidden: hide))
                 .accessibilityIdentifier("entriesSearchTotal")
             ForEach(Array(results.enumerated()), id: \.element.id) { index, entry in
                 billRow(entry, account: accounts[entry.accountID], pending: pending.contains(entry.id), separator: index > 0)

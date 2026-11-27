@@ -12,6 +12,14 @@ enum OverviewSpec {
     static let alertSubtitleGap: CGFloat = 3 // canvas Review.dc.html: anomaly subtitle gap
     static let legendGap: CGFloat = 10 // canvas Review.dc.html: legend and ReviewDrill.dc.html bill columns
     static let legendAmountWidth: CGFloat = 76 // canvas Review.dc.html: legend and drill amount spine
+    // design-v2 canvas Main.dc.html 全景图例: grid 10 / 1fr / 56 / 92, column gap 12, row 48, hairline from the name
+    static let legendGridGap: CGFloat = 12
+    static let organizeHeight: CGFloat = 36 // Extra.dc.html 全景 · 兜底类最大: 去整理 pill
+    static let legendDeltaColumn: CGFloat = 56
+    static let legendAmountColumn: CGFloat = 92
+    static let legendRow: CGFloat = 48
+    static let legendNameGap: CGFloat = 8
+    static let legendGridAmount = DS.TextStyle(size: 18, lineHeight: 22, weight: .semibold, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: true)
     static let donutGap: CGFloat = 1.5 // canvas Review.dc.html: arc gap measured along the center line
     static let donutInset = DS.Size.donutStroke / 2 // canvas Review.dc.html: keep stroke inside DS ring diameter
     static let donutCenterline = DS.Size.donut - DS.Size.donutStroke // canvas Review.dc.html: circumference for arc gaps

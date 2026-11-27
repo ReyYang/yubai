@@ -30,8 +30,8 @@
 <key>NSCameraUsageDescription</key><string>拍下小票，识别后由你确认再记账。</string>
 <key>NSPhotoLibraryUsageDescription</key><string>选择账单截图，在设备上识别并整理交易。</string>
 <key>UILaunchScreen</key><dict/>
-<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>app.yubai.personal.organizeImports.*</string></array>
-<key>UIBackgroundModes</key><array><string>processing</string></array>
+<key>BGTaskSchedulerPermittedIdentifiers</key><array><string>app.yubai.personal.organizeImports.*</string><string>app.yubai.personal.rates</string></array>
+<key>UIBackgroundModes</key><array><string>fetch</string><string>processing</string></array>
 <key>UIApplicationSceneManifest</key><dict><key>UIApplicationSupportsMultipleScenes</key><false/></dict>
 <key>UISupportedInterfaceOrientations</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
 <key>UISupportedInterfaceOrientations~ipad</key><array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
