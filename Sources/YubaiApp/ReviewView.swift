@@ -24,11 +24,16 @@ struct ReviewView: View {
                 .padding(.top, OverviewSpec.periodTop)
 
             totals(snapshot, hidden: hidden).padding(.top, OverviewSpec.totalsTop)
-            if let anomaly = snapshot.anomaly {
+            // Spec-Issues 9: unsorted bills make any 多花 unreliable, so the card asks for them first.
+            if let unsorted = snapshot.unsorted {
+                ReviewUnsortedCard(count: unsorted.count, share: snapshot.spent > 0 ? Double(unsorted.amount) / Double(snapshot.spent) : 0) {
+                    store.tabRouteRequest = .triage(snapshot.unsortedEntryIDs)
+                }.padding(.top, DS.Space.s20)
+            } else if let anomaly = snapshot.anomaly {
                 DSAlertCard(title: anomaly.category + "多花了 " + OverviewDisplay.money(anomaly.amount - anomaly.previous, hidden: hidden),
                             subtitle: OverviewDisplay.money(anomaly.amount, hidden: hidden)
                             + " · 近 \(snapshot.anomalyBaselineCycles) 期同期平均 " + OverviewDisplay.money(anomaly.previous, hidden: hidden)) {
-                    open(anomaly)
+                    store.tabRouteRequest = .anomaly(category: anomaly.category, selection: store.overviewPeriod)
                 }.accessibilityIdentifier("overviewAnomaly").padding(.top, DS.Space.s20)
             }
             if !snapshot.slices.isEmpty {
@@ -281,5 +286,33 @@ struct ReviewPeriodSheetOverlay: View {
             apply(selection)
             close()
         }
+    }
+}
+
+/// Canvas Extra.dc.html 全景 · 兜底类最大: count and share on the left, 去整理 on a raised pill.
+private struct ReviewUnsortedCard: View {
+    let count: Int
+    let share: Double
+    let organize: () -> Void
+
+    var body: some View {
+        HStack(spacing: DS.Space.s12) {
+            VStack(alignment: .leading, spacing: .zero) {
+                Text("\(count) 笔还没分类").dsText(DS.Font.tBody).fontWeight(.semibold).monospacedDigit()
+                    .foregroundStyle(DS.Color.warnStrong)
+                Text("占本期 " + share.formatted(.percent.precision(.fractionLength(0)))).dsText(DS.Font.tSub).monospacedDigit()
+                    .foregroundStyle(DS.Color.warnInk)
+            }.dsFillWidth()
+            Button(action: organize) {
+                Text("去整理").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.warnStrong)
+                    .padding(.horizontal, DS.Space.s16).frame(height: OverviewSpec.organizeHeight)
+                    .dsPill(DS.Color.raised)
+                    .frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
+            }.dsPressStyle().fixedSize().accessibilityIdentifier("overviewOrganize")
+        }
+        .padding(.horizontal, DS.Space.s16).padding(.vertical, OverviewSpec.alertVertical)
+        .dsSurface(DS.Color.warnSoft, radius: DS.Radius.m)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("overviewUnsorted")
     }
 }

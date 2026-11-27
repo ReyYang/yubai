@@ -199,9 +199,10 @@ private struct HomePage: View {
         let budgets = HomeBudgets(in: ledger, now: now).home.map { HomeDisplay.dsBudget($0, hidden: hide) }
         return VStack(spacing: .zero) {
             DSHero(amount: HomeDisplay.money(amount, hidden: hide, currency: true),
-                   daily: !over && period.income > 0 ? HomeDisplay.money(daily, hidden: hide) : "",
+                   // Spec-Issues 7: overspent shows 每天 0.00, not an empty slot.
+                   daily: over ? HomeDisplay.money(0, hidden: hide) : period.income > 0 ? HomeDisplay.money(daily, hidden: hide) : "",
                    remainingDays: days, days: bars.days, budgets: [], onAmount: openBudget,
-                   title: over ? "超出" : "还能花", tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
+                   title: period.headlineTitle, tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
                    guide: bars.guide)
             if period.income == 0 {
                 HomeStatus(text: "工资未到账", action: "记工资", onAction: recordSalary, identifier: "recordSalary")

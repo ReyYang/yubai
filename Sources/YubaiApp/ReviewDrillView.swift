@@ -6,12 +6,15 @@ struct ReviewDrillView: View {
     let categories: [String]
     let isOther: Bool
     let selection: OverviewPeriodSelection
+    /// Opened from the 多花 card: same 口径 as the card, or the plain category page once it is no longer 多花.
+    var anomaly = false
     @Environment(AppStore.self) private var store
 
     var body: some View {
         let _ = OverviewRenderCounts.hit("drillBody")
         let now = store.financialNow
-        let data = OverviewAnalytics.categoryDrill(in: store.current, title: title, categories: categories, isOther: isOther, selection: selection, now: now)
+        let data = (anomaly ? OverviewAnalytics.anomalyDrill(in: store.current, category: title, selection: selection, now: now) : nil)
+            ?? OverviewAnalytics.categoryDrill(in: store.current, title: title, categories: categories, isOther: isOther, selection: selection, now: now)
         let hidden = store.preferences.hideAmounts
         let colors = DSChartPalette.colors(anomalies: data.slices.map(\.isAnomaly))
         VStack(spacing: .zero) {
@@ -44,7 +47,13 @@ struct ReviewDrillView: View {
                 .foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                 .accessibilityLabel(hidden ? "金额已隐藏" : OverviewDisplay.money(data.amount, hidden: false))
                 .accessibilityIdentifier("overviewDrillAmount")
-            if !hidden, let change = data.changePercent {
+            if let cycles = data.baselineCycles {
+                let difference = data.amount - data.previous
+                Text("近 \(cycles) 期同期平均 " + OverviewDisplay.money(data.previous, hidden: hidden)
+                     + (hidden ? "" : " · 多 " + OverviewDisplay.money(difference, hidden: false)))
+                    .dsText(DS.Font.tPill).monospacedDigit().fontWeight(.semibold).foregroundStyle(DS.Color.warnInk)
+                    .accessibilityIdentifier("overviewDrillBaseline")
+            } else if !hidden, let change = data.changePercent {
                 let difference = data.amount - data.previous
                 Text("比上期同期 " + OverviewDisplay.percent(change)
                      + (difference == 0 ? "" : (difference < 0 ? " · 少 " : " · 多 ") + OverviewDisplay.money(abs(difference), hidden: false)))

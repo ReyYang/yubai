@@ -33,6 +33,9 @@ enum TabRoute: Hashable {
     case quickCapture, importHistory, backup, storage, frequent
     case formula, settings, savingRule, reserve
     case weekly(UUID?), whereCategory(title: String, categories: [String], isOther: Bool, selection: OverviewPeriodSelection), memories
+    /// The 多花 card's page: the same everyday bills, amount and baseline as the card.
+    case anomaly(category: String, selection: OverviewPeriodSelection)
+    case triage([UUID])
     case entryDetail(UUID)
     case assets, accountDetail(UUID), overviewBills(Set<String>, DateInterval, Set<UUID>)
     case cycleBills
@@ -1532,6 +1535,8 @@ struct RootView: View {
         case .assets, .overviewBills: EmptyView()
         case .accountDetail(let id): AccountDetailView(accountID: id)
         case let .whereCategory(title, categories, isOther, selection): ReviewDrillView(title: title, categories: categories, isOther: isOther, selection: selection)
+        case let .anomaly(category, selection): ReviewDrillView(title: category, categories: [category], isOther: false, selection: selection, anomaly: true)
+        case .triage(let ids): LetterTriageView(entryIDs: ids)
         case .memories: MemoryView()
         case .frequent: FrequentEntriesView()
         case .quickCapture: QuickCaptureSettingsView()

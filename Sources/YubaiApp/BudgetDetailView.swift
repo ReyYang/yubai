@@ -145,6 +145,10 @@ private struct BudgetPage: View {
         let amber = rows.filter(\.isWarning)
         let calm = rows.filter { !$0.isWarning }
         return VStack(alignment: .leading, spacing: .zero) {
+            // Spec-Issues 7: the label says which it is; overspent is amber 超支.
+            Text(period.headlineTitle).dsText(DS.Font.tSub)
+                .foregroundStyle(period.showsSpendableDeficit ? DS.Color.warnInk : DS.Color.ink3)
+                .padding(.top, DS.Space.s8)
             Text(HomeDisplay.money(period.spendableDisplayAmount, hidden: hidden))
                 .dsText(DS.Font.nHero).foregroundStyle(period.showsSpendableDeficit ? DS.Color.warnInk : DS.Color.ink)
                 .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
@@ -179,23 +183,33 @@ private struct BudgetPage: View {
                 Button {
                     openFormulaSource(row, period)
                 } label: {
-                    HStack(spacing: DS.Space.s8) {
-                        Text(formulaLabel(row.kind)).dsText(DS.Font.tLabel)
-                            .foregroundStyle(row.kind == .income ? DS.Color.ink : DS.Color.ink2).dsFillWidth()
-                        Text(row.amount < 0 ? "−" : row.kind != .income && row.amount > 0 ? "+" : "")
-                            .frame(width: HomeSpec.formulaSign).foregroundStyle(DS.Color.ink3)
-                        Text(HomeDisplay.money(abs(row.amount), hidden: hidden)).dsText(HomeSpec.headerNumber)
-                            .foregroundStyle(DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
-                            .frame(minWidth: HomeSpec.formulaAmount, alignment: .trailing)
-                    }.frame(minHeight: DS.Size.iconTile)
-                        .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin).contentShape(Rectangle())
+                    formulaLine(formulaLabel(row.kind), sign: row.amount < 0 ? "−" : row.kind != .income && row.amount > 0 ? "+" : "",
+                                amount: abs(row.amount), tint: row.kind == .income ? DS.Color.ink : DS.Color.ink2, strong: false)
                 }.buttonStyle(EntryTactileButtonStyle())
                     .accessibilityLabel(formulaLabel(row.kind) + "，" + (hidden ? "金额已隐藏" : Money.text(row.amount, currency: false)))
                     .accessibilityIdentifier("formulaRow_" + row.kind.rawValue)
+                DS.Color.separator.frame(height: DS.Stroke.hairline)
             }
+            // Canvas Main.dc.html 还能花 page: the sum is the last line — 还能花, or amber 超支.
+            let over = period.showsSpendableDeficit
+            formulaLine(period.headlineTitle, sign: "=", amount: period.spendableDisplayAmount,
+                        tint: over ? DS.Color.warnInk : DS.Color.ink, strong: true)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("formulaRow_result")
         }.padding(.vertical, HomeSpec.heroLabelGap).padding(.horizontal, DS.Space.s16)
             .dsSurface(DS.Color.raised, radius: DS.Radius.m)
             .accessibilityElement(children: .contain).accessibilityIdentifier("formulaCard")
+    }
+
+    private func formulaLine(_ name: String, sign: String, amount: Int64, tint: Color, strong: Bool) -> some View {
+        HStack(spacing: DS.Space.s8) {
+            Text(name).dsText(strong ? DS.Font.tLabelStrong : DS.Font.tLabel).foregroundStyle(tint).dsFillWidth()
+            Text(sign).frame(width: HomeSpec.formulaSign).foregroundStyle(DS.Color.ink3)
+            Text(HomeDisplay.money(amount, hidden: hidden)).dsText(HomeSpec.headerNumber)
+                .foregroundStyle(strong ? tint : DS.Color.ink).lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                .frame(minWidth: HomeSpec.formulaAmount, alignment: .trailing)
+        }.frame(minHeight: DS.Size.iconTile)
+            .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin).contentShape(Rectangle())
     }
 
     private func formulaLabel(_ kind: SpendableRow.Kind) -> String {

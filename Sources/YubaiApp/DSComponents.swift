@@ -953,8 +953,14 @@ struct DSDonut: View {
                     Button { onSelect(slice.id) } label: {
                         DSOverviewLegendRow(name: slice.name, amount: slice.amount, color: colors[index],
                                             share: showsShares && !hidesAmounts ? (slice.value / total).formatted(.percent.precision(.fractionLength(0))) : nil,
-                                            delta: hidesAmounts ? nil : slice.delta, isAnomaly: !hidesAmounts && slice.isAnomaly)
-                        .frame(minHeight: DS.Size.tapMin)
+                                            delta: hidesAmounts ? nil : slice.delta, isAnomaly: !hidesAmounts && slice.isAnomaly, grid: true)
+                        .frame(minHeight: OverviewSpec.legendRow)
+                        .overlay(alignment: .bottom) {
+                            if index < sorted.count - 1 {
+                                DS.Color.separator.frame(height: DS.Stroke.hairline)
+                                    .padding(.leading, DS.Size.legendSwatch + OverviewSpec.legendGridGap)
+                            }
+                        }
                         .contentShape(Rectangle())
                     }.dsPressStyle().accessibilityIdentifier(identifierPrefix + slice.id)
                 }
@@ -971,15 +977,41 @@ struct DSOverviewLegendRow: View {
     let delta: String?
     let isAnomaly: Bool
     var isDrill = false
+    /// 全景图例: four columns 10 / 1fr / 56 / 92 on one 48 pt line.
+    var grid = false
     @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        if grid && !typeSize.isAccessibilitySize { gridRow } else { flowRow }
+    }
+
+    private var gridRow: some View {
+        HStack(spacing: OverviewSpec.legendGridGap) {
+            DSOverviewSwatch(color: color)
+            HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendNameGap) {
+                Text(name).dsText(DS.Font.tBody).fontWeight(isAnomaly ? .semibold : .regular)
+                    .foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink2).lineLimit(1)
+                if let share {
+                    Text(share).dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3).fixedSize()
+                }
+            }.dsFillWidth()
+            Text(delta ?? "").dsText(DS.Font.tCaption).monospacedDigit()
+                .foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink3).lineLimit(1)
+                .frame(width: OverviewSpec.legendDeltaColumn, alignment: .trailing)
+            Text(amount).dsText(OverviewSpec.legendGridAmount).foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink)
+                .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
+                .frame(width: OverviewSpec.legendAmountColumn, alignment: .trailing)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var flowRow: some View {
         let ink = isAnomaly ? DS.Color.warnInk : DS.Color.ink
         let stacked = typeSize.isAccessibilitySize
         let layout = stacked
             ? AnyLayout(VStackLayout(alignment: .leading, spacing: DS.Space.s4))
             : AnyLayout(HStackLayout(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap))
-        layout {
+        return layout {
             HStack(alignment: .firstTextBaseline, spacing: OverviewSpec.legendGap) {
                 DSOverviewSwatch(color: color).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
                 Text(name).dsText(isDrill ? DS.Font.tBody : DS.Font.tLabel)
