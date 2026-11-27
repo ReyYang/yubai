@@ -38,7 +38,7 @@ struct SavingsHeader: View {
         Group {
             AmountLabel(cents: SavingInsights.wishSavings(store.current, now: store.financialNow).total, hide: store.preferences.hideAmounts, role: .input)
             if !store.preferences.hideAmounts {
-                Text("这个月 +" + AmountLabel.text(increase)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                Text("这个月 +" + amount2(increase, hide: false)).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
             }
         }
     }

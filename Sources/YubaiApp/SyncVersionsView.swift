@@ -28,7 +28,7 @@ struct SyncVersionsView: View {
                     .accessibilityLabel("账本更新：" + Dates.text(version.ledger.updatedAt, time: true))
                 Text(Dates.text(version.date, time: true)).yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     .accessibilityLabel("版本时间：" + Dates.text(version.date, time: true))
-                Text("\(version.ledger.activeEntries.count) 笔 · \(version.ledger.accounts.count) 个账户 · \(version.ledger.attachments.count) 份附件").yubaiFont(YubaiFont.caption)
+                Text("\(version.ledger.activeEntries.count.formatted()) 笔 · \(version.ledger.accounts.count.formatted()) 个账户 · \(version.ledger.attachments.count.formatted()) 份附件").yubaiFont(YubaiFont.caption)
                 if let other {
                     Divider().overlay(YubaiColor.separator)
                     Text("差异").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)

@@ -96,7 +96,7 @@ struct AccountsView: View {
                     EntryFormRow(title: "上次对账") { Text(Dates.monthDay(a.anchorDate) + " " + a.anchorDate.formatted(.dateTime.hour().minute().locale(Locale(identifier: "zh_CN")))).fixedSize() }
                     if a.creditLimit > 0 {
                         EntryFormDivider()
-                        EntryFormRow(title: "信用额度") { AmountLabel(cents: a.creditLimit, hide: store.preferences.hideAmounts, stored: true) }
+                        EntryFormRow(title: "信用额度") { AmountLabel(cents: a.creditLimit, hide: store.preferences.hideAmounts) }
                     }
                     if !a.note.isEmpty { EntryFormDivider(); Text(a.note).frame(minHeight: YubaiSize.rowSingle) }
                 }

@@ -541,7 +541,7 @@ private struct FeatureCloudTransport: ChatTransport {
         if saved, quickSort, let group = snapshot.groupsByID[groupID] {
             let count = Set(change.items.flatMap(\.entryIDs)).count
             showUnsortedUndo(questionID: questionID, groups: [group], change: change, before: before,
-                             label: "已整理 \(count) 笔")
+                             label: "已整理 \(count.formatted()) 笔")
         }
         return saved
     }
@@ -571,7 +571,7 @@ private struct FeatureCloudTransport: ChatTransport {
         if saved {
             let count = Set(change.items.flatMap(\.entryIDs)).count
             showUnsortedUndo(questionID: questionID, groups: groups, change: change, before: before,
-                             label: "已整理 \(count) 笔")
+                             label: "已整理 \(count.formatted()) 笔")
         }
         return saved
     }

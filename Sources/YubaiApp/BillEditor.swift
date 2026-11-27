@@ -103,7 +103,7 @@ struct FixedFlowEditor: View {
     @ViewBuilder private var foreignRows: some View {
         EntryFormDivider()
         if let value = converted {
-            EntryFormRow(title: "约") { Text(amount2(value, hide: store.preferences.hideAmounts) + " 元").yubaiFont(YubaiFont.amount).fixedSize() }
+            EntryFormRow(title: "约") { Text((store.preferences.hideAmounts ? "••••" : AmountLabel.text(value)) + " 元").yubaiFont(YubaiFont.amount).fixedSize() }
         }
         Button { editingRate.toggle() } label: {
             HStack {

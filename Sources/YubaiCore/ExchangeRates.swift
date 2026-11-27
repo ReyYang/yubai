@@ -64,14 +64,15 @@ public struct RateSyncState: Codable, Equatable, Sendable {
     }
 
     /// A good response: merged into the rates, which change only when the reference date or a quote did.
-    public mutating func succeeded(_ fresh: SyncedExchangeRates, at now: Date) throws {
+    /// False, and nothing changes, when it is older than what is kept (a stale cache answering).
+    @discardableResult public mutating func succeeded(_ fresh: SyncedExchangeRates, at now: Date) throws -> Bool {
         let merged = try ExchangeRates.merge(fresh, into: rates)
-        // An older reference date than what is kept (a stale cache answering) changes nothing.
-        if let kept = rates, merged.date < kept.date {
-        } else if merged.date != rates?.date || merged.cnyPerUnit != rates?.cnyPerUnit || merged.quoteDates != rates?.quoteDates {
+        if let kept = rates, merged.date < kept.date { return false }
+        if merged.date != rates?.date || merged.cnyPerUnit != rates?.cnyPerUnit || merged.quoteDates != rates?.quoteDates {
             rates = merged
         }
         lastAttempt = now; lastSuccess = now; failures = 0; lastError = nil
+        return true
     }
 
     /// Rates an older build kept in the ledger: taken once, when this device has none of its own.

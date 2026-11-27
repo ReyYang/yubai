@@ -88,8 +88,9 @@ enum EntrySpec {
     // design-v2 canvas Main.dc.html 币种弹出列表 / 汇率弹层 / Extra.dc.html 填汇率
     static let currencyListWidth: CGFloat = 248
     static let currencySymbolColumn: CGFloat = 40
-    /// The rate card needs its field and source line (two 44 pt rows) under the ≈ line, else it opens above.
-    static let rateCardMinHeight: CGFloat = DS.Size.tapMin * 2
+    /// The rate card at its tallest (field, source line, 用同步的: three 44 pt rows) must fit under the ≈ line,
+    /// else it opens above.
+    static let rateCardMinHeight: CGFloat = DS.Size.tapMin * 3
     static let ratePopoverWidth: CGFloat = 280
     static let rateField = DS.TextStyle(size: 18, lineHeight: 24, weight: .semibold, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: true)
     static let rateFillInset: CGFloat = 10

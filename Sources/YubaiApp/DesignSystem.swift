@@ -1628,7 +1628,8 @@ struct AmountLabel: View {
     private var resolvedRole: Role { role ?? (large ? .display : .amount) }
     private var showsCurrency: Bool { currency ?? (resolvedRole == .hero || resolvedRole == .display) }
     private var text: String {
-        if stored { return Self.text(cents, sign: sign, currency: showsCurrency) }
+        // Next to amounts in another main currency, a CNY figure always says ¥.
+        if stored { return Self.text(cents, sign: sign, currency: showsCurrency || DisplayCurrency.current.currency != .cny) }
         let prefix: String
         switch sign { case .automatic: prefix = cents < 0 ? "−" : ""; case .inflow: prefix = "+"; case .outflow: prefix = "−"; case .none: prefix = "" }
         let magnitude = cents == .min ? Int64.max : abs(cents)
@@ -2544,7 +2545,11 @@ private struct NumberKeyboardAccessory: UIViewRepresentable {
 // MARK: - Round 45 shell
 
 /// 金额文字，永远两位小数；隐藏金额时只留圆点。拼接文案用，单独显示金额用 `AmountLabel`。
-func amount2(_ cents: Int64, hide: Bool) -> String { hide ? "••••" : AmountLabel.text(cents) }
+func amount2(_ cents: Int64, hide: Bool) -> String {
+    guard !hide else { return "••••" }
+    // In the main currency, like `AmountLabel` beside it; amounts being typed or checked use `AmountLabel.text` (CNY).
+    return (cents < 0 ? "−" : "") + DisplayCurrency.current.text(cents == .min ? .max : abs(cents))
+}
 
 /// 三个标签页的图标：底栏和 macOS 侧栏共用。
 struct DestinationGlyph: View {

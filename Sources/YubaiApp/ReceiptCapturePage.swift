@@ -125,12 +125,12 @@ struct ReceiptCapturePage: View {
 
     private var review: some View {
         VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
-            Text("认出 \(lines.count) 笔，共 " + amount2(total, hide: store.preferences.hideAmounts) + "。")
+            Text("认出 \(lines.count.formatted()) 笔，共 " + (store.preferences.hideAmounts ? "••••" : AmountLabel.text(total)) + "。")
                 .yubaiFont(YubaiFont.lead).accessibilityIdentifier("receiptSummary")
             Text(shop + " · " + ImportStatementText.range(lines.map { $0.draft.date }))
                 .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
             CardRows(lines) { line in lineRow(line) }
-            Segmented(choices: [(ReceiptEntryMode.separate.rawValue, "分开记 \(selected.count) 笔"), (ReceiptEntryMode.merged.rawValue, "合成 1 笔")],
+            Segmented(choices: [(ReceiptEntryMode.separate.rawValue, "分开记 \(selected.count.formatted()) 笔"), (ReceiptEntryMode.merged.rawValue, "合成 1 笔")],
                           selection: $mode, identifier: { "receiptMode_" + $0 })
             if mode == ReceiptEntryMode.merged.rawValue {
                 categoryButton(id: -1, title: shop, income: lines.first?.draft.nature.categoryIncome ?? false, hint: shopHint)

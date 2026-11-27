@@ -82,7 +82,7 @@ struct EntrySheetOverlay: View {
             }
             .overlayPreferenceValue(EntryPillAnchors.self) { frames in
                 if let drawer = model.drawer, drawer.isPopover, let anchor = frames.drawn[drawer] {
-                    popover(drawer, anchor: anchor, pills: frames.hit, keypad: frames.keypad)
+                    popover(drawer, anchor: anchor, pills: frames.hit, drawn: frames.drawn, keypad: frames.keypad)
                         .transition(.opacity)
                 }
             }
@@ -157,11 +157,13 @@ struct EntrySheetOverlay: View {
     }
 
     @ViewBuilder private func popover(_ drawer: EntryDrawer, anchor: Anchor<CGRect>,
-                                      pills: [EntryDrawer: Anchor<CGRect>], keypad: Anchor<CGRect>?) -> some View {
+                                      pills: [EntryDrawer: Anchor<CGRect>], drawn: [EntryDrawer: Anchor<CGRect>],
+                                      keypad: Anchor<CGRect>?) -> some View {
         GeometryReader { geometry in
             let pill = geometry[anchor]
             let keys = keypad.map { geometry[$0] }
             let targets = pills.mapValues { geometry[$0] }
+            let shapes = drawn.mapValues { geometry[$0] }
             // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
             let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
                 : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
@@ -184,9 +186,11 @@ struct EntrySheetOverlay: View {
                     .contentShape(EntryBackdropShape(hole: drawer == .rate ? keys?.offsetBy(dx: inset.leading, dy: inset.top) : nil), eoFill: true)
                     .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
                         // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
-                        // Where two targets overlap (the ≈ line's 44 pt reaches up to ¥), the other one wins.
+                        // Where two 44 pt targets overlap (the ≈ line's reaches up to ¥), the one drawn under the
+                        // finger wins; between them, this list closes.
                         let hits = targets.filter { $0.value.contains(location) }.map(\.key)
-                        let hit = hits.first { $0 != drawer } ?? hits.first
+                        let hit = hits.first { shapes[$0]?.contains(location) == true }
+                            ?? (hits.contains(drawer) ? drawer : hits.first)
                         model.drawer = hit == drawer ? nil : hit
                     }
                     .gesture(closeDrag { model.drawer = nil })
@@ -544,12 +548,13 @@ private struct EntryAmountBlockView: View {
                 Text(model.hidesAmounts ? "••••" : model.draft.expression.formattedDisplay + " = " + Money.text(model.money, currency: false))
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
-                    .frame(height: DS.Space.s20)
+                    .frame(minHeight: DS.Space.s20)
                     .transition(.opacity)
             }
             if model.draft.currency != .cny {
+                // 20 pt at the default size; grows with the type instead of spilling onto its neighbours.
                 EntryRateLine(model: model)
-                    .frame(height: DS.Space.s20)
+                    .frame(minHeight: DS.Space.s20)
                     .accessibilityFocused(pillFocus, equals: .rate)
                     .modifier(EntryShake(trigger: model.ratePulse))
                     .transition(.opacity)
@@ -920,7 +925,7 @@ private struct EntryRateLine: View {
                         .foregroundStyle(DS.Color.ink3)
                     if model.typedRate != nil {
                         Text("手动汇率").dsText(SettingsSpec.tag).foregroundStyle(DS.Color.ink2).fixedSize()
-                            .padding(.horizontal, SettingsSpec.tagInset).frame(height: SettingsSpec.tagHeight).dsPill()
+                            .padding(.horizontal, SettingsSpec.tagInset).frame(minHeight: SettingsSpec.tagHeight).dsPill()
                     }
                     DS.Icon.chevron.view(size: EntrySpec.currencyChevron, color: DS.Color.chevron)
                 }
@@ -928,7 +933,7 @@ private struct EntryRateLine: View {
                 .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
             } else {
                 Text("填汇率").dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.warnInk)
-                    .padding(.horizontal, EntrySpec.rateFillInset).frame(height: EntrySpec.rateFillHeight)
+                    .padding(.horizontal, EntrySpec.rateFillInset).frame(minHeight: EntrySpec.rateFillHeight)
                     .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.warn, lineWidth: DS.Stroke.hairline))
                     .entryAnchor(.rate)
                     .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)

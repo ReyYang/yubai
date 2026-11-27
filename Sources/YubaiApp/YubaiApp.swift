@@ -468,9 +468,11 @@ enum AppSheet: Identifiable {
     /// What `DisplayCurrency` holds, observed: pages that show amounts read it to redraw on a new rate.
     private(set) var moneyDisplay = MoneyDisplay.cny
     /// The rate behind the main currency changed with no ledger change: redraw what shows amounts.
+    /// Only the observed display and the widget: no ledger revision moves, so a write in flight is never
+    /// mistaken for a stale one.
     func displayCurrencyChanged() {
         moneyDisplay = DisplayCurrency.current
-        invalidateDerived()
+        CaptureSnapshotBridge.publish(ledger)
     }
     private func invalidateDerived() {
         // Here rather than in `ledger`'s didSet: fixtures set the ledger in init, where didSet does not run.

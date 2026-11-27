@@ -90,7 +90,7 @@ struct CategoriesView: View {
                         categoryName(category.name)
                         Spacer(minLength: YubaiSpace.space8)
                         if let count = counts[category.name], count > 0 {
-                            Text("\(count) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
+                            Text("\(count.formatted()) 笔").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         }
                     }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("manageCategory_" + category.name)

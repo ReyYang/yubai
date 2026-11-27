@@ -527,7 +527,7 @@ struct ImportView: View {
         return VStack(spacing: YubaiSpace.gapGroup) {
             if screenshot {
                 HStack(spacing: YubaiSpace.gapGroup) {
-                    Text("选了 \(p.selectedEntries.count) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
+                    Text("选了 \(p.selectedEntries.count.formatted()) 笔").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary)
                     Spacer()
                     AmountLabel(cents: p.selectedEntries.filter { !$0.nature.inflow }.reduce(0) { $0 + $1.amount }, hide: store.preferences.hideAmounts, sign: .outflow, stored: true)
                 }.padding(.horizontal, YubaiSpace.insetCard)

@@ -96,6 +96,8 @@ final class ExchangeRateTests: XCTestCase {
         let old = try JSONDecoder().decode(Ledger.self, from: JSONSerialization.data(withJSONObject: object))
         XCTAssertEqual(old.preferences.legacySyncedRates?.rate(for: .usd), 7.5)
         XCTAssertFalse(String(decoding: try JSONEncoder().encode(old), as: UTF8.self).contains("syncedRates"))
+        let rewritten = try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(old))
+        XCTAssertEqual(rewritten, old, "the leftover never makes the same ledger look changed (sync, version picker)")
     }
 
     func testEntryFreezesRateAndLaterSyncNeverChangesIt() throws {
@@ -196,8 +198,10 @@ final class ExchangeRateTests: XCTestCase {
         try state.succeeded(SyncedExchangeRates(date: tuesday, fetchedAt: tuesday, cnyPerUnit: ["USD": 7.2, "CAD": 5.1]), at: tuesday)
         XCTAssertEqual(state.rates?.quoteDate(for: .cad), tuesday)
         // A stale cache answering with Monday changes nothing.
-        try state.succeeded(SyncedExchangeRates(date: monday, fetchedAt: tuesday, cnyPerUnit: ["USD": 7.0]), at: tuesday)
+        let success = state.lastSuccess
+        XCTAssertFalse(try state.succeeded(SyncedExchangeRates(date: monday, fetchedAt: tuesday, cnyPerUnit: ["USD": 7.0]), at: tuesday.addingTimeInterval(60)))
         XCTAssertEqual(state.rates?.rate(for: .usd), 7.2)
+        XCTAssertEqual(state.lastSuccess, success, "an older answer is not a success")
     }
 
     func testRatesAnOlderBuildKeptInTheLedgerAreAdoptedOnce() throws {

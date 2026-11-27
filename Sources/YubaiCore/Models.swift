@@ -583,6 +583,12 @@ public struct ImportBatch: Codable, Identifiable, Equatable, Sendable {
     public var undo: ImportUndo?
     public init(filename: String, importedCount: Int, duplicateCount: Int, skippedCount: Int) { self.filename = filename; self.importedCount = importedCount; self.duplicateCount = duplicateCount; self.skippedCount = skippedCount }
 }
+/// A value carried along that equality ignores.
+struct OutsideEquality<Value: Sendable>: Equatable, Sendable {
+    var value: Value?
+    static func == (lhs: Self, rhs: Self) -> Bool { true }
+}
+
 public struct Preferences: Codable, Equatable, Sendable {
     // Legacy funds preferences: retained for archive compatibility, ignored by Finance.
     public var horizonDays = 90; public var emergencyReserve: Int64 = 0
@@ -602,7 +608,9 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var yearlyBillsSetAside: Bool?
     public var quickCapture = QuickCapturePreferences()
     /// What an older build stored as synced rates in the ledger; decoded only, so the next save drops it.
-    public internal(set) var legacySyncedRates: SyncedExchangeRates?
+    /// Never part of equality: a ledger read from an old file equals the same ledger written by this build.
+    public var legacySyncedRates: SyncedExchangeRates? { legacyRates.value }
+    var legacyRates = OutsideEquality<SyncedExchangeRates>()
     public var categoryOrder: [String] = Category.defaults.filter { !$0.system }.map(\.name)
     public var onboardingComplete = false
     public var profileColdStartDone = false
@@ -655,7 +663,7 @@ public struct Preferences: Codable, Equatable, Sendable {
         lastBillCurrency = try values.decodeIfPresent(BillCurrency.self, forKey: .lastBillCurrency)
         mainCurrency = try? values.decodeIfPresent(BillCurrency.self, forKey: .mainCurrency)
         // syncedRates (older builds) is device-local now: read once for the device to adopt, never written.
-        legacySyncedRates = try? values.decodeIfPresent(SyncedExchangeRates.self, forKey: .syncedRates)
+        legacyRates.value = try? values.decodeIfPresent(SyncedExchangeRates.self, forKey: .syncedRates)
         autoRateSync = try? values.decodeIfPresent(Bool.self, forKey: .autoRateSync)
         yearlyBillsSetAside = try values.decodeIfPresent(Bool.self, forKey: .yearlyBillsSetAside)
         categoryOrder = try values.decodeIfPresent([String].self, forKey: .categoryOrder) ?? categoryOrder

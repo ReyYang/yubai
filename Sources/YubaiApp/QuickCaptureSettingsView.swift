@@ -227,7 +227,6 @@ struct QuickMerchantsView: View {
     @FocusState private var searching: Bool
 
     var body: some View {
-        let ledger = store.current
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let rules = store.merchantRules.filter { needle.isEmpty || $0.name.localizedCaseInsensitiveContains(needle) }
         VStack(spacing: .zero) {
