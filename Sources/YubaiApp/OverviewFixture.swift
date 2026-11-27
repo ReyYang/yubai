@@ -128,7 +128,7 @@ enum OverviewFixture {
         }
         if self == .unsorted {
             for day in 11...22 {
-                ledger.entries.append(spending("2026-11-\(day)", "待整理 \(day)", 30_000, category: Classification.pendingCategory, subcategory: nil))
+                ledger.entries.append(spending("2026-11-\(day)", "便利店 \(day)", 30_000, category: Classification.pendingCategory, subcategory: nil))
             }
         }
         var seed = Seed(ledger: ledger)
