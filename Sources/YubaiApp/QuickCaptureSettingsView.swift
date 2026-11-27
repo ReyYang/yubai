@@ -36,10 +36,10 @@ struct QuickCaptureSettingsView: View {
                         entrance(.send, "Siri", count: stats.siri, first: false, id: "quickSiri")
                     }
                     DSSettingsCard(leading: DS.Space.s16) {
-                        link(.acctCredit, "卡对应的账户", "\(stats.cards.count) 张", first: true, id: "openCaptureCardRules") {
+                        link(.acctCredit, "卡对应的账户", "\(stats.cards.count.formatted()) 张", first: true, id: "openCaptureCardRules") {
                             store.tabRouteRequest = .quickCards
                         }
-                        link(.recategorize, "商户记到哪个分类", "\(store.merchantRules.count) 条", first: false, id: "openCaptureMerchantRules") {
+                        link(.recategorize, "商户记到哪个分类", "\(store.merchantRules.count.formatted()) 条", first: false, id: "openCaptureMerchantRules") {
                             store.tabRouteRequest = .quickMerchants
                         }
                     }
@@ -102,7 +102,7 @@ struct QuickCaptureSettingsView: View {
     private func statistic(_ title: String, count: Int) -> some View {
         VStack(alignment: .leading, spacing: .zero) {
             Text(title).dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3)
-            Text("\(count) 笔").dsText(SettingsSpec.quickCount).foregroundStyle(DS.Color.ink)
+            Text("\(count.formatted()) 笔").dsText(SettingsSpec.quickCount).foregroundStyle(DS.Color.ink)
         }.accessibilityElement(children: .combine)
     }
 
@@ -125,7 +125,7 @@ struct QuickCaptureSettingsView: View {
                 DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.accentInk)
                 VStack(alignment: .leading, spacing: .zero) {
                     Text(name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink)
-                    Text("近 7 天 \(count) 笔").dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                    Text("近 7 天 \(count.formatted()) 笔").dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                 }.dsFillWidth()
                 #if os(iOS)
                 // The 记一笔 actions ship on iOS only; the Mac has none to add.
@@ -168,7 +168,7 @@ struct QuickCardsView: View {
                         HStack(spacing: DS.Space.s8) {
                             VStack(alignment: .leading, spacing: .zero) {
                                 Text(card.card).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1)
-                                Text(card.everUsed ? "近 30 天 \(card.recentCount) 笔" : "还没刷过")
+                                Text(card.everUsed ? "近 30 天 \(card.recentCount.formatted()) 笔" : "还没刷过")
                                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                             }.dsFillWidth()
                             HStack(spacing: HomeSpec.gap6) {

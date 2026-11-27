@@ -94,7 +94,7 @@ struct ReviewDrillView: View {
             case .previous: "上期"
             case .custom: ""
             }
-            Text("\(choice)\(data.title)账单 · \(data.totalCount) 笔")
+            Text("\(choice)\(data.title)账单 · \(data.totalCount.formatted()) 笔")
                 .dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.ink3)
                 .accessibilityAddTraits(.isHeader).padding(.bottom, DS.Space.s4)
             ForEach(Array(data.entries.prefix(5).enumerated()), id: \.element.id) { index, entry in
@@ -109,7 +109,7 @@ struct ReviewDrillView: View {
                     store.tabRouteRequest = .overviewBills(Set(categories), data.window.interval, Set(data.entries.map(\.id)))
                 } label: {
                     HStack(spacing: DS.Space.s4) {
-                        Text("看全部 \(data.totalCount) 笔").dsText(DS.Font.tLabelStrong)
+                        Text("看全部 \(data.totalCount.formatted()) 笔").dsText(DS.Font.tLabelStrong)
                         DSIconView(icon: .chevron, size: DS.Space.s12, color: DS.Color.accentInk)
                     }
                     .foregroundStyle(DS.Color.accentInk).frame(minHeight: DS.Size.tapMin)

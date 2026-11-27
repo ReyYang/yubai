@@ -187,7 +187,8 @@ private struct HomePage: View {
         let series = DailySpending(in: chartLedger, period: period)
         let bars = HomeDisplay.bars(series, fixture: fixture != nil)
         let over = period.showsSpendableDeficit
-        let amount = period.spendableDisplayAmount
+        // 超支 / 这个月花了 (no take-home yet) / 还能花: the title and its amount come as one pair.
+        let amount = period.headlineAmount
         let days = HomeDisplay.daysLeft(period)
         let daily = Int64((Double(period.available) / Double(days)).rounded())
         let elapsed = max(1, period.daysTotal - days + 1)
@@ -206,7 +207,7 @@ private struct HomePage: View {
                    // Spec-Issues 7: overspent shows 每天 0.00, not an empty slot.
                    daily: over ? HomeDisplay.money(0, hidden: hide) : period.income > 0 ? HomeDisplay.money(daily, hidden: hide) : "",
                    remainingDays: days, days: bars.days, budgets: [], onAmount: openBudget,
-                   title: over ? "超支" : "还能花", tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
+                   title: period.headlineTitle, tint: tint, titleTint: over || tight ? DS.Color.warnInk : DS.Color.ink3,
                    guide: bars.guide)
             if period.income == 0 {
                 HomeStatus(text: "工资未到账", action: "记工资", onAction: recordSalary, identifier: "recordSalary")
@@ -230,7 +231,7 @@ private struct HomePage: View {
         let recoveryIDs = pendingIDs
         let groups = groupsCache.groups(ledger: ledger, now: now, preset: preset, fixture: fixture)
         if preset != nil {
-            DSDayHeader(title: "\(groups.count) 笔", total: HomeDisplay.signed(groups.net, hidden: hide))
+            DSDayHeader(title: "\(groups.count.formatted()) 笔", total: HomeDisplay.signed(groups.net, hidden: hide))
                 .accessibilityIdentifier("entriesSearchTotal")
                 .homeRow()
         }
@@ -350,7 +351,7 @@ private struct HomePage: View {
                 }.foregroundStyle(DS.Color.accentInk).frame(height: SettingsSpec.row).contentShape(Rectangle())
             }.dsPressStyle().padding(.top, DS.Space.s4).accessibilityIdentifier("askHomeSearch")
             DS.Color.separator.frame(height: DS.Stroke.hairline)
-            DSDayHeader(title: "\(results.count) 笔", total: HomeDisplay.signed(billNet(results), hidden: hide))
+            DSDayHeader(title: "\(results.count.formatted()) 笔", total: HomeDisplay.signed(billNet(results), hidden: hide))
                 .accessibilityIdentifier("entriesSearchTotal")
             ForEach(Array(results.enumerated()), id: \.element.id) { index, entry in
                 billRow(entry, account: accounts[entry.accountID], pending: pending.contains(entry.id), separator: index > 0)

@@ -146,10 +146,10 @@ private struct BudgetPage: View {
         let calm = rows.filter { !$0.isWarning }
         return VStack(alignment: .leading, spacing: .zero) {
             // Spec-Issues 7: the label says which it is; overspent is amber 超支.
-            Text(period.showsSpendableDeficit ? "超支" : "还能花").dsText(DS.Font.tSub)
+            Text(period.headlineTitle).dsText(DS.Font.tSub)
                 .foregroundStyle(period.showsSpendableDeficit ? DS.Color.warnInk : DS.Color.ink3)
                 .padding(.top, DS.Space.s8)
-            Text(HomeDisplay.money(period.spendableDisplayAmount, hidden: hidden))
+            Text(HomeDisplay.money(period.headlineAmount, hidden: hidden))
                 .dsText(DS.Font.nHero).foregroundStyle(period.showsSpendableDeficit ? DS.Color.warnInk : DS.Color.ink)
                 .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)
                 .padding(.top, DS.Space.s4).accessibilityIdentifier("formulaResult")

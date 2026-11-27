@@ -87,6 +87,8 @@ struct EntrySheetOverlay: View {
                 }
             }
             .ignoresSafeArea(.container, edges: .bottom)
+            // The rate card types on the sheet's keypad: card and keypad are one modal, so VoiceOver reaches both.
+            .accessibilityAddTraits(model.drawer == .rate ? .isModal : [])
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation, value: model.drawer?.isPopover == true ? model.drawer : nil)
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.categoryPanel)
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.managingCategories)
@@ -163,7 +165,9 @@ struct EntrySheetOverlay: View {
             let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
                 : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
             // Lists rise above their pill; 币种 and 汇率 hang under the amount.
-            let available = drawer.opensBelow ? max(0, geometry.size.height - pill.maxY - EntrySpec.popoverGap)
+            // The rate card stops above the keypad, which types the rate; at large type it scrolls instead.
+            let floor = drawer == .rate ? keys.map(\.minY) ?? geometry.size.height : geometry.size.height
+            let available = drawer.opensBelow ? max(0, floor - pill.maxY - EntrySpec.popoverGap)
                 : max(0, pill.minY - EntrySpec.popoverGap)
             let margin = typeSize.isAccessibilitySize ? DS.Space.s16 : DS.Space.s20
             let leading = min(max(margin, pill.midX - width * EntrySpec.midpoint),
@@ -171,8 +175,10 @@ struct EntrySheetOverlay: View {
             ZStack(alignment: .topLeading) {
                 // A tap on another pill switches straight to its list; anywhere else closes this one.
                 // The rate card's backdrop leaves the keypad free: the keypad types the rate.
+                // It covers the safe areas too: a tap up by the status bar closes this list, not the whole sheet.
+                let inset = geometry.safeAreaInsets
                 Color.clear
-                    .contentShape(EntryBackdropShape(hole: drawer == .rate ? keys : nil), eoFill: true)
+                    .contentShape(EntryBackdropShape(hole: drawer == .rate ? keys?.offsetBy(dx: inset.leading, dy: inset.top) : nil), eoFill: true)
                     .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
                         // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
                         let hit = targets.first { $0.value.contains(location) }?.key
@@ -180,6 +186,7 @@ struct EntrySheetOverlay: View {
                     }
                     .gesture(closeDrag { model.drawer = nil })
                     .accessibilityHidden(true)
+                    .ignoresSafeArea()
                 ViewThatFits(in: .vertical) {
                     // Pulling down from a day or an account row closes the list too; the scrolling
                     // version (largest type) keeps the drag for its scroll.
@@ -196,7 +203,7 @@ struct EntrySheetOverlay: View {
                     model.drawer = nil
                     return .handled
                 }
-                .accessibilityAddTraits(.isModal)
+                .accessibilityAddTraits(drawer == .rate ? [] : .isModal)
                 .accessibilityAction(.escape) { model.drawer = nil }
             }
         }
@@ -358,7 +365,8 @@ struct EntrySheetView: View {
         .background(DS.Color.bg)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
         .accessibilityElement(children: .contain)
-        .accessibilityAddTraits(.isModal)
+        // With the rate card open the card and the keypad are the modal (set on the root); the form waits.
+        .accessibilityAddTraits(model.drawer == .rate ? [] : .isModal)
         .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.tab)
         .animation(reduced ? nil : DSMotion.smoothAnimation, value: model.drawer == .purpose)
         .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.exception == .split)
@@ -368,7 +376,7 @@ struct EntrySheetView: View {
     private var form: some View {
         VStack(spacing: .zero) {
             EntryTopHeaderView(model: model)
-            EntryAmountBlockView(model: model)
+            EntryAmountBlockView(model: model, pillFocus: pillFocus)
                 .padding(.top, EntrySpec.amountTop)
                 .padding(.horizontal, DS.Space.s20)
             typeBody
@@ -392,6 +400,7 @@ struct EntrySheetView: View {
             }
         }
         .padding(.bottom, EntrySpec.aboveTray)
+        .accessibilityHidden(model.drawer == .rate)
     }
 
     @ViewBuilder private var footer: some View {
@@ -482,6 +491,7 @@ struct EntryTopHeaderView: View {
 /// Spec-Redlines 金额行 + ≈ 行 + 用途.
 private struct EntryAmountBlockView: View {
     @Bindable var model: EntrySheetViewModel
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
@@ -507,6 +517,7 @@ private struct EntryAmountBlockView: View {
                 .entryHit(.currency)
                 .accessibilityLabel("币种，" + model.draft.currency.unit)
                 .accessibilityHint("选择币种")
+                .accessibilityFocused(pillFocus, equals: .currency)
                 Text(amountText)
                     .dsText(DS.Font.nEntry)
                     .foregroundStyle(amountColor)
@@ -522,6 +533,8 @@ private struct EntryAmountBlockView: View {
             }
             .frame(minHeight: EntrySpec.amountRow)
             .modifier(EntryShake(trigger: model.amountPulse))
+            // Above the ≈ line, whose 44 pt target reaches up into this row: the currency pill keeps its taps.
+            .zIndex(1)
             if model.draft.expression.isExpression {
                 Text(model.hidesAmounts ? "••••" : model.draft.expression.formattedDisplay + " = " + Money.text(model.money, currency: false))
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
@@ -532,6 +545,7 @@ private struct EntryAmountBlockView: View {
             if model.draft.currency != .cny {
                 EntryRateLine(model: model)
                     .frame(height: DS.Space.s20)
+                    .accessibilityFocused(pillFocus, equals: .rate)
                     .modifier(EntryShake(trigger: model.ratePulse))
                     .transition(.opacity)
             }
@@ -1200,7 +1214,7 @@ private struct EntryKeypadTrayView: View {
 private struct EntryBackdropShape: Shape {
     let hole: CGRect?
     func path(in rect: CGRect) -> Path {
-        var path = Path(rect.insetBy(dx: -rect.width, dy: -rect.height))
+        var path = Path(rect)
         if let hole { path.addRect(hole) }
         return path
     }

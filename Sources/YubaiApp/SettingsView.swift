@@ -36,7 +36,7 @@ struct SettingsView: View {
                         }
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
-                            link(.memory, "余白记得的", "\(store.settingsSummary.memoryCount) 条", id: "openMemories") { store.tabRouteRequest = .memories }
+                            link(.memory, "余白记得的", "\(store.settingsSummary.memoryCount.formatted()) 条", id: "openMemories") { store.tabRouteRequest = .memories }
                             link(.heart, "心愿与回顾", "\(WishesHub.wishCount(in: ledger)) 件心愿", id: "openWishesHub") { store.tabRouteRequest = .wishesHub }
                             link(.bell, "通知", "\(SettingsDisplay.noticeCount(store.preferences)) 项", id: "openNoticeSettings") { store.tabRouteRequest = .notices }
                         }
@@ -264,7 +264,7 @@ struct BackupView: View {
             if let pendingRestore { restorePreview(pendingRestore) }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    NavigationLink { RecentlyDeletedView() } label: { SettingsRow(title: "最近删除", detail: "\(store.settingsSummary.recentlyDeletedCount) 笔") }.accessibilityIdentifier("recentlyDeleted")
+                    NavigationLink { RecentlyDeletedView() } label: { SettingsRow(title: "最近删除", detail: "\(store.settingsSummary.recentlyDeletedCount.formatted()) 笔") }.accessibilityIdentifier("recentlyDeleted")
                     EntryFormDivider()
                     NavigationLink { RecoveryVersionsView() } label: { SettingsRow(title: "恢复版本") }.accessibilityIdentifier("openRecoveryVersions")
                     EntryFormDivider()
@@ -381,7 +381,7 @@ struct BackupView: View {
         Card {
             VStack(alignment: .leading, spacing: YubaiSpace.gapGroup) {
                 Text("已验证的备份").yubaiFont(YubaiFont.navTitle)
-                Text("\(ledger.accounts.count) 个账户 · \(ledger.activeEntries.count) 笔有效记录 · \(ledger.attachments.count) 份附件")
+                Text("\(ledger.accounts.count.formatted()) 个账户 · \(ledger.activeEntries.count.formatted()) 笔有效记录 · \(ledger.attachments.count) 份附件")
                 Text("最后修改：\(Dates.text(ledger.updatedAt, time: true))").yubaiFont(YubaiFont.caption)
                 Button("确认恢复这份账本") {
                     if store.restore(ledger) { pendingRestore = nil; restoreData = nil; encryptedRestore = false; restorePassword = ""; message = "已恢复" }
@@ -440,7 +440,7 @@ struct ImportHistoryView: View {
                             .navigationTitle("导入结果").yubaiNavigation()
                     } label: { Text(batch.filename).yubaiFont(YubaiFont.rowTitle).lineLimit(1).truncationMode(.tail).frame(maxWidth: .infinity, minHeight: YubaiSize.tapMin, alignment: .leading) }
                         .disabled(batch.undoneAt != nil).accessibilityIdentifier("openImportBatch_" + batch.id.uuidString)
-                    Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))
+                    Text("\(Dates.text(batch.importedAt, time: true)) · \(batch.importedCount.formatted()) 笔" + (batch.undoneAt == nil ? "" : " · 已撤销"))
                         .yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
                     if batch.undoneAt == nil {
                         Button("整批撤销") { undoBatch = batch }
@@ -462,7 +462,7 @@ struct ImportHistoryView: View {
             }
         }.navigationTitle("导入记录").yubaiNavigation().accessibilityIdentifier("importHistoryPage")
             .sheet(item: $undoBatch) { batch in
-                ConfirmationSheet(title: "撤销这批 \(batch.importedCount) 笔？", consequence: "整理产生的关联和安排也会还原。") {
+                ConfirmationSheet(title: "撤销这批 \(batch.importedCount.formatted()) 笔？", consequence: "整理产生的关联和安排也会还原。") {
                     Button("撤销这一批") { store.undoImport(batch.id); undoBatch = nil }.buttonStyle(DestructiveButtonStyle())
                 }.environment(store)
             }

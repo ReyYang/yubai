@@ -299,7 +299,7 @@ private struct ReviewUnsortedCard: View {
     var body: some View {
         HStack(spacing: DS.Space.s12) {
             VStack(alignment: .leading, spacing: .zero) {
-                Text("\(count) 笔还没分类").dsText(DS.Font.tBody).fontWeight(.semibold).monospacedDigit()
+                Text("\(count.formatted()) 笔还没分类").dsText(DS.Font.tBody).fontWeight(.semibold).monospacedDigit()
                     .foregroundStyle(DS.Color.warnStrong)
                 if let share {
                     Text("占本期 " + share.formatted(.percent.precision(.fractionLength(0)))).dsText(DS.Font.tSub).monospacedDigit()

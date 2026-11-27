@@ -997,6 +997,8 @@ struct DSOverviewLegendRow: View {
             }.dsFillWidth()
             Text(delta ?? "").dsText(DS.Font.tCaption).monospacedDigit()
                 .foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink3).lineLimit(1)
+                // xxxLarge still uses the grid: 「+120%」 shrinks to its column rather than cut off.
+                .minimumScaleFactor(HomeSpec.numberMinimumScale)
                 .frame(width: OverviewSpec.legendDeltaColumn, alignment: .trailing)
             Text(amount).dsText(OverviewSpec.legendGridAmount).foregroundStyle(isAnomaly ? DS.Color.warnInk : DS.Color.ink)
                 .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale)

@@ -25,7 +25,7 @@ struct RecurringView: View {
                     HStack(alignment: .firstTextBaseline, spacing: DS.Space.s8) {
                         Text(OverviewDisplay.money(total.total, hidden: hidden)).dsText(SettingsSpec.total).foregroundStyle(DS.Color.ink)
                             .lineLimit(1).minimumScaleFactor(HomeSpec.numberMinimumScale).accessibilityIdentifier("recurringTotal")
-                        Text("每月 · \(total.count) 项").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3)
+                        Text("每月 · \(total.count.formatted()) 项").dsText(DS.Font.tSub).foregroundStyle(DS.Color.ink3)
                     }
                     .padding(.horizontal, DS.Space.s20).padding(.top, SettingsSpec.headerTop)
                     SubscriptionCalendar(month: shown, now: now, ledger: ledger) { offset in
@@ -239,7 +239,7 @@ struct CategorySettingsView: View {
                     Text(category.name).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).lineLimit(1)
                     Spacer(minLength: DS.Space.s8)
                     if !category.subcategories.isEmpty {
-                        Text("\(category.subcategories.count) 个小类").dsText(DS.Font.tPill).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                        Text("\(category.subcategories.count.formatted()) 个小类").dsText(DS.Font.tPill).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     }
                     DSIconView(icon: .chevron, size: SettingsSpec.categoryChevron, color: isOpen ? DS.Color.ink : DS.Color.chevron)
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
@@ -368,7 +368,7 @@ struct AISettingsView: View {
                         .padding(.trailing, DS.Space.s12).frame(minHeight: SettingsSpec.row)
                         .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
                         Button { store.tabRouteRequest = .memories } label: {
-                            DSSettingsRow(icon: nil, name: "余白记得的", accessory: .link("\(store.settingsSummary.memoryCount) 条"))
+                            DSSettingsRow(icon: nil, name: "余白记得的", accessory: .link("\(store.settingsSummary.memoryCount.formatted()) 条"))
                         }.dsPressStyle().accessibilityIdentifier("openMemories")
                         Button { store.settingsSheet = .weeklyTime } label: {
                             DSSettingsRow(icon: nil, name: "每周回顾", accessory: .link(SettingsDisplay.reviewTime(preferences.reviewTime)))
@@ -616,7 +616,7 @@ struct MainCurrencyConfirm: View {
             VStack(spacing: DS.Space.s8) {
                 Text("主币种改成\(currency.unit)？").dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
                     .multilineTextAlignment(.center).accessibilityAddTraits(.isHeader)
-                Text("已记的 \(count) 笔按当天汇率折成\(currency.unit)显示，会随汇率变。").dsText(DS.Font.tLabel).monospacedDigit()
+                Text("已记的 \(count.formatted()) 笔按当天汇率折成\(currency.unit)显示，会随汇率变。").dsText(DS.Font.tLabel).monospacedDigit()
                     .foregroundStyle(DS.Color.ink2).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: DS.Space.s8) {
                     DSButton("取消", kind: .secondary, action: close).accessibilityIdentifier("mainCurrencyCancel")
