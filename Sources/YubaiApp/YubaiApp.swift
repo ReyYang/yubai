@@ -541,9 +541,13 @@ enum AppSheet: Identifiable {
     var oftenMenu = HomeFixture.current?.isOften == true
     /// 问余白 is open. Set through `openAsk`.
     var askRequest: AskRequest?
-    func openAsk(_ text: String = "", send: Bool = false, voice: Bool = false) {
+    /// The bill just deleted from home; its 撤销 bar shows for 4 seconds.
+    var billUndo: BillUndoNotice?
+    /// The bill whose long-press menu is open.
+    var billMenu: BillMenuRequest?
+    func openAsk(_ text: String = "", send: Bool = false) {
         guard !locked else { return }
-        askRequest = AskRequest(text: text, send: send, voice: voice)
+        askRequest = AskRequest(text: text, send: send)
     }
     var rootScrollRequest: [Destination: Int] = [:]
     var sheet: AppSheet?; var error: String?
@@ -1190,7 +1194,7 @@ struct RootView: View {
                 else if store.needsOnboarding { OnboardView().transition(.opacity) }
                 else { mainContentWithInboxLifecycle }
             }
-            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.showsOverviewOverlay || store.askRequest != nil) && !store.locked)
+            .accessibilityHidden((store.entrySheet != nil || store.billCardID != nil || store.billMenu != nil || store.showsOverviewOverlay || store.askRequest != nil) && !store.locked)
             .allowsHitTesting((store.entrySheet == nil && store.billCardID == nil && !store.showsOverviewOverlay) || store.locked)
         }
         .environment(\.yubaiToastClearance, hasToast ? toastHeight : 0)
@@ -1267,7 +1271,7 @@ struct RootView: View {
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
-                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.billMenu = nil; store.billUndo = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true
             }
         }
         .task(id: phase == .active && !store.locked) {
@@ -1293,6 +1297,11 @@ struct RootView: View {
                 }.padding(YubaiSpace.insetCard).background(YubaiColor.raised)
             }
         }
+        #if os(iOS)
+        .modifier(BillActionOverlays(undoBottom: tabBarHidden ? DS.Space.s16 : tabBarHeight + DS.Space.s16))
+        #else
+        .modifier(BillActionOverlays(undoBottom: DS.Space.s16))
+        #endif
         .overlay {
             if !store.locked, let id = store.billCardID,
                let entry = store.current.entries.first(where: { $0.id == id }) {
@@ -1394,7 +1403,8 @@ struct RootView: View {
     }
     #endif
     @ViewBuilder private var tabBarOverlay: some View {
-        if !tabBarHidden && store.sheet == nil && store.entrySheet == nil && !store.showsOverviewOverlay && !keyboardVisible {
+        // Always mounted on root pages: sheets, overlays and the keyboard cover it instead of removing it.
+        if !tabBarHidden {
             DSTabBar(selection: Binding(get: {
                 store.destination == .insights ? .overview : .home
             }, set: { selected in
@@ -1406,6 +1416,7 @@ struct RootView: View {
             .onGeometryChange(for: CGFloat.self) { max(HomeSpec.tabHeight, $0.size.height) } action: {
                 tabBarHeight = $0
             }
+            .ignoresSafeArea(.keyboard)
             .accessibilityElement(children: .contain).accessibilityIdentifier("mainNavigation")
             .uiTestAccessibilityValue("destination=\(store.destination.rawValue)")
             #if DEBUG && targetEnvironment(simulator)

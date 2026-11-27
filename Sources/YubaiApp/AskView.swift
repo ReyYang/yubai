@@ -6,12 +6,11 @@ import UniformTypeIdentifiers
 import UserNotifications
 import YubaiCore
 
-/// What opens 问余白: text to send now, or a voice start.
+/// What opens 问余白: text to fill or send now.
 struct AskRequest: Identifiable, Equatable {
     var id = UUID()
     var text = ""
     var send = false
-    var voice = false
 }
 
 struct AskImage: Equatable { let data: Data; let name: String }
@@ -157,11 +156,6 @@ private struct AskSheetContent: View {
     let release: (DragGesture.Value) -> Void
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var voice = AskVoiceCapture()
-    @State private var voicePrefix = ""
-    @State private var photo: PhotosPickerItem?
-    @State private var photoPicker = false
-    @State private var reading = false
     @State private var bottomInset: CGFloat = 0
     @FocusState private var focused: Bool
 
@@ -171,26 +165,20 @@ private struct AskSheetContent: View {
         VStack(spacing: .zero) {
             header
             AskThread(onSend: { controller.send($0, store: store) }, openSettings: openSettings)
-            AskComposer(text: $controller.draft, focus: $focused, recording: voice.recording,
-                        attachEnabled: !reading && controller.available(store, feature: .receiptRecognition),
-                        onAttach: { focused = false; photoPicker = true }, onMic: toggleVoice,
+            AskComposer(text: $controller.draft, focus: $focused,
                         onSend: { controller.send(controller.draft, store: store) })
                 .padding(.bottom, bottomInset > 0 ? AskSpec.composerKeyboardGap : .zero)
                 .frame(minHeight: bottomInset > 0 ? nil : AskSpec.composerHeight, alignment: .top)
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
-        .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
-        .onChange(of: photo) { _, value in if let value { read(value) } }
-        .onChange(of: voice.transcript) { _, text in store.ask.draft = voicePrefix + text }
         .onAppear {
-            store.ask.connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh()
+            store.ask.connectivity.start(); IntelligenceRuntime.cloud.refresh()
             store.ask.expireIfNeeded(ledgerID: store.current.id)
             if !request.text.isEmpty {
                 if request.send { store.ask.send(request.text, store: store) } else { store.ask.draft = request.text }
             }
-            if request.voice { toggleVoice() }
         }
-        .onDisappear { voice.stop(); store.ask.connectivity.stop() }
+        .onDisappear { store.ask.connectivity.stop() }
         .onChange(of: store.locked) { _, locked in if locked { store.ask.cancel(); closeNow() } }
     }
 
@@ -216,28 +204,6 @@ private struct AskSheetContent: View {
     private func openSettings() {
         closeNow()
         store.tabRouteRequest = .aiSettings
-    }
-
-    private func toggleVoice() {
-        if voice.recording { voice.stop(); return }
-        voicePrefix = store.ask.draft.isEmpty ? "" : store.ask.draft + " "
-        Task { await voice.start() }
-    }
-
-    private func read(_ item: PhotosPickerItem) {
-        reading = true
-        Task { @MainActor in
-            defer { reading = false; photo = nil }
-            guard let bytes = try? await item.loadTransferable(type: Data.self), bytes.count <= 50 * 1024 * 1024,
-                  let receipt = try? await Task.detached(priority: .userInitiated, operation: { try ReceiptReader.recognize(bytes) }).value,
-                  !store.locked else { return }
-            let source = CGImageSourceCreateWithData(bytes as CFData, nil)
-            let type = source.flatMap { CGImageSourceGetType($0) }.map { $0 as String }
-            let ext = type.flatMap { UTType($0)?.preferredFilenameExtension } ?? "image"
-            let image = AskImage(data: bytes, name: "截图-" + Dates.text(Dates.now) + "." + ext)
-            // OCR runs on the phone; only the redacted text leaves it.
-            store.ask.send(store.ask.draft, image: image, ocr: Redactor(ledger: store.current).text(receipt.text), store: store)
-        }
     }
 }
 

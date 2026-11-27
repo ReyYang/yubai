@@ -52,8 +52,6 @@ enum AskSpec {
     static let composerHeight: CGFloat = 92 // canvas Ask.dc.html: composer incl. home indicator
     static let composerTop: CGFloat = 10 // canvas Ask.dc.html: composer padding top
     static let composerKeyboardGap: CGFloat = 8 // above the keyboard; the canvas has no keyboard board
-    static let fieldTrailing: CGFloat = 6 // canvas Ask.dc.html: field padding right
-    static let micBox: CGFloat = 32 // canvas Ask.dc.html: mic button
 
     // canvas Ask.dc.html: user bubble, reason and answer text
     static let body = DS.TextStyle(size: 15, lineHeight: 22, weight: .regular, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: false)

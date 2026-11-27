@@ -420,7 +420,7 @@ struct DSTabBar: View {
         }.dynamicTypeSize(...DynamicTypeSize.xLarge)
             .padding(.horizontal, DS.Space.s12)
             .frame(maxWidth: .infinity, minHeight: HomeSpec.tabHeight)
-            .background { DS.Color.raised.ignoresSafeArea(edges: .bottom) }
+            .background { DS.Color.bg.ignoresSafeArea(edges: .bottom) }
             .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
     }
 
@@ -440,23 +440,17 @@ struct DSTabBar: View {
 
 struct DSAskBar: View {
     var onAsk: () -> Void = {}
-    var onVoice: () -> Void = {}
     var body: some View {
-        HStack(spacing: DS.Space.s8) {
-            Button(action: onAsk) {
-                HStack(spacing: DS.Space.s8) {
-                    DSIconView(icon: .search, size: DS.Size.brandTile, color: DS.Color.ink3)
-                    Text("问余白 · 搜账单").dsText(DS.Font.tLabel).lineLimit(1).dsFillWidth()
-                }.frame(minHeight: DS.Size.askH)
-            }.dsPressStyle().accessibilityIdentifier("openLedgerSearch")
-            Button(action: onVoice) {
-                DSIconView(icon: .voice, size: DS.Size.brandTile, color: DS.Color.ink2)
-                    .frame(width: HomeSpec.tile32, height: HomeSpec.tile32)
-            }.dsPressStyle().accessibilityLabel("语音输入")
-        }.foregroundStyle(DS.Color.ink3)
-            .padding(.leading, HomeSpec.askInset).padding(.trailing, DS.Space.s8)
-            .dsPill(DS.Color.raised)
-            .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
+        Button(action: onAsk) {
+            HStack(spacing: DS.Space.s8) {
+                DSIconView(icon: .search, size: DS.Size.brandTile, color: DS.Color.ink3)
+                Text("问余白 · 搜账单").dsText(DS.Font.tLabel).lineLimit(1).dsFillWidth()
+            }.foregroundStyle(DS.Color.ink3)
+                .padding(.horizontal, DS.Space.s16)
+                .frame(minHeight: DS.Size.askH)
+                .dsPill(DS.Color.raised)
+                .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
+        }.dsPressStyle().accessibilityIdentifier("openLedgerSearch")
     }
 }
 

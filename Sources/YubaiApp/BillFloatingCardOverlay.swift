@@ -78,9 +78,7 @@ struct BillFloatingCardOverlay: View {
     }
 
     private func delete() {
-        if store.update("删除", { ledger in
-            try EntryRecovery.delete(entry.id, from: &ledger, now: store.financialNow)
-        }) { close() }
+        if store.deleteBill(entry) { close() }
     }
 
     private func receive(_ person: UUID?) {

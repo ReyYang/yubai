@@ -87,7 +87,9 @@ struct HomeView: View {
                  openSettings: { store.tabRouteRequest = .settings },
                  openBill: { store.billCardID = $0 },
                  openAsk: { store.openAsk($0, send: true) },
-                 openVoice: { store.openAsk(voice: true) },
+                 openMenu: { store.billMenu = $0 },
+                 deleteBill: { store.deleteBill($0) },
+                 menuAction: { store.perform($1, on: $0) },
                  recordSalary: { store.requestCaptureSheet(.prefilledEntry(.init(category: nil, amount: nil, purpose: "工资", nature: .income))) },
                  cover: { amount in
                      _ = store.update("补上") { try Reserve.transfer(.take, amount: amount, in: &$0, now: store.financialNow) }
@@ -106,7 +108,9 @@ private struct HomePage: View {
     let openSettings: () -> Void
     let openBill: (UUID) -> Void
     let openAsk: (String) -> Void
-    let openVoice: () -> Void
+    let openMenu: (BillMenuRequest) -> Void
+    let deleteBill: (Entry) -> Void
+    let menuAction: (Entry, BillMenuAction) -> Void
     let recordSalary: () -> Void
     let cover: (Int64) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -115,6 +119,8 @@ private struct HomePage: View {
     @State private var searching = HomeFixture.current?.isSearch == true
     @State private var query = HomeFixture.current?.isSearch == true ? "打车" : ""
     @State private var preset: LedgerPreset?
+    @State private var held: UUID?
+    @State private var frames = BillRowFrames()
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -123,18 +129,25 @@ private struct HomePage: View {
             if searching { searchBar.padding(.horizontal, DS.Space.s20) }
             else { HomeTopBar(openSettings: openSettings) }
             ScrollViewReader { scroll in
-                ScrollView {
-                    VStack(spacing: .zero) {
+                // A List, so rows get the system swipe (iOS 26 only offers it here).
+                List {
+                    Group {
                         if searching {
                             searchResults
                         } else {
                             if preset == nil { hero.id("homeTop") }
-                            DSAskBar(onAsk: beginSearch, onVoice: openVoice).padding(.top, DS.Space.s16)
-                            billDays.padding(.top, DS.Space.s8)
+                            DSAskBar(onAsk: beginSearch).padding(.top, DS.Space.s16).padding(.bottom, DS.Space.s8)
+                            billDays
                         }
-                    }.padding(.horizontal, DS.Space.s20)
-                        .padding(.bottom, navigationHeight + DS.Space.s12 + toastClearance)
+                    }
+                    .listRowInsets(EdgeInsets(top: .zero, leading: DS.Space.s20, bottom: .zero, trailing: DS.Space.s20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(DS.Color.bg)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, .zero)
+                .contentMargins(.bottom, navigationHeight + DS.Space.s12 + toastClearance, for: .scrollContent)
                 .scrollDismissesKeyboard(.interactively)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("entriesScroll")
@@ -217,7 +230,7 @@ private struct HomePage: View {
         let groups = Dictionary(grouping: rows, by: { Dates.day($0.date) })
         let days = groups.keys.sorted(by: >)
         let offsets = rowOffsets(days: days, groups: groups)
-        return LazyVStack(spacing: .zero) {
+        return Group {
             if preset != nil {
                 DSDayHeader(title: "\(rows.count) 笔", total: HomeDisplay.signed(billNet(rows), hidden: hide))
                     .accessibilityIdentifier("entriesSearchTotal")
@@ -234,7 +247,6 @@ private struct HomePage: View {
                 }
             }
         }
-        .animation(reduceMotion ? nil : DSMotion.smoothAnimation, value: rows.first?.id)
     }
 
     private var pendingIDs: Set<UUID> {
@@ -281,16 +293,35 @@ private struct HomePage: View {
         let secondLine = searching
             ? [Dates.monthDay(entry.date), account?.name].compactMap { $0 }.joined(separator: " · ")
             : entry.originalCurrency != nil || account?.kind == .credit ? account?.name : nil
+        let icon = HomeDisplay.icon(entry, category: category)
+        let amount = HomeDisplay.billAmount(entry, hidden: hide)
+        let detailAmount = entry.originalCurrency.map { _ in "≈ " + HomeDisplay.money(entry.amount, hidden: hide) }
+        let amountColor = entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink
         return Button {
             focused = false
-            openBill(entry.id)
+            // The release of a long press already opened the menu; it is not a tap.
+            if held == entry.id { held = nil } else { openBill(entry.id) }
         } label: {
-            DSListRow(icon: HomeDisplay.icon(entry, category: category), name: entry.displayTitle,
-                      amount: HomeDisplay.billAmount(entry, hidden: hide), detail: secondLine, tag: tag, separator: separator,
-                      detailAmount: entry.originalCurrency.map { _ in "≈ " + HomeDisplay.money(entry.amount, hidden: hide) },
-                      amountColor: entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink)
+            DSListRow(icon: icon, name: entry.displayTitle, amount: amount, detail: secondLine, tag: tag, separator: separator,
+                      detailAmount: detailAmount, amountColor: amountColor)
                 .contentShape(Rectangle())
-        }.dsPressStyle().accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+        }.buttonStyle(BillRowPressStyle {
+            held = entry.id
+            openMenu(BillMenuRequest(entryID: entry.id, frame: frames.frames[entry.id] ?? .zero, icon: icon,
+                                     name: entry.displayTitle, amount: amount, detail: secondLine,
+                                     detailAmount: detailAmount, amountColor: amountColor))
+        })
+            .accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames[entry.id] = $0 }
+            .nativeSwipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) { deleteBill(entry) } label: {
+                    Label { Text("删除") } icon: { DS.Icon.delete.templateImage(size: HomeSpec.swipeIcon) }
+                }.tint(DS.Color.warnStrong)
+            }
+            .accessibilityAction(named: "编辑") { menuAction(entry, .edit) }
+            .accessibilityAction(named: "再记一笔") { menuAction(entry, .duplicate) }
+            .accessibilityAction(named: "改分类") { menuAction(entry, .recategorize) }
+            .accessibilityAction(named: "删除") { deleteBill(entry) }
     }
 
     private var searchBar: some View {
@@ -335,10 +366,8 @@ private struct HomePage: View {
             DS.Color.separator.frame(height: DS.Stroke.hairline)
             DSDayHeader(title: "\(results.count) 笔", total: HomeDisplay.signed(billNet(results), hidden: hide))
                 .accessibilityIdentifier("entriesSearchTotal")
-            LazyVStack(spacing: .zero) {
-                ForEach(Array(results.enumerated()), id: \.element.id) { index, entry in
-                    billRow(entry, account: accounts[entry.accountID], pending: pending.contains(entry.id), separator: index > 0)
-                }
+            ForEach(Array(results.enumerated()), id: \.element.id) { index, entry in
+                billRow(entry, account: accounts[entry.accountID], pending: pending.contains(entry.id), separator: index > 0)
             }
         }
     }
@@ -460,7 +489,8 @@ private struct HomeRunningDots: View {
     let fixture = HomeFixture.home(.normal)
     HomePage(ledger: fixture.makeLedger().ledger, now: fixture.now, request: nil, fixture: fixture, scrollRequest: 0,
              openBudget: {}, openSettings: {}, openBill: { _ in }, openAsk: { _ in },
-             openVoice: {}, recordSalary: {}, cover: { _ in })
+             openMenu: { _ in }, deleteBill: { _ in }, menuAction: { _, _ in },
+             recordSalary: {}, cover: { _ in })
         .safeAreaInset(edge: .bottom, spacing: .zero) { DSTabBar(selection: .constant(.home), onEntry: {}) }
 }
 #endif

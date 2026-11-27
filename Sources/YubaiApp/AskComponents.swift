@@ -263,35 +263,25 @@ struct AskCheckbox: View {
     }
 }
 
-/// The pinned composer: 附图, the field and the mic.
+/// The pinned composer: the field and 发送.
 struct AskComposer: View {
     @Binding var text: String
     var focus: FocusState<Bool>.Binding
-    var recording = false
-    var attachEnabled = true
-    var onAttach: () -> Void = {}
-    var onMic: () -> Void = {}
     var onSend: () -> Void = {}
 
     var body: some View {
-        HStack(alignment: .top, spacing: AskSpec.gap10) {
-            Button(action: onAttach) {
-                DSIconView(icon: .screenshot, size: DS.Size.icon, color: DS.Color.ink2)
-                    .frame(width: DS.Size.askH, height: DS.Size.askH)
-                    .background(DS.Color.surface, in: Circle())
-                    .opacity(attachEnabled ? 1 : DSInteraction.reducedPressOpacity)
-            }.dsPressStyle().disabled(!attachEnabled).accessibilityLabel("附图").accessibilityIdentifier("askAttach")
-            HStack(spacing: .zero) {
-                DSAskField(text: $text, focus: focus, onSubmit: onSend)
-                Button(action: onMic) {
-                    DSIconView(icon: .voice, size: DS.Size.brandTile, color: recording ? DS.Color.accent : DS.Color.ink2)
-                        .frame(width: AskSpec.micBox, height: DS.Size.askH).contentShape(Rectangle())
-                }.dsPressStyle().accessibilityLabel(recording ? "停止听写" : "语音输入").accessibilityIdentifier("askMic")
-            }.padding(.leading, DS.Space.s16).padding(.trailing, AskSpec.fieldTrailing)
+        HStack(spacing: DS.Space.s8) {
+            DSAskField(text: $text, focus: focus, onSubmit: onSend)
+                .padding(.horizontal, DS.Space.s16)
                 .frame(height: DS.Size.askH)
                 .background(DS.Color.raised, in: Capsule(style: .continuous))
                 .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
-        }.padding(.horizontal, DS.Space.s16).padding(.top, AskSpec.composerTop)
+            Button(action: onSend) {
+                DSIconView(icon: .send, size: DS.Size.icon, color: DS.Color.ink3)
+                    .frame(width: DS.Size.askH, height: DS.Size.askH)
+                    .background(DS.Color.surface, in: Circle())
+            }.dsPressStyle().accessibilityLabel("发送").accessibilityIdentifier("askSend")
+        }.padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8)
             .frame(maxWidth: .infinity, alignment: .top)
             .background(DS.Color.bg)
             .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
