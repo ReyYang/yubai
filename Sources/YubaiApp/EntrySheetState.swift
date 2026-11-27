@@ -8,12 +8,14 @@ enum EntryDrawer: Equatable {
     var isPopover: Bool { [.calendar, .source, .destination, .more].contains(self) }
 }
 
-/// The two accounts of an existing 转账 and whether it was 存入. While the draft keeps both,
-/// it saves the way it was saved; picking another account decides afresh.
+/// The two accounts of a 转账 read back, its nature and whether it was 存入. While the draft keeps
+/// both accounts an edited bill saves exactly as it was; picking another account decides afresh.
 struct EntryKeptRoute: Equatable {
     let accountID: UUID?
     let destinationID: UUID?
-    let deposit: Bool
+    let nature: Nature
+    /// nil: a copy (再记一笔), which decides 存入 by its accounts like any new bill.
+    let deposit: Bool?
 }
 
 struct EntrySheetDraft: Equatable {
@@ -56,7 +58,7 @@ struct EntrySheetDraft: Equatable {
     mutating func adoptDepositType() {
         guard type == .deposit else { return }
         type = .transfer
-        keptRoute = EntryKeptRoute(accountID: accountID, destinationID: destinationID, deposit: true)
+        keptRoute = EntryKeptRoute(accountID: accountID, destinationID: destinationID, nature: .investBuy, deposit: true)
     }
     var hasContent: Bool { !expression.isEmpty || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
@@ -87,9 +89,10 @@ struct EntrySheetDraft: Equatable {
         accountID = prefill.accountID
         destinationID = prefill.otherAccountID
         intoFixedSavings = prefill.intoFixedSavings
-        // A bill read back (edit, 再记一笔) keeps how it was saved; a fresh 存入 prefill stays 存入.
-        if deposit || (prefill.copiedEntry != nil && (nature == .transfer || nature == .investBuy)) {
-            keptRoute = EntryKeptRoute(accountID: accountID, destinationID: destinationID, deposit: deposit)
+        // A 转账 read back keeps how it was saved while its accounts stay; a fresh 存入 prefill stays 存入.
+        if nature.paired || deposit {
+            keptRoute = EntryKeptRoute(accountID: accountID, destinationID: destinationID, nature: nature,
+                                       deposit: deposit || prefill.copiedEntry != nil ? deposit : nil)
         }
         exception = prefill.fromReserve ? .reserve : nil
         date = prefill.date ?? Dates.now
@@ -114,10 +117,12 @@ struct EntrySheetDraft: Equatable {
 
 /// Which way the money goes and which category is picked: what decides whether 记下 needs a category.
 struct EntryCategoryState: Equatable {
+    let route: Bool
     let income: Bool
     let category: String?
 
     init(_ draft: EntrySheetDraft) {
+        route = draft.isRoute
         income = draft.nature.categoryIncome
         category = draft.category
     }
@@ -188,6 +193,10 @@ struct EntryCategoryState: Equatable {
             }
         }
         draft.adoptDepositType()
+        if editingID == nil, prefill?.copiedEntry != nil, let kept = draft.keptRoute {
+            // 再记一笔 is a new bill: 存入 or not follows its accounts.
+            draft.keptRoute = EntryKeptRoute(accountID: kept.accountID, destinationID: kept.destinationID, nature: kept.nature, deposit: nil)
+        }
         initialCategory = editingID == nil ? nil : EntryCategoryState(draft)
         normalizeAccounts()
     }
@@ -244,17 +253,29 @@ struct EntryCategoryState: Equatable {
     /// investment stay a plain 转账.
     var savesAsDeposit: Bool {
         guard draft.isRoute, draft.originalNature == nil else { return false }
-        if let kept = draft.keptRoute, kept.accountID == draft.accountID, kept.destinationID == draft.destinationID {
-            return kept.deposit
-        }
+        if let deposit = keptRouteHit?.deposit { return deposit }
         guard let source = account(draft.accountID), let destination = account(draft.destinationID) else { return false }
         return (source.kind == .cash || source.kind == .bank) && destination.kind == .investment
     }
+    /// The kept route, while the draft still has both of its accounts.
+    var keptRouteHit: EntryKeptRoute? {
+        guard draft.isRoute, let kept = draft.keptRoute,
+              kept.accountID == draft.accountID, kept.destinationID == draft.destinationID else { return nil }
+        return kept
+    }
+
+    /// The nature an edited 转账 keeps: its own while both accounts stay (so its links stay too).
+    private var keptNature: Nature? {
+        if let original = draft.originalNature { return original }
+        guard editingID != nil, let kept = keptRouteHit, kept.deposit == false else { return nil }
+        return kept.nature
+    }
+
     /// What 记下 needs: an amount, and a category unless the money only moves between accounts.
     /// Editing keeps an untouched 待整理 bill as it was; a changed direction or a cleared category asks again.
     var categoryReady: Bool {
         draft.isRoute || draft.relatedEntryID != nil || selectedCategory != nil || (editingID == nil && suggestion != nil)
-            || (initialCategory != nil && initialCategory?.category == nil && initialCategory == EntryCategoryState(draft))
+            || (initialCategory?.route == false && initialCategory?.category == nil && initialCategory == EntryCategoryState(draft))
     }
     var canSave: Bool { draft.expression.canSave && money > 0 && categoryReady }
     var localMoney: Int64? {
@@ -419,6 +440,8 @@ struct EntryCategoryState: Equatable {
             draft.accountID = id
         }
         normalizeAccounts()
+        // A 还款 / 借出 / 赎回 moved to other accounts is decided afresh, like any 转账.
+        if draft.originalNature?.paired == true, draft.keptRoute != nil, keptRouteHit == nil { draft.originalNature = nil }
         if !canRepeat { draft.repeatMonthly = false }
         drawer = nil
     }
@@ -432,7 +455,12 @@ struct EntryCategoryState: Equatable {
     /// Category management edits the ledger; a renamed or removed pick follows along.
     @discardableResult func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
         // Never an undo snapshot: it would replace a delete's 撤销 with this edit.
-        if let store { return store.update(reason, recordUndo: false, entryMotion: false, showToast: false, update) }
+        if let store {
+            guard store.update(reason, recordUndo: false, entryMotion: false, showToast: false, update) else { return false }
+            // An older whole-ledger snapshot would now roll this edit back too; drop it. The delete bar stays.
+            store.clearUndo()
+            return true
+        }
         do { try update(&fixtureLedger); return true }
         catch { failure = error.localizedDescription; return false }
     }
@@ -485,7 +513,7 @@ struct EntryCategoryState: Equatable {
             purpose: draft.purpose, category: category?.category ?? Classification.pendingCategory,
             subcategory: category?.subcategory, accountID: accountID, destinationAccountID: draft.destinationID,
             date: draft.date, repeatMonthly: draft.repeatMonthly && canRepeat, exception: draft.exception,
-            incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: draft.originalNature,
+            incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: keptNature,
             relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings, preserveTime: editingID != nil)
         if let people = draft.recoveryParticipants, let localMoney,
            people.reduce(Int64(0), { $0 + $1.amount }) == localMoney - myShare {

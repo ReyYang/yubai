@@ -94,8 +94,7 @@ struct HomeView: View {
                  cover: { amount in
                      _ = store.update("补上") { try Reserve.transfer(.take, amount: amount, in: &$0, now: store.financialNow) }
                  })
-        // While the long-press menu is up the finger that opened it must not scroll the list.
-        .scrollDisabled(store.billMenu != nil)
+        .modifier(HomeMenuScrollLock())
         .overlay(alignment: .bottom) { HomeRunningOverlay() }
     }
 }
@@ -388,6 +387,16 @@ private struct HomePage: View {
             query = ""
             preset = nil
         }
+    }
+}
+
+/// While the long-press menu is up the finger that opened it must not scroll the list.
+/// Read here, not in `HomeView.body`, so opening the menu does not rebuild the page.
+private struct HomeMenuScrollLock: ViewModifier {
+    @Environment(AppStore.self) private var store
+
+    func body(content: Content) -> some View {
+        content.scrollDisabled(store.billMenu != nil)
     }
 }
 

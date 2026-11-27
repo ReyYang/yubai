@@ -2102,13 +2102,14 @@ struct Toast: View {
                 #endif
             }
             .task(id: timerKey) {
-                guard visible, !expanded, phase == .active else { return }
+                // A bar with its own deadline ends there even when expanded.
+                guard visible, deadline != nil || !expanded, phase == .active else { return }
                 #if DEBUG && targetEnvironment(simulator)
                 if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
                 #endif
                 let wait = deadline.map { max(0, $0.timeIntervalSinceNow) } ?? (onUndo == nil ? 4 : 6)
                 do { try await Task.sleep(for: .seconds(wait)) } catch { return }
-                guard !Task.isCancelled, !expanded else { return }
+                guard !Task.isCancelled, deadline != nil || !expanded else { return }
                 dismiss()
             }
     }

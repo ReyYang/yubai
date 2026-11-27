@@ -96,7 +96,7 @@ enum AppSheet: Identifiable {
     private(set) var ledger = Ledger() {
         didSet {
             if oldValue.id != ledger.id {
-                ask.reset(); askRequest = nil
+                ask.reset(); askRequest = nil; billUndo = nil
                 resetRootNavigation()
             }
             if oldValue != ledger { invalidateDerived() }
@@ -527,7 +527,7 @@ enum AppSheet: Identifiable {
         reviewPeriodSheet = nil; accountValuationTarget = nil; accountValuationInitial = nil
         billCardID = nil
         entrySheet = nil; retainedEntryDraft = nil; lastEntryType = .expense; lastEntryAccountID = nil
-        unsortedUndo = nil; unsortedUndoRestoration = nil; billUndo = nil
+        unsortedUndo = nil; unsortedUndoRestoration = nil
         #if os(iOS)
         if pagingLocked { pagingLocked = false }
         #endif
@@ -794,7 +794,9 @@ enum AppSheet: Identifiable {
             ledger = next
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
-                unsortedUndo = nil; billUndo = nil
+                unsortedUndo = nil
+                // Only a change the person sees replaces the delete bar; quiet background writes leave it.
+                if showToast { billUndo = nil }
                 undoLedger = undoSnapshot ?? before; undoLabel = reason
                 if showToast {
                     if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = resultToast(reason, before: before, after: next); toast = nil }
@@ -895,6 +897,7 @@ enum AppSheet: Identifiable {
 
     func undo() {
         if let notice = unsortedUndo { _ = undoUnsorted(notice.id); return }
+        if let notice = billUndo { undoBillDeletion(notice.id); return }
         guard canEditLedger(), let previous = undoLedger else { return }
         do {
             ledger = try persist(previous, reason: "撤销")
@@ -984,7 +987,7 @@ enum AppSheet: Identifiable {
                 let restored = try await read.value
                 guard ledgerRevision == revision else { throw YubaiError.invalid("账本刚有变化，请重试这一步。") }
                 let saved = try persist(restored, reason: "恢复版本", restoring: true)
-                cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil
+                cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil; billUndo = nil
                 clearUndo(); toast = "已恢复到所选版本"; sheet = nil
             } catch { self.error = error.localizedDescription }
         }
@@ -1117,7 +1120,7 @@ enum AppSheet: Identifiable {
                 Button("记一笔") { store.present(.addEntry, from: "add") }.keyboardShortcut("n").disabled(store.locked)
                 Button("问余白") { store.openAsk() }.keyboardShortcut("k").disabled(store.locked)
             }
-            CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled(store.undoLabel == nil || store.locked) }
+            CommandGroup(replacing: .undoRedo) { Button("撤销上一项修改") { store.undo() }.keyboardShortcut("z").disabled((store.undoLabel == nil && store.billUndo == nil) || store.locked) }
         }
         #endif
     }

@@ -53,9 +53,11 @@ struct EntrySheetOverlay: View {
                 } else {
                     EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
                                    calendarFocus: $calendarFocus, pillFocus: $pillFocus, formScroll: $formScroll,
-                                   scrollLocked: dragOwned == true, save: save, receipt: onReceipt)
-                        // Spec-Gestures: alongside the keys and the scroll. The sheet decides by direction first;
-                        // once it owns the drag the controls under the finger stop taking the press.
+                                   save: save, receipt: onReceipt)
+                        // Once the sheet owns the drag, the key under the finger lets go and the form stops scrolling.
+                        // Applied outside the sheet's body, so only the controls see it; the drag below stays live.
+                        .disabled(dragOwned == true)
+                        // Spec-Gestures: alongside the keys and the scroll. The sheet decides by direction first.
                         .simultaneousGesture(sheetDrag, including: model.drawer == nil ? .all : .subviews)
                         .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
                         .accessibilityHidden(model.categoryPanel || model.drawer?.isPopover == true)
@@ -191,11 +193,12 @@ struct EntrySheetOverlay: View {
             }
         }
         .coordinateSpace(.named(EntrySpec.popoverSpace))
-        .onAppear {
+        // Per list, not per appearance: switching straight from one pill to another reuses this view.
+        .task(id: drawer) {
             if drawer == .calendar { displayedMonth = DSCalendarPopover.initialMonth(for: model.draft.date, now: model.now) }
             calendarFocus = .calendar
+            listFocus = true
         }
-        .task(id: drawer) { listFocus = true }
     }
 
     private func popoverWidth(_ drawer: EntryDrawer) -> CGFloat {
@@ -296,8 +299,6 @@ struct EntrySheetView: View {
     let calendarFocus: FocusState<EntryCalendarFocus?>.Binding
     let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
     @Binding var formScroll: EntryFormScroll
-    /// The sheet owns the drag: the scrolling form holds still and the key under the finger lets go.
-    let scrollLocked: Bool
     let save: () -> Void
     let receipt: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduced
@@ -314,7 +315,6 @@ struct EntrySheetView: View {
                     .scrollBounceBehavior(.basedOnSize)
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
-                    .scrollDisabled(scrollLocked)
                     .modifier(EntryFormScrollTop(formScroll: $formScroll))
                     .onAppear { formScroll.scrolls = true }
                     .onDisappear { formScroll = EntryFormScroll() }
@@ -322,7 +322,6 @@ struct EntrySheetView: View {
             }
             .frame(maxHeight: maxHeight)
         }
-        .disabled(scrollLocked)
         .background(DS.Color.bg)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
         .accessibilityElement(children: .contain)

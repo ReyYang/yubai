@@ -57,7 +57,8 @@ extension AppStore {
     func undoBillDeletion(_ id: UUID) {
         guard let notice = billUndo, notice.id == id else { return }
         billUndo = nil
-        if update("撤销", recordUndo: false, entryMotion: false, {
+        // Already back (e.g. from 最近删除): the bar just goes, no error.
+        if update("撤销", recordUndo: false, reportError: false, entryMotion: false, {
             try EntryRecovery.undoDelete(notice.entryIDs, deletedAt: notice.deletedAt, in: &$0)
         }) {
             undoTrigger &+= 1
@@ -114,7 +115,8 @@ struct HomeBillMenuOverlay: View {
                 menu
                     .scaleEffect(shown || reduced ? 1 : HomeSpec.menuScale,
                                  anchor: below ? .topLeading : .bottomLeading)
-                    .opacity(shown ? 1 : 0)
+                    // Placed only once measured, so large type never shows it on the wrong side first.
+                    .opacity(shown && measuredMenu != nil ? 1 : 0)
                     .offset(x: card.minX, y: menuY)
             }
         }

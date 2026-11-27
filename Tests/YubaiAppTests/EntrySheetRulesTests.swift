@@ -120,4 +120,47 @@ final class EntrySheetRulesTests: XCTestCase {
         cleared.toggle(category: "吃饭")
         XCTAssertEqual(cleared.blockedSave(), .category)
     }
+
+    func testEditingATransferIntoAnExpenseAsksForACategory() {
+        let (ledger, bank, _, _, invest, _) = ledger()
+        var buy = Entry(date: now, amount: 30_000, nature: .investBuy, accountID: bank.id, title: "定投", category: "内部移动")
+        buy.otherAccountID = invest.id
+        let draft = EntrySheetDraft(prefill: QuickEntryPrefill(copying: buy, date: now, keepLink: true), ledger: ledger)
+        let model = EntrySheetViewModel(fixtureLedger: ledger, draft: draft, now: now, editingID: buy.id)
+        XCTAssertNil(model.blockedSave())
+        model.select(.expense)
+        XCTAssertEqual(model.blockedSave(), .category, "a 转账 turned 支出 is not an untouched 待整理 bill")
+    }
+
+    func testACopiedDepositDecidesByItsAccounts() {
+        let (ledger, bank, bank2, _, _, _) = ledger()
+        var saved = Entry(date: now, amount: 30_000, nature: .transfer, accountID: bank.id, title: "存起来", category: "内部移动")
+        saved.otherAccountID = bank2.id
+        saved.intoFixedSavings = true
+        let prefill = QuickEntryPrefill(copying: saved, date: now)
+        let edit = EntrySheetViewModel(fixtureLedger: ledger, draft: EntrySheetDraft(prefill: prefill, ledger: ledger), now: now, editingID: saved.id)
+        XCTAssertTrue(edit.savesAsDeposit, "editing keeps it 存入")
+        var copy = EntrySheetDraft(prefill: prefill, ledger: ledger)
+        copy.keptRoute = copy.keptRoute.map { EntryKeptRoute(accountID: $0.accountID, destinationID: $0.destinationID, nature: $0.nature, deposit: nil) }
+        XCTAssertFalse(EntrySheetViewModel(fixtureLedger: ledger, draft: copy, now: now).savesAsDeposit, "再记一笔 招行 → 工行 is a 转账")
+    }
+
+    func testReorderKeepsHiddenCategoriesInTheirSlots() {
+        var (ledger, bank, _, _, _, _) = ledger()
+        ledger.categories = ["甲", "乙", "丙", "丁"].map { YubaiCore.Category($0) }
+        ledger.categories[1].hidden = true
+        ledger.preferences.categoryOrder = ["甲", "乙", "丙", "丁"].map { CategoryNamespace.key($0, income: false) }
+        let model = EntrySheetViewModel(fixtureLedger: ledger, draft: expense(bank), now: now)
+        model.reorderVisibleCategories(["丁", "甲", "丙"], income: false)
+        XCTAssertEqual(model.ledger.categoryOrder(income: false), ["丁", "乙", "甲", "丙"])
+    }
+
+    func testDraftFollowsACategoryOnlyInItsOwnDirection() {
+        let (ledger, bank, _, _, _, _) = ledger()
+        var draft = expense(bank)
+        draft.category = "其他"
+        let model = EntrySheetViewModel(fixtureLedger: ledger, draft: draft, now: now)
+        XCTAssertTrue(model.draftUses(category: "其他", income: false))
+        XCTAssertFalse(model.draftUses(category: "其他", income: true))
+    }
 }
