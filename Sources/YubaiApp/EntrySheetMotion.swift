@@ -50,10 +50,14 @@ struct SpringFlight {
     }
 
     func position(at date: Date) -> CGFloat { flight?.position(at: date) ?? offset }
+    var isDragging: Bool { dragOrigin != nil }
 
+    /// Spec-Gestures: 遮罩透明度 = 1 − y / 520 while pulled down; the closing flight fades it out with the sheet.
     func scrimProgress(at date: Date) -> Double {
         guard height > 0 else { return 1 }
-        return Double(1 - min(1, max(0, position(at: date) / height)))
+        let y = max(0, position(at: date))
+        let fade = dragOrigin != nil ? y / EntrySpec.scrimFadeDistance : y / height
+        return Double(1 - min(1, fade))
     }
 
     func drag(_ value: DragGesture.Value) {
@@ -70,11 +74,13 @@ struct SpringFlight {
             closing = false
         }
         let movement = (dragOrigin ?? 0) + value.translation.height
-        offset = movement >= 0 ? movement : movement * EntrySpec.upwardResistance
+        // Spec-Gestures: 向下 1:1；向上橡皮筋 y = 40 × (1 − 1 / (1 + d / 120)).
+        offset = movement >= 0 ? movement
+            : -EntrySpec.rubberLimit * (1 - 1 / (1 + -movement / EntrySpec.rubberScale))
     }
 
     func willDismiss(_ value: DragGesture.Value) -> Bool {
-        dragOrigin != nil && (offset > height * EntrySpec.dismissFraction || value.velocity.height > EntrySpec.dismissVelocity)
+        dragOrigin != nil && (offset > EntrySpec.dismissDistance || value.velocity.height > EntrySpec.dismissVelocity)
     }
 
     func release(_ value: DragGesture.Value, reduced: Bool, onClose: @escaping () -> Void) {
@@ -88,7 +94,7 @@ struct SpringFlight {
             offset = 0
             EntryRenderDiagnostics.mark("settled")
         } else {
-            spring(to: 0, velocity: offset < 0 ? speed * EntrySpec.upwardResistance : speed)
+            spring(to: 0, velocity: offset < 0 ? 0 : speed)
         }
     }
 

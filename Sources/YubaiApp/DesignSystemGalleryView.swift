@@ -668,7 +668,7 @@ private struct EntryHeaderGallery: View {
         let outline = UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet,
                                              topTrailingRadius: DS.Radius.sheet, style: .continuous)
         VStack(spacing: DS.Space.s20) {
-            EntryTopHeaderView(model: model, drag: EntryHeaderDrag(move: { _ in }, end: { _ in }))
+            EntryTopHeaderView(model: model)
             Text(EntrySpec.fixtureLunchAmount).dsText(DS.Font.nEntry).monospacedDigit()
                 .padding(.bottom, DS.Space.s20)
         }

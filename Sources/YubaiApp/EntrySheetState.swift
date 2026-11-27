@@ -2,7 +2,10 @@ import SwiftUI
 import YubaiCore
 
 enum EntryDrawer: Equatable {
-    case purpose, currency, calendar, source, destination, subcategory, newCategory, renameCategory, split
+    case purpose, currency, calendar, source, destination, more, split
+
+    /// Lists that pop out of a pill above the sheet; only one is open at a time.
+    var isPopover: Bool { [.calendar, .source, .destination, .more].contains(self) }
 }
 
 struct EntrySheetDraft: Equatable {
@@ -36,6 +39,8 @@ struct EntrySheetDraft: Equatable {
         }
     }
     var isRoute: Bool { type == .transfer || type == .deposit }
+    /// The tab that shows this draft: 存入 is a 转账 into a savings account.
+    var tab: EntryType { type == .deposit ? .transfer : type }
     var hasContent: Bool { !expression.isEmpty || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     init() {}
@@ -101,17 +106,23 @@ struct EntrySheetDraft: Equatable {
     var draft: EntrySheetDraft
     var drawer: EntryDrawer?
     var categoryPanel = false
-    var categoryEditing = false
-    var inputText = ""
+    /// 分类管理 pushed over the panel; the draft stays.
+    var managingCategories = false
+    /// The category row whose subcategories are open in the panel.
+    var expandedCategory: String?
+    /// 记下 was pressed without a category: the row keeps its amber ring until one is picked.
+    var needsCategory = false
+    var amountPulse = 0
     var suggestion: CategoryAssignment?
     var effect: EntryEffect?
+    /// 算作存入: what this cycle will have saved once this transfer lands.
+    var depositedThisCycle: Int64?
     var categoryPulse = 0
     var failure: String?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
     private var fixtureBaseline: EntrySheetDraft?
     var fixtureTopCategories: [String] = []
     var routeShowsBalance = false
-    var autoFocusSubcategory = true
     var fixtureDayLabel: String?
     var fixtureRepeatDay: Int?
     var fixtureSplitNames: [String] = []
@@ -163,7 +174,7 @@ struct EntrySheetDraft: Equatable {
     var ledger: Ledger { store?.current ?? fixtureLedger }
     var now: Date { fixtureNow ?? Dates.now }
     var hasReceipt: Bool { draft.screenshot != nil }
-    var hidesKeypad: Bool { drawer == .purpose || (drawer == .subcategory && !categoryPanel) }
+    var hidesKeypad: Bool { drawer == .purpose }
     var hidesAmounts: Bool { store?.preferences.hideAmounts == true }
     var signedRate: Decimal? {
         let clean = draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -180,6 +191,13 @@ struct EntrySheetDraft: Equatable {
             (draft.type == .deposit && account(draft.destinationID)?.kind == .investment))
     }
     var money: Int64 { draft.expression.evaluatedCents ?? 0 }
+    /// A 转账 into a savings account is saved as 存入.
+    var savesAsDeposit: Bool {
+        draft.type == .deposit || (draft.type == .transfer && account(draft.destinationID)?.kind == .investment)
+    }
+    /// What 记下 needs: an amount, and a category unless the money only moves between accounts.
+    var categoryReady: Bool { draft.isRoute || editingID != nil || draft.relatedEntryID != nil || selectedCategory != nil || suggestion != nil }
+    var canSave: Bool { draft.expression.canSave && money > 0 && categoryReady }
     var localMoney: Int64? {
         guard draft.currency != .cny else { return money }
         guard let rate = signedRate else { return nil }
@@ -252,7 +270,8 @@ struct EntrySheetDraft: Equatable {
         }
     }
     func select(_ type: EntryType) {
-        guard type != draft.type else { return }
+        guard type != draft.tab else { return }
+        needsCategory = false
         draft.type = type
         draft.originalNature = nil
         draft.relatedEntryID = nil
@@ -270,35 +289,60 @@ struct EntrySheetDraft: Equatable {
         drawer = nil
         normalizeAccounts()
     }
-    func select(category: String) {
-        if draft.category != category { draft.subcategory = nil }
+    func select(category: String, subcategory: String? = nil) {
         draft.category = category
+        draft.subcategory = subcategory
         suggestion = nil
-        if drawer == .subcategory { drawer = nil }
+        needsCategory = false
+    }
+
+    /// A tap on a category circle in the sheet: picks it, or clears it when it was already picked.
+    func toggle(category: String) {
+        if draft.category == category {
+            draft.category = nil
+            draft.subcategory = nil
+        } else {
+            select(category: category)
+        }
+    }
+
+    /// The panel only picks: a category without subcategories is chosen at once,
+    /// one with subcategories opens its row; a subcategory chip chooses and closes.
+    func pickInPanel(_ category: YubaiCore.Category) {
+        if category.subcategories.isEmpty {
+            select(category: category.name)
+            dismissCategoryPanel()
+        } else {
+            expandedCategory = expandedCategory == category.name ? nil : category.name
+        }
+    }
+
+    func pickInPanel(_ category: String, subcategory: String?) {
+        select(category: category, subcategory: subcategory)
+        dismissCategoryPanel()
     }
 
     func toggleDrawer(_ target: EntryDrawer) {
-        inputText = ""
-        if target == .subcategory { autoFocusSubcategory = true }
         drawer = drawer == target ? nil : target
     }
 
+    /// 「每月」 only switches; the calendar stays open.
     func toggleRepeat() {
         draft.repeatMonthly.toggle()
         if draft.repeatMonthly { draft.exception = nil }
         fixtureRepeatDay = nil
+    }
+
+    /// The ··· list: pick one to set it, pick the current one again to clear it. Either way the list closes.
+    func choose(_ exception: EntryException) {
+        draft.exception = draft.exception == exception ? nil : exception
+        if draft.exception != nil { draft.repeatMonthly = false }
         drawer = nil
     }
 
-    func cycleException() {
-        switch draft.exception {
-        case nil: draft.exception = .reserve
-        case .reserve: draft.exception = .reimbursement
-        case .reimbursement: draft.exception = .split
-        case .split: draft.exception = nil
-        }
-        if draft.exception != nil { draft.repeatMonthly = false }
-        if drawer == .split && draft.exception != .split { drawer = nil }
+    func clearException() {
+        draft.exception = nil
+        if drawer == .split { drawer = nil }
     }
 
     var dayLabel: String {
@@ -324,43 +368,13 @@ struct EntrySheetDraft: Equatable {
     }
 
     func dismissCategoryPanel() {
-        drawer = nil
-        categoryEditing = false
+        expandedCategory = nil
+        managingCategories = false
         categoryPanel = false
     }
 
-    func renameCategory() {
-        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let category = draft.category, !name.isEmpty else { return }
-        if name == category { drawer = nil; return }
-        let income = draft.nature.categoryIncome
-        if mutateLedger("编辑分类", { try CategoryModel.rename(category, to: name, income: income, in: &$0) }) {
-            draft.category = name
-            drawer = nil
-        }
-    }
-
-    func addCategory() {
-        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        let new = YubaiCore.Category(name, income: draft.nature.categoryIncome)
-        if mutateLedger("添加分类", { try CategoryModel.add(new, in: &$0) }) {
-            select(category: name)
-            drawer = nil
-        }
-    }
-
-    func addSubcategory() {
-        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let category = draft.category, !name.isEmpty else { return }
-        let income = draft.nature.categoryIncome
-        if mutateLedger("添加小类", { try CategoryModel.addSubcategory(name, to: category, income: income, in: &$0) }) {
-            draft.subcategory = name
-            drawer = nil
-        }
-    }
-
-    private func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
+    /// Category management edits the ledger; a renamed or removed pick follows along.
+    @discardableResult func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
         if let store { return store.update(reason, entryMotion: false, showToast: false, update) }
         do { try update(&fixtureLedger); return true }
         catch { failure = error.localizedDescription; return false }
@@ -369,7 +383,7 @@ struct EntrySheetDraft: Equatable {
     private func input(category: CategoryAssignment?) -> EntrySaveInput? {
         guard let accountID = draft.accountID, draft.expression.canSave else { return nil }
         guard draft.currency == .cny || (signedRate != nil && (localMoney ?? 0) > 0) else { return nil }
-        var input = EntrySaveInput(type: draft.type, amountCents: money, currency: draft.currency, exchangeRate: signedRate,
+        var input = EntrySaveInput(type: savesAsDeposit ? .deposit : draft.type, amountCents: money, currency: draft.currency, exchangeRate: signedRate,
             purpose: draft.purpose, category: category?.category ?? Classification.pendingCategory,
             subcategory: category?.subcategory, accountID: accountID, destinationAccountID: draft.destinationID,
             date: draft.date, repeatMonthly: draft.repeatMonthly && canRepeat, exception: draft.exception,
@@ -397,6 +411,9 @@ struct EntrySheetDraft: Equatable {
         let purpose = draft.purpose
         let date = draft.date
         let nature = draft.nature
+        let deposit = savesAsDeposit && editingID == nil
+        let amount = localMoney ?? 0
+        if !deposit { depositedThisCycle = nil }
         let needsGuess = !draft.isRoute && selection == nil && !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if !needsGuess { suggestion = nil }
         if currentInput?.exception == nil, currentInput?.repeatMonthly != true { effect = nil }
@@ -410,14 +427,18 @@ struct EntrySheetDraft: Equatable {
                     resolved?.category = guess.category
                     resolved?.subcategory = guess.subcategory
                 }
-                return (guess, resolved.flatMap { EntrySaveMapper.effect(for: $0, in: ledger, now: now) })
+                let deposited = deposit
+                    ? (Finance.spendableBreakdown(ledger, now: now).rows.first { $0.kind == .deposit }?.amount ?? 0) + amount
+                    : nil
+                return (guess, resolved.flatMap { EntrySaveMapper.effect(for: $0, in: ledger, now: now) }, deposited)
             }
-            let (guess, preview) = await withTaskCancellationHandler {
+            let (guess, preview, deposited) = await withTaskCancellationHandler {
                 await computation.value
             } onCancel: { computation.cancel() }
             guard !Task.isCancelled else { return }
             self?.suggestion = guess
             self?.effect = preview
+            self?.depositedThisCycle = deposited
         }
     }
 
@@ -432,20 +453,34 @@ struct EntrySheetDraft: Equatable {
         draft.expression.press(key)
     }
 
+    /// Why 记下 did nothing, so the sheet can point at the row that needs it.
+    enum SaveBlock { case amount, category }
+
+    func blockedSave() -> SaveBlock? {
+        if !draft.expression.canSave || money <= 0 { return .amount }
+        if !categoryReady { return .category }
+        return nil
+    }
+
     func save() -> Bool {
-        guard !didSave, draft.expression.canSave else { return false }
+        guard !didSave else { return false }
+        switch blockedSave() {
+        case .amount:
+            amountPulse &+= 1
+            return false
+        case .category:
+            needsCategory = true
+            categoryPulse &+= 1
+            return false
+        case nil: break
+        }
         if let store, let editingID, categoryOnly {
             guard let selection = selectedCategory else { return false }
             let result = store.update("改分类") { try CategoryModel.confirm(selection, entryIDs: [editingID], in: &$0) }
             didSave = result
             return result
         }
-        let selection = selectedCategory ?? (draft.isRoute ? nil :
-            CategoryGuesser.guess(draft.purpose, nature: draft.nature, date: draft.date, in: ledger))
-        if editingID == nil, !draft.isRoute, selection == nil, draft.relatedEntryID == nil {
-            categoryPulse &+= 1
-            return false
-        }
+        let selection = selectedCategory ?? (draft.isRoute ? nil : suggestion)
         guard let input = input(category: selection) else {
             failure = draft.accountID == nil ? "先选择一个账户。" : "请核对金额或汇率。"
             return false
@@ -502,6 +537,8 @@ struct EntrySheetDraft: Equatable {
         }
         drawer = nil
         categoryPanel = false
+        managingCategories = false
+        needsCategory = false
         normalizeAccounts()
     }
     #endif
