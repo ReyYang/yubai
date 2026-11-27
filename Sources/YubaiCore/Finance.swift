@@ -266,7 +266,7 @@ public enum Finance {
         let emergency = ledger.fixedSavingsTotal(now: now)
         let breakdown = makeSpendableBreakdown(ledger, now: now, cycle: cycle, commitments: commitments)
         let income = breakdown.income, spent = breakdown.spent
-        let savingTarget = breakdown.savingSetAside
+        let savingTarget = breakdown.savingCovered
         let available = breakdown.available
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []

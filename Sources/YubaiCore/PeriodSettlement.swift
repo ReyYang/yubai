@@ -21,7 +21,7 @@ extension Savings {
     @discardableResult public static func migrateSpendableModel(in ledger: inout Ledger, now: Date) -> Bool {
         guard ledger.spendableModelVersion == nil else { return false }
         let value = Finance.spendableBreakdown(ledger, now: now)
-        let difference = value.plannedSaving - value.savingSetAside
+        let difference = value.plannedSaving - value.savingCovered
         ledger.migratedSavingCredit = difference
         ledger.spendableModelVersion = 1
         return true
