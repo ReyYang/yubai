@@ -99,6 +99,24 @@ final class OverviewAnalyticsTests: XCTestCase {
         XCTAssertNil(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly)
     }
 
+    func testCatchAllAndExcludedBillsNeverShapeAnomaly() {
+        var (ledger, account) = sample()
+        ledger.entries = history(["其他支出": 20_000], account: account) + [expense(35_000, "其他支出", account: account)]
+        XCTAssertNil(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly)
+        var bill = expense(80_000, "居住", account: account, at: "2026-08-12"); bill.planID = UUID()
+        ledger.entries = history(["吃饭": 50_000], account: account, months: ["2026-09", "2026-10"]) + [bill, expense(55_000, "吃饭", account: account)]
+        let result = OverviewAnalytics.review(in: ledger, selection: .current, now: now)
+        XCTAssertNil(result.anomaly); XCTAssertEqual(result.anomalyBaselineCycles, 0)
+    }
+
+    func testAnomalyThresholdUsesTheExactAverage() {
+        var (ledger, account) = sample()
+        ledger.entries = history(["吃饭": 40_000], account: account, months: ["2026-09"])
+            + history(["吃饭": 40_001], account: account, months: ["2026-10"]) + [expense(52_001, "吃饭", account: account)]
+        let result = OverviewAnalytics.review(in: ledger, selection: .current, now: now)
+        XCTAssertEqual(result.anomaly?.category, "吃饭"); XCTAssertEqual(result.anomaly?.previous, 40_001)
+    }
+
     func testAnomalyNeedsTwoEarlierPeriodsAndANonzeroBaseline() {
         var (ledger, account) = sample()
         ledger.entries = history(["吃饭": 100_000], account: account, months: ["2026-10"])

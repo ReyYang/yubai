@@ -177,7 +177,7 @@ private struct BillCardContent: View {
         }
         if entry.fromReserve { return BillImpact(label: "走机动余钱 · 还剩", value: money(ledger.fixedSavingsTotal(now: now))) }
         if entry.intoFixedSavings || entry.nature == .investBuy {
-            return BillImpact(label: "本期已攒", value: money(Finance.spendableBreakdown(ledger, now: now).savingSetAside))
+            return BillImpact(label: "本期已攒", value: money(Finance.spendableBreakdown(ledger, now: now).savingCovered))
         }
         if entry.nature.paired { return BillImpact(label: "还能花", value: "不变") }
         if let next = entry.countsFromCycleStart {

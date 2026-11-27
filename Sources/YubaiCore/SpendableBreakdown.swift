@@ -56,11 +56,9 @@ public struct SpendableBreakdown: Equatable, Sendable {
     public var spendableDisplayAmount: Int64 { showsSpendableDeficit ? deficit : available }
     /// 超支: how far 还能花 is below zero. 先攒 stays at plannedSaving.
     public var deficit: Int64 { max(0, -rawR) }
-    /// Money actually left for saving if the period closed now.
+    /// Money really left for this period's 先攒. Savings totals and 「已攒」 use this;
+    /// only the formula's 先攒 row shows the plan.
     public var savingCovered: Int64 { max(0, min(plannedSaving, plannedSaving + rawR)) }
-    /// This period's 先攒 as shown in savings: the plan once income has arrived;
-    /// before that only money that really exists.
-    public var savingSetAside: Int64 { income > 0 ? plannedSaving : savingCovered }
     public var offersFormula: Bool { state != .spentFallback }
     public var headlineTitle: String {
         switch state { case .deficit: "超支"; case .spentFallback: "这个月花了"; default: "还能花" }
