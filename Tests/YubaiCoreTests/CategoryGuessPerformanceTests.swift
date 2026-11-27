@@ -14,12 +14,20 @@ final class CategoryGuessPerformanceTests: XCTestCase {
         ledger.categories = Category.defaults
         let words = ["午饭", "咖啡", "打车", "地铁", "超市", "水果", "电影", "健身房", "理发", "买药", "房租", "话费", "宽带", "外卖", "晚饭",
                      "早餐", "奶茶", "加油", "停车", "高铁", "机票", "酒店", "门票", "游戏", "会员", "课程", "红包", "宠物", "衣服", "鞋"]
-        let purposes = (0..<200).map { "\(words[$0 % words.count]) \($0 / words.count)号店" }
-        let names = ledger.categories.filter { !$0.income }.map(\.name)
-        ledger.entries = (0..<10_000).map { index in
-            Entry(date: start.addingTimeInterval(Double(index) * 3_000), amount: Int64(100 + index % 9_000), accountID: bank.id,
-                  title: purposes[index % purposes.count], category: names[index % names.count])
+        let purposes: [String] = (0..<200).map { (index: Int) -> String in
+            let word: String = words[index % words.count]
+            return word + " " + String(index / words.count) + "号店"
         }
+        let names: [String] = ledger.categories.filter { !$0.income }.map(\.name)
+        var entries: [Entry] = []
+        entries.reserveCapacity(10_000)
+        for index in 0..<10_000 {
+            let date: Date = start.addingTimeInterval(Double(index) * 3_000)
+            let amount: Int64 = Int64(100 + index % 9_000)
+            entries.append(Entry(date: date, amount: amount, accountID: bank.id,
+                                 title: purposes[index % purposes.count], category: names[index % names.count]))
+        }
+        ledger.entries = entries
         // Remembered parties, as a used ledger has.
         for (index, purpose) in purposes.enumerated() where index.isMultiple(of: 2) {
             ledger.classificationMemory[purpose] = names[index % names.count]
