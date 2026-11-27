@@ -556,7 +556,6 @@ enum AppSheet: Identifiable {
     @ObservationIgnored var lastEntryAccountID: UUID?
     var toastRevision = 0
     var toast: String? { didSet { if toast != nil { toastRevision &+= 1 } } }
-    var pendingButlerTaskID: String?
     var unsortedUndo: UnsortedUndoNotice?
     var unsortedUndoRestoration: UnsortedUndoRestoration?
     var sheetSource: String?
@@ -1378,9 +1377,6 @@ struct RootView: View {
             .onChange(of: store.tabRouteRequest, initial: true) { _, route in
                 if let route { openTabRoute(route) }
             }
-            .onChange(of: store.locked) { _, locked in
-                if !locked, let id = store.pendingButlerTaskID { store.pendingButlerTaskID = nil; store.openButlerNotice(id) }
-            }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in keyboardVisible = true }
             .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardDidHideNotification)) { _ in keyboardVisible = false }
         #endif
@@ -1554,7 +1550,7 @@ private struct RootBackgroundTasks: ViewModifier {
 
     func body(content: Content) -> some View {
         if !store.isDesignFixture {
-            content.modifier(ButlerRefreshTask()).modifier(WeeklyPushTask()).modifier(ButlerNoticeSyncTask())
+            content.modifier(ButlerRefreshTask()).modifier(WeeklyPushTask()).modifier(ButlerNoticeCleanupTask())
         } else {
             content
         }

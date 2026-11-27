@@ -133,8 +133,7 @@ struct SettingsView: View {
     }
 
     static func noticeCount(_ preferences: Preferences) -> Int {
-        let notices = preferences.butlerNotices ?? ButlerNoticePreferences()
-        return [notices.immediate, notices.ordinary, notices.home, preferences.weeklyLetterPush].filter { $0 }.count
+        [preferences.weeklyLetterPush].filter { $0 }.count
     }
 
     static func reviewTime(_ time: WeeklyReviewTime) -> String {
@@ -204,7 +203,6 @@ struct FixtureKeyStorage: APIKeyStorage {
 struct NoticeSettingsView: View {
     var body: some View {
         Page {
-            ButlerNoticeSettings()
             Card(style: .list) { WeeklyLetterReminder().accessibilityIdentifier("openSettingsWeekly") }
         }.navigationTitle("通知").yubaiNavigation().accessibilityIdentifier("noticeSettingsPage")
     }

@@ -8,7 +8,6 @@ final class HomeBoardStateTests: XCTestCase {
         for (date, expected) in [("2026-11-20", "11月20日"), ("2026-12-09", "12月9日"),
                                  ("2027-01-01", "1月1日"), ("2028-02-29", "2月29日")] {
             XCTAssertEqual(Dates.monthDay(d(date)), expected)
-            XCTAssertEqual(HomeTaskCopy.monthDay(d(date)), expected)
         }
     }
     func ledger(spent: Int64 = 83_600) -> Ledger {
@@ -413,8 +412,6 @@ final class HomeBoardStateTests: XCTestCase {
         XCTAssertEqual(HomeButler.queue(l, now: date).last?.id, task.id)
         HomeButler.answer(task.id, in: &l, now: date)
         l = try LedgerCodec.decode(LedgerCodec.encode(l))
-        XCTAssertFalse(HomeButler.queue(l, now: date).contains { $0.id == task.id })
-        l.butlerAnswers = [:]; l.preferences.butlerNotices = ButlerNoticePreferences(); l.preferences.butlerNotices?.home = false
         XCTAssertFalse(HomeButler.queue(l, now: date).contains { $0.id == task.id })
     }
 }

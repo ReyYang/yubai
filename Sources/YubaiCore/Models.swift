@@ -583,7 +583,6 @@ public struct Preferences: Codable, Equatable, Sendable {
     /// Optional DeepSeek assistance; default off. Requires `DEEPSEEK_API_KEY` for now.
     public var cloudAIEnabled = false
     public var weeklyLetterPush = false
-    public var butlerNotices: ButlerNoticePreferences?
     public var billExchangeRates: [ManualExchangeRate]?
     public var lastBillCurrency: BillCurrency?
     /// Nil, including an old ledger, means enabled.
@@ -613,7 +612,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public init() {}
 
     private enum CodingKeys: String, CodingKey {
-        case butlerNotices, billExchangeRates, lastBillCurrency, yearlyBillsSetAside, butlerSuggestionsEnabled, cloudShare
+        case billExchangeRates, lastBillCurrency, yearlyBillsSetAside, butlerSuggestionsEnabled, cloudShare
         case paydayWeekendShift, cycleStartDay, assistantTone, weeklyReviewTime
         case weeklyAutoBackup, aiImportClassificationDisabled, aiAnswersDisabled, aiWeeklyReviewDisabled, aiReceiptRecognitionDisabled
         case horizonDays, emergencyReserve, dailyLiving, hideAmounts, lockEnabled
@@ -637,7 +636,6 @@ public struct Preferences: Codable, Equatable, Sendable {
         let wasEnabled = try legacy.decodeIfPresent(Bool.self, forKey: .localAIEnabled) ?? true
         cloudAIEnabled = (try values.decodeIfPresent(Bool.self, forKey: .cloudAIEnabled) ?? false) && wasEnabled
         weeklyLetterPush = try values.decodeIfPresent(Bool.self, forKey: .weeklyLetterPush) ?? false
-        butlerNotices = try values.decodeIfPresent(ButlerNoticePreferences.self, forKey: .butlerNotices)
         billExchangeRates = try values.decodeIfPresent([ManualExchangeRate].self, forKey: .billExchangeRates)
         lastBillCurrency = try values.decodeIfPresent(BillCurrency.self, forKey: .lastBillCurrency)
         yearlyBillsSetAside = try values.decodeIfPresent(Bool.self, forKey: .yearlyBillsSetAside)
@@ -665,7 +663,6 @@ public struct Preferences: Codable, Equatable, Sendable {
         try c.encode(lockEnabled, forKey: .lockEnabled); try c.encode(appearance, forKey: .appearance)
         try c.encode(purchaseValues, forKey: .purchaseValues); try c.encode(colorTheme, forKey: .colorTheme)
         try c.encode(cloudAIEnabled, forKey: .cloudAIEnabled); try c.encode(weeklyLetterPush, forKey: .weeklyLetterPush)
-        try c.encodeIfPresent(butlerNotices, forKey: .butlerNotices)
         try c.encodeIfPresent(billExchangeRates, forKey: .billExchangeRates)
         try c.encodeIfPresent(lastBillCurrency, forKey: .lastBillCurrency)
         try c.encodeIfPresent(yearlyBillsSetAside, forKey: .yearlyBillsSetAside)

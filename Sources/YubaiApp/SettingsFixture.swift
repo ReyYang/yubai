@@ -122,7 +122,6 @@ enum SettingsFixture: Equatable {
         ledger.preferences.cloudAIEnabled = true
         ledger.preferences.assistantTone = .direct
         ledger.preferences.lockEnabled = true
-        ledger.preferences.butlerNotices = { var value = ButlerNoticePreferences(); value.ordinary = true; return value }()
         ledger.preferences.weeklyLetterPush = true
         ledger.preferences.lastBackupAt = Self.date("2026-11-24 09:00")
         var batch = ImportBatch(filename: "招商银行信用卡账单.csv", importedCount: 0, duplicateCount: 0, skippedCount: 0)
