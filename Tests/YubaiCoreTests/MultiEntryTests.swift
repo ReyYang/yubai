@@ -23,6 +23,14 @@ final class MultiEntryTests: XCTestCase {
         XCTAssertEqual(EntryAmountParser.candidates(in: "早餐 12 午餐 32 晚餐 45 都用微信"), [1200, 3200, 4500])
         XCTAssertEqual(EntryAmountParser.entries(in: "2026-06-15 12:30 午饭 ￥32.50 2个人 订单123456789012").map(\.amount), [3250])
     }
+    func testOCRBillKeepsAnAmountWhoseNextLineStartsWithAUnitCharacter() {
+        // Vision line order from a payment app's bill: the 滴滴 amount is followed by 盒马's line.
+        let ocr = ["账单", "11月", "支出 ¥164.30 收入 ¥0.00", "瑞幸咖啡", "-18.90", "11月26日 08:42", "美团外卖-黄焖鸡米饭", "-32.50", "11月26日 12:15",
+                   "滴滴出行", "-27.40", "11月26日 18:33", "盒马鲜生", "-85.50", "11月26日 20:31"].joined(separator: "\n")
+        XCTAssertEqual(EntryAmountParser.candidates(in: ocr), [16430, 1890, 3250, 2740, 8550])
+        XCTAssertEqual(EntryAmountParser.candidates(in: "滴滴出行 -27.40\n盒马鲜生 -85.50"), [2740, 8550])
+        XCTAssertEqual(EntryAmountParser.candidates(in: "牛奶 3 盒"), [])
+    }
     func testMultisetRejectsOveruseAndSupportsLegacySingleEntry() throws {
         let base = AssistantFixtures.context()
         let once = ToolContext(ledger: base.ledger, now: base.now, parsedEntryAmounts: [1800])

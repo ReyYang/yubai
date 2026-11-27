@@ -129,7 +129,8 @@ struct AskFactRow: View {
 /// 审批卡.
 struct AskApprovalCard: View {
     let title: String
-    let change: (label: String, from: String, to: String, better: Bool)
+    /// nil for a change dated after today: 还能花 does not move yet.
+    let change: (label: String, from: String, to: String, better: Bool)?
     let facts: [AskFact]
     let action: String
     var onEdit: () -> Void = {}
@@ -139,13 +140,16 @@ struct AskApprovalCard: View {
         VStack(alignment: .leading, spacing: .zero) {
             Text(title).dsText(AskSpec.approvalTitle).monospacedDigit().foregroundStyle(DS.Color.ink)
                 .fixedSize(horizontal: false, vertical: true)
-            AskChangeLine(label: change.label, from: change.from, to: change.to, toColor: change.better ? DS.Color.accentInk : DS.Color.ink)
-                .padding(.top, DS.Space.s12).padding(.bottom, DS.Space.s12)
+            if let change {
+                AskChangeLine(label: change.label, from: change.from, to: change.to, toColor: change.better ? DS.Color.accentInk : DS.Color.ink)
+                    .padding(.top, DS.Space.s12).padding(.bottom, DS.Space.s12)
+            }
             VStack(spacing: .zero) {
                 ForEach(Array(facts.enumerated()), id: \.element.id) { index, fact in
                     AskFactRow(key: fact.key, value: fact.value, separator: index > 0)
                 }
             }.overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
+                .padding(.top, change == nil ? DS.Space.s8 : .zero)
             AskTwoButtons(primary: action, onEdit: onEdit, onPrimary: onConfirm)
         }.askCard().accessibilityElement(children: .contain).accessibilityIdentifier("askApprovalCard")
     }
@@ -207,6 +211,8 @@ struct AskBatchRow: View {
     let amount: String
     let checked: Bool
     var duplicate = false
+    /// Found on the screenshot but left out by the model: 「待确认」.
+    var missed = false
     var income = false
     var separator = true
     var onToggle: () -> Void = {}
@@ -218,8 +224,8 @@ struct AskBatchRow: View {
                 VStack(alignment: .leading, spacing: .zero) {
                     HStack(spacing: AskSpec.flagInset) {
                         Text(name).dsText(HomeSpec.medium).foregroundStyle(DS.Color.ink).lineLimit(1)
-                        if duplicate {
-                            Text("可能重复").dsText(AskSpec.badge).foregroundStyle(DS.Color.warnInk)
+                        if duplicate || missed {
+                            Text(missed ? "待确认" : "可能重复").dsText(AskSpec.badge).foregroundStyle(DS.Color.warnInk)
                                 .padding(.horizontal, AskSpec.flagInset).frame(height: AskSpec.flagHeight)
                                 .dsPill(DS.Color.warnSoft).fixedSize()
                         }
@@ -295,15 +301,18 @@ struct AskComposer: View {
 /// A capsule chip: the follow-up answers.
 struct AskChip: View {
     let title: String
+    var selected = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink).lineLimit(1)
+            Text(title).dsText(selected ? AskSpec.chipSelected : DS.Font.tPill)
+                .foregroundStyle(selected ? DS.Color.onAccent : DS.Color.ink).lineLimit(1)
                 .padding(.horizontal, AskSpec.chipInset).frame(height: DS.Size.pillH)
-                .background(DS.Color.raised, in: Capsule(style: .continuous))
-                .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
+                .background(selected ? DS.Color.accent : DS.Color.raised, in: Capsule(style: .continuous))
+                .overlay(Capsule(style: .continuous).strokeBorder(selected ? DS.Color.accent : DS.Color.separator, lineWidth: DS.Stroke.hairline))
                 .frame(minHeight: DS.Size.tapMin).contentShape(Rectangle())
         }.dsPressStyle()
+            .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 

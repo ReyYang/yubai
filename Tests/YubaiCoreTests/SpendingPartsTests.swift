@@ -264,7 +264,7 @@ final class SpendingPartsTests: XCTestCase {
         }
         XCTAssertEqual(try submit(reason).verdict, .wait)
         XCTAssertThrowsError(try submit(reason, verdict: "buy"))
-        XCTAssertThrowsError(try submit(reason.replacingOccurrences(of: "150", with: "151")))
+        XCTAssertEqual(try submit(reason.replacingOccurrences(of: "150", with: "151")).reason, SubmitVerdictTool.firstSentence(reason))
     }
 
     func testCategoryRenameMergeAndMovingBetweenPartsStayUnique() throws {

@@ -232,6 +232,22 @@ final class AssistantTests: XCTestCase {
             XCTAssertEqual(AssistantAmountGuard.unverified(in: "截至\(value)共2笔，消费999元", results: []), ["999元"], value)
         }
     }
+    func testAmountGuardIgnoresMonthDayRangesAndZero() {
+        for text in ["11/1–11/30 购物 ¥0.00", "本期 11-30 结束", "11月1日至30日没有购物", "11月共2笔", "截至30日"] {
+            XCTAssertEqual(AssistantAmountGuard.unverified(in: text, results: []), [], text)
+        }
+        XCTAssertFalse(AssistantAmountGuard.unverified(in: "预算 12-15 元", results: []).isEmpty)
+        XCTAssertEqual(AssistantAmountGuard.unverified(in: "11/30 另付 ¥999.00", results: []), ["¥999.00"])
+    }
+    func testAmountRewriteThatVerifiesNothingMoreKeepsTheFirstAnswer() async throws {
+        let script = ScriptedChatTransport([
+            ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "funds", name: "get_funds")]),
+            ChatMessage(role: .assistant, content: "可动用 ¥999.00。"),
+            ChatMessage(role: .assistant, content: "可动用 ¥999.00，另有 ¥777.00。")])
+        let reply = try await AssistantAgent(transport: script, context: AssistantFixtures.context()).run(system: "", messages: [], tools: ReadOnlyTool.all)
+        XCTAssertEqual(reply.text, "可动用 ¥999.00。")
+        XCTAssertEqual(reply.unverifiedAmounts, ["¥999.00"])
+    }
     func testAmountGuardRetriesOnceAndReportsRemainingAmounts() async throws {
         let script = ScriptedChatTransport([
             ChatMessage(role: .assistant, toolCalls: [ChatToolCall(id: "funds", name: "get_funds")]),

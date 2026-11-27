@@ -35,6 +35,20 @@ final class DeepSeekCloudTests: XCTestCase {
             _ = try await stub.send(ChatRequest(messages: [], timeout: timeout))
         }
     }
+    func testToolListIsByteIdenticalAcrossRequestsForPromptCache() async throws {
+        let bodies = LockedBodies()
+        let stub = CloudTestStub { request in bodies.append(String(decoding: try CloudTestStub.body(in: request), as: UTF8.self)); return "好" }
+        defer { stub.close() }
+        for _ in 0..<2 {
+            // Rebuilt each time, as the agent does, so dictionary storage differs between requests.
+            let tools = AskYubai.tools.map { ChatToolDefinition(name: $0.name, description: $0.description, parameters: Redactor().value($0.parameters)) }
+            _ = try await stub.send(ChatRequest(messages: [ChatMessage(role: .system, content: "固定前缀")], tools: tools))
+        }
+        let sent = bodies.values
+        XCTAssertEqual(sent.count, 2)
+        XCTAssertEqual(sent[0], sent[1])
+        XCTAssertTrue(sent[0].contains(#"{"function":{"description":"#))
+    }
     func testShortCloudTasksDisableThinking() async throws {
         let log = SendLog()
         let stub = CloudTestStub(sendLog: log) { request in
@@ -629,4 +643,10 @@ extension DeepSeekCloudTests {
             XCTAssertEqual(posts.count, 1)
         }
     }
+}
+
+private final class LockedBodies: @unchecked Sendable {
+    private let lock = NSLock(); private var stored: [String] = []
+    func append(_ value: String) { lock.lock(); stored.append(value); lock.unlock() }
+    var values: [String] { lock.lock(); defer { lock.unlock() }; return stored }
 }

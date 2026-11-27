@@ -25,6 +25,11 @@ final class AssistantPrivacyTests: XCTestCase {
         XCTAssertEqual(first.configuration(environment: ["DEEPSEEK_API_KEY": "env-key"])?.apiKey, "env-key")
     }
     #endif
+    func testKeychainFailureNamesTheCause() {
+        XCTAssertEqual(KeychainAPIKeyStorage.failureMessage(-25308), "设备锁定时无法保存密钥，解锁后重试。")
+        XCTAssertEqual(KeychainAPIKeyStorage.failureMessage(-34018), "这个安装包没有钥匙串权限，无法保存密钥。")
+        XCTAssertEqual(KeychainAPIKeyStorage.failureMessage(-25300, action: "删除"), "钥匙串错误 -25300，无法删除密钥。")
+    }
     func testChineseTransferNamesAndMerchants() {
         let ledger = AssistantFixtures.context().ledger
         let redactor = Redactor(ledger: ledger)

@@ -4,7 +4,7 @@ import YubaiCore
 /// Canvas data for the 问余白 boards (`Ask.dc.html`). Debug launch arguments only.
 /// The ledger is the home `normal` board, so every number is computed from it.
 enum AskFixture: String {
-    case nobuy, verdicts, approve, batch, offline
+    case nobuy, questions, verdicts, approve, later, batch, offline
     /// Sheet closed, AI on, empty thread: UI tests ask through the script transport.
     case live
 
@@ -21,6 +21,13 @@ enum AskFixture: String {
     var aiConnected: Bool { self != .offline }
     var opensSheet: Bool { self != .live }
 
+    // canvas Ask.dc.html: qs
+    static let purchaseQuestions = [PurchaseQuestion(text: "现在用的耳机是哪里不满意？", options: ["降噪不够", "坏了", "就是想要"]),
+                            PurchaseQuestion(text: "一周戴几次？", options: ["每天", "通勤才戴", "偶尔"]),
+                            PurchaseQuestion(text: "能先借一副试几天吗？", options: ["能", "不能"])]
+    // canvas Ask.dc.html: batch, with 滴滴出行 -27.40 the model left out
+    static let screenshotText = ["账单", "美团外卖", "-36.80", "11月23日 12:10", "滴滴", "-36.50", "11月22日 18:00", "便利店", "-12.00", "11月22日 21:00",
+                                 "滴滴出行", "-27.40", "11月22日 18:33", "优衣库 退款", "+59.00", "11月22日 15:00"].joined(separator: "\n")
     // canvas Ask.dc.html: shotLines
     static let screenshotLines: [CGFloat] = [40, 52, 34, 46, 38, 50]
 
@@ -44,7 +51,7 @@ enum AskFixture: String {
             return value
         }
         func user(_ text: String, lines: [CGFloat] = []) -> AskMessage { AskMessage(kind: .user(text, image: nil, placeholder: lines)) }
-        func answer(_ value: AssistantReply, _ question: String) -> AskMessage { AskMessage(kind: .reply(value, question: question, image: nil)) }
+        func answer(_ value: AssistantReply, _ question: String, ocr: String? = nil) -> AskMessage { AskMessage(kind: .reply(value, question: question, image: nil, ocr: ocr)) }
         let day = { (value: Int, time: String) in Dates.parse(String(format: "2025-11-%02d %@", value, time))! }
 
         switch self {
@@ -52,6 +59,10 @@ enum AskFixture: String {
             return [user("想买个 1,299 的降噪耳机"),
                     answer(reply(judgment("降噪耳机", 129_900, "购物"), .skip, "购物只剩 182.00，买了要从机动余钱补 1,117.00",
                                  questions: [PurchaseQuestion(text: "现在这副哪里不满意？", options: ["降噪不够", "坏了", "就是想要"])]), "想买个 1,299 的降噪耳机")]
+        case .questions:
+            var value = AssistantReply(proposedChangeSets: [], text: "")
+            value.purchaseQuestions = Self.purchaseQuestions
+            return [user("想买个 1,299 的降噪耳机"), answer(value, "想买个 1,299 的降噪耳机")]
         case .verdicts:
             return [user("冬天的羽绒被 899 呢"),
                     answer(reply(judgment("羽绒被", 89_900, "购物"), .wait, "12.10 起购物有 1,500.00，现在的被子还能撑 17 天"), "冬天的羽绒被 899 呢"),
@@ -63,6 +74,11 @@ enum AskFixture: String {
             let change = ChangeSet(source: "问余白", reason: "报销到账", items: [.addEntry(refund), .linkRefund(refund: refund.id, original: taxi.id)])
             ledger.pendingChanges.append(change)
             return [user("昨天打车那 36.5 报销到账了"), answer(AssistantReply(proposedChangeSets: [change], text: ""), "昨天打车那 36.5 报销到账了")]
+        case .later:
+            let fee = EntryDraft(date: day(24, "09:00"), amount: 32_000, accountID: bank.id, title: "物业费", category: "居住")
+            let change = ChangeSet(source: "问余白", reason: "明天的物业费", items: [.addEntry(fee)])
+            ledger.pendingChanges.append(change)
+            return [user("明天要交的物业费 320 记一下"), answer(AssistantReply(proposedChangeSets: [change], text: ""), "明天要交的物业费 320 记一下")]
         case .batch:
             var refund = EntryDraft(date: day(22, "15:00"), amount: 5_900, nature: .income, accountID: bank.id, title: "优衣库", category: "购物")
             refund.purpose = "退款"
@@ -72,7 +88,8 @@ enum AskFixture: String {
                           refund]
             let change = ChangeSet(source: "问余白", reason: "截图记账", items: drafts.map { .addEntry($0) })
             ledger.pendingChanges.append(change)
-            return [user("这几笔帮我记一下", lines: Self.screenshotLines), answer(AssistantReply(proposedChangeSets: [change], text: ""), "这几笔帮我记一下")]
+            return [user("这几笔帮我记一下", lines: Self.screenshotLines),
+                    answer(AssistantReply(proposedChangeSets: [change], text: ""), "这几笔帮我记一下", ocr: Self.screenshotText)]
         case .offline:
             let days = HomeDisplay.daysLeft(Finance.spendableBreakdown(ledger, now: now))
             return [user("购物这个月还剩多少"),

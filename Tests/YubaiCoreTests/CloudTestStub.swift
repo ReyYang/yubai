@@ -56,6 +56,11 @@ final class CloudTestStub {
     }
 
     static func payload(in request: URLRequest) throws -> [String: Any] {
+        guard let payload = try JSONSerialization.jsonObject(with: try body(in: request)) as? [String: Any]
+        else { throw URLError(.cannotDecodeContentData) }
+        return payload
+    }
+    static func body(in request: URLRequest) throws -> Data {
         var data = request.httpBody ?? Data()
         if data.isEmpty, let stream = request.httpBodyStream {
             stream.open()
@@ -69,9 +74,7 @@ final class CloudTestStub {
                 data.append(contentsOf: buffer.prefix(count))
             }
         }
-        guard let payload = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        else { throw URLError(.cannotDecodeContentData) }
-        return payload
+        return data
     }
 }
 

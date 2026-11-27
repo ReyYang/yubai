@@ -21,7 +21,8 @@ struct AskImage: Equatable { let data: Data; let name: String }
 struct AskMessage: Identifiable {
     enum Kind {
         case user(String, image: AskImage?, placeholder: [CGFloat])
-        case reply(AssistantReply, question: String, image: AskImage?)
+        /// `ocr` is the redacted screenshot text the question carried, for rows the model left out.
+        case reply(AssistantReply, question: String, image: AskImage?, ocr: String?)
         case local(AskLocal.Answer, needsAI: Bool)
     }
     let id = UUID()
@@ -106,7 +107,7 @@ struct AskMessage: Identifiable {
                         }
                     }) else { draft = text; self.session = AskYubaiSession(); return }
                 }
-                messages.append(AskMessage(kind: .reply(reply, question: text, image: image)))
+                messages.append(AskMessage(kind: .reply(reply, question: text, image: image, ocr: ocr)))
             } catch is CancellationError {
                 if !Task.isCancelled { draft = text; self.session = AskYubaiSession() }
             } catch {
@@ -169,7 +170,7 @@ private struct AskSheetContent: View {
         @Bindable var controller = store.ask
         VStack(spacing: .zero) {
             header
-            AskThread(onChip: { controller.send($0, store: store) }, openSettings: openSettings)
+            AskThread(onSend: { controller.send($0, store: store) }, openSettings: openSettings)
             AskComposer(text: $controller.draft, focus: $focused, recording: voice.recording,
                         attachEnabled: !reading && controller.available(store, feature: .receiptRecognition),
                         onAttach: { focused = false; photoPicker = true }, onMic: toggleVoice,
@@ -242,7 +243,7 @@ private struct AskSheetContent: View {
 
 /// The scrolling thread. Reads only the messages, so the composer's typing does not rebuild it.
 private struct AskThread: View {
-    let onChip: (String) -> Void
+    let onSend: (String) -> Void
     let openSettings: () -> Void
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -254,7 +255,7 @@ private struct AskThread: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: AskSpec.contentGap) {
                     ForEach(messages) { message in
-                        AskMessageView(message: message, latest: message.id == messages.last?.id, onChip: onChip, openSettings: openSettings)
+                        AskMessageView(message: message, latest: message.id == messages.last?.id, onSend: onSend, openSettings: openSettings)
                             .id(message.id)
                     }
                 }.padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s16)
@@ -273,7 +274,7 @@ private struct AskThread: View {
 private struct AskMessageView: View {
     let message: AskMessage
     let latest: Bool
-    let onChip: (String) -> Void
+    let onSend: (String) -> Void
     let openSettings: () -> Void
     @Environment(AppStore.self) private var store
 
@@ -284,8 +285,8 @@ private struct AskMessageView: View {
                 if image != nil || !placeholder.isEmpty { AskThumbnail(image: image, lines: placeholder) }
                 if !text.isEmpty { AskUserBubble(text: store.preferences.hideAmounts ? "金额已隐藏" : text) }
             }.frame(maxWidth: .infinity, alignment: .trailing)
-        case let .reply(reply, question, image):
-            AskReplyView(messageID: message.id, reply: reply, question: question, image: image, latest: latest, onChip: onChip)
+        case let .reply(reply, question, image, ocr):
+            AskReplyView(messageID: message.id, reply: reply, question: question, image: image, ocr: ocr, latest: latest, onSend: onSend)
         case let .local(answer, needsAI):
             AskLocalCard(answer: answer, needsAI: needsAI, openSettings: openSettings)
         }
@@ -347,8 +348,9 @@ private struct AskReplyView: View {
     let reply: AssistantReply
     let question: String
     let image: AskImage?
+    let ocr: String?
     let latest: Bool
-    let onChip: (String) -> Void
+    let onSend: (String) -> Void
     @Environment(AppStore.self) private var store
 
     var body: some View {
@@ -357,13 +359,13 @@ private struct AskReplyView: View {
         }
         ForEach(reply.proposedChangeSets) { change in
             if change.items.allSatisfy({ if case .addEntry = $0 { return true }; return false }) {
-                AskBatchCard(change: change, image: image)
+                AskBatchCard(change: change, image: image, ocr: ocr)
             } else {
                 AskApprovalView(change: change)
             }
         }
         if let questions = reply.purchaseQuestions, !questions.isEmpty {
-            AskFollowUp(questions: questions, active: latest && !store.ask.busy, onChip: onChip)
+            AskFollowUp(questions: questions, active: latest && !store.ask.busy, onSend: onSend)
         } else if reply.purchaseVerdict == nil && reply.proposedChangeSets.isEmpty && !reply.text.isEmpty {
             AskAnswerCard(text: store.preferences.hideAmounts ? "金额已隐藏" : reply.text, unverified: reply.unverifiedAmounts)
         }
@@ -418,10 +420,21 @@ private struct AskPurchaseVerdict: View {
     }
 }
 
+/// 追问: one choice per question, all sent together with 发送 as 「题目：选项」 lines.
+/// The picks live here, so a tap redraws only this block.
 private struct AskFollowUp: View {
     let questions: [PurchaseQuestion]
     let active: Bool
-    let onChip: (String) -> Void
+    let onSend: (String) -> Void
+    @State private var picks: [String: String]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    init(questions: [PurchaseQuestion], active: Bool, onSend: @escaping (String) -> Void, picks: [String: String] = [:]) {
+        self.questions = questions; self.active = active; self.onSend = onSend
+        _picks = State(initialValue: picks)
+    }
+
+    private var complete: Bool { questions.allSatisfy { picks[$0.text] != nil } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: DS.Space.s12) {
@@ -430,12 +443,29 @@ private struct AskFollowUp: View {
                     Text(question.text).dsText(AskSpec.question).foregroundStyle(DS.Color.ink).fixedSize(horizontal: false, vertical: true)
                     AskFlow {
                         ForEach(question.options, id: \.self) { option in
-                            AskChip(title: option) { onChip(option) }.disabled(!active).accessibilityIdentifier("askChip_" + option)
+                            AskChip(title: option, selected: picks[question.text] == option) { pick(option, for: question.text) }
+                                .disabled(!active).accessibilityIdentifier("askChip_" + option)
                         }
                     }.padding(.top, AskSpec.chipRowTop)
                 }
             }
+            if active {
+                Button(action: send) {
+                    Text("发送").dsText(DS.Font.tLabelStrong).foregroundStyle(complete ? DS.Color.onAccent : DS.Color.ink3)
+                        .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin).dsPill(complete ? DS.Color.accent : DS.Color.surface)
+                }.dsPressStyle().disabled(!complete).accessibilityIdentifier("askFollowSend")
+            }
         }.padding(.top, AskSpec.followTop).padding(.horizontal, DS.Space.s4)
+            .animation(reduceMotion ? nil : DSMotion.snappyAnimation, value: picks)
+    }
+
+    private func pick(_ option: String, for question: String) {
+        picks[question] = picks[question] == option ? nil : option
+    }
+
+    private func send() {
+        guard complete else { return }
+        onSend(questions.compactMap { question in picks[question.text].map { question.text + "：" + $0 } }.joined(separator: "\n"))
     }
 }
 
@@ -449,7 +479,7 @@ private struct AskApprovalView: View {
         if pending {
             let card = YubaiCore.AskApproval.make(change, ledger: store.current, now: store.financialNow)
             let line = AskDisplay.change(card.change, hidden: store.preferences.hideAmounts, currency: true)
-            AskApprovalCard(title: store.preferences.hideAmounts ? "余白的建议" : card.title, change: (line.label, line.from, line.to, card.change.better),
+            AskApprovalCard(title: store.preferences.hideAmounts ? "余白的建议" : card.title, change: card.change.deferredTo == nil ? (line.label, line.from, line.to, card.change.better) : nil,
                             facts: store.preferences.hideAmounts ? [] : card.facts, action: card.action,
                             onEdit: { if let id = card.editEntryID { store.requestCaptureSheet(.editEntry(id)) } },
                             onConfirm: { confirm(card) })
@@ -476,13 +506,16 @@ private struct AskDoneLine: View {
     }
 }
 
-/// 截图批量记账.
+/// 截图批量记账. Rows the model left out of the screenshot come last, unchecked, as 「待确认」.
 private struct AskBatchCard: View {
     let change: ChangeSet
     let image: AskImage?
+    let ocr: String?
     @Environment(AppStore.self) private var store
     @State private var checked: Set<UUID>?
     @State private var savedCount: Int?
+    /// Parsed once from the OCR text; the drafts keep their ids across redraws.
+    @State private var missed: [EntryDraft]?
 
     private var drafts: [EntryDraft] {
         change.items.compactMap { if case .addEntry(let draft) = $0 { return draft }; return nil }
@@ -492,28 +525,39 @@ private struct AskBatchCard: View {
         let pending = store.current.pendingChanges.contains { $0.id == change.id }
         if pending {
             let ledger = store.current, hide = store.preferences.hideAmounts
-            let drafts = drafts
+            let drafts = drafts, missed = missed ?? []
+            let rows = drafts + missed
+            let missedIDs = Set(missed.map(\.id))
             let selected = checked ?? AskBatch.initiallyChecked(drafts, in: ledger)
-            let total = AskBatch.total(drafts, checked: selected, in: ledger, now: store.financialNow)
+            let total = AskBatch.total(rows, checked: selected, in: ledger, now: store.financialNow)
             let line = AskDisplay.change(total, hidden: hide, currency: true)
             VStack(alignment: .leading, spacing: .zero) {
                 VStack(spacing: .zero) {
-                    ForEach(Array(drafts.enumerated()), id: \.element.id) { index, draft in
+                    ForEach(Array(rows.enumerated()), id: \.element.id) { index, draft in
                         AskBatchRow(name: draft.purpose ?? draft.title,
                                     detail: Classification.displayCategory(draft.category) + " · " + (draft.nature.inflow && draft.purpose != nil ? draft.title : AskDisplay.monthDay(draft.date, chinese: true)),
                                     amount: AskDisplay.signed(draft, hidden: hide), checked: selected.contains(draft.id),
-                                    duplicate: AskBatch.isLikelyDuplicate(draft, in: ledger), income: draft.nature.inflow,
+                                    duplicate: !missedIDs.contains(draft.id) && AskBatch.isLikelyDuplicate(draft, in: ledger),
+                                    missed: missedIDs.contains(draft.id), income: draft.nature.inflow,
                                     separator: index > 0, onToggle: { toggle(draft.id, from: selected) })
                             .accessibilityIdentifier("askBatchRow_\(index)")
                     }
                 }.padding(.top, -DS.Space.s4)
-                AskChangeLine(label: line.label, from: line.from, to: line.to, toColor: DS.Color.accentInk)
-                    .padding(.top, DS.Space.s12)
-                    .overlay(alignment: .top) { DS.Color.ink.frame(height: DS.Stroke.hairline) }
-                    .accessibilityIdentifier("askBatchTotal")
+                // A batch dated after today leaves 还能花 where it is, so the line is left out.
+                if total.deferredTo == nil {
+                    AskChangeLine(label: line.label, from: line.from, to: line.to, toColor: DS.Color.accentInk)
+                        .padding(.top, DS.Space.s12)
+                        .overlay(alignment: .top) { DS.Color.ink.frame(height: DS.Stroke.hairline) }
+                        .accessibilityIdentifier("askBatchTotal")
+                }
                 AskTwoButtons(primary: "记下 \(selected.count) 笔", enabled: !selected.isEmpty, onEdit: { edit(drafts, selected: selected) },
-                              onPrimary: { save(drafts, selected: selected) })
+                              onPrimary: { save(rows, selected: selected) })
             }.askCard().accessibilityElement(children: .contain).accessibilityIdentifier("askBatchCard")
+                .onAppear {
+                    guard self.missed == nil else { return }
+                    let text = ocr?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    self.missed = text.isEmpty ? [] : AskBatch.missed(ocr: text, drafts: drafts, in: ledger, now: store.financialNow)
+                }
         } else {
             AskDoneLine(text: "已记下 \(savedCount ?? drafts.count) 笔")
         }
@@ -660,4 +704,10 @@ enum AskDisplay {
     }
 
     static func cancel(_ id: String) { UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [id]) }
+}
+
+#Preview("追问 · 两题已选") {
+    AskFollowUp(questions: AskFixture.purchaseQuestions, active: true, onSend: { _ in },
+                picks: ["现在用的耳机是哪里不满意？": "降噪不够", "一周戴几次？": "通勤才戴"])
+        .padding(DS.Space.s16).background(DS.Color.bg)
 }

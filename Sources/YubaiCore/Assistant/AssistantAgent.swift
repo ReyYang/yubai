@@ -96,7 +96,9 @@ public struct AssistantAgent: Sendable {
                           let revised = retry.content?.trimmingCharacters(in: .whitespacesAndNewlines), !revised.isEmpty else {
                         throw YubaiError.invalid("云端金额核对未返回有效文字。")
                     }
-                    text = revised; unverified = AssistantAmountGuard.unverified(in: text, results: results)
+                    // A rewrite that verifies no more figures may only have dropped a correct answer.
+                    let remaining = AssistantAmountGuard.unverified(in: revised, results: results)
+                    if remaining.count <= unverified.count { text = revised; unverified = remaining }
                 }
                 if let judgment, !judgment.hasProfile, !text.contains("还不知道你在乎什么") {
                     text += "\n还不知道你在乎什么，可以在『消费观』里补上"
@@ -273,7 +275,8 @@ public enum AssistantAmountGuard {
         for result in results { collect(result) }
         var found: [String] = []
         for token in tokens(in: text) {
-            if let cents = token.cents, allowed.contains(cents) { continue }
+            // Zero is the absence of spending, never an invented figure.
+            if let cents = token.cents, cents == 0 || allowed.contains(cents) { continue }
             if !found.contains(token.text) { found.append(token.text) }
         }
         return found
@@ -285,6 +288,9 @@ public enum AssistantAmountGuard {
             #"(?<!\d)\d{4}[-/]\d{1,2}[-/]\d{1,2}(?!\d)"#,
             #"(?<!\d)(?:\d{4}年)?\d{1,2}月\d{1,2}日(?!\d)"#,
             #"(?<!\d)\d{1,2}[:：]\d{2}(?:[:：]\d{2})?(?!\d)"#,
+            // Month/day without a year, alone or as a range: 11/1–11/30, 11-30. Not before 元 or 块.
+            #"(?<![\d.¥￥])(?:1[0-2]|0?[1-9])[/-](?:3[01]|[12]\d|0?[1-9])(?:\s*[–—~～至到-]\s*(?:(?:1[0-2]|0?[1-9])[/-])?(?:3[01]|[12]\d|0?[1-9]))?(?![\d.])(?!\s*(?:元|块))"#,
+            #"(?<!\d)\d{1,2}月(?:\d{1,2}[日号]?)?(?:\s*[–—~～至到-]\s*(?:\d{1,2}月)?\d{1,2}[日号]?)?(?!\d)"#,
             #"(?<![0-9a-fA-F])[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}(?![0-9a-fA-F])"#
         ] {
             scan = scan.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
@@ -297,7 +303,7 @@ public enum AssistantAmountGuard {
             let raw = ns.substring(with: match.range).trimmingCharacters(in: .whitespacesAndNewlines)
             let suffix = ns.substring(from: NSMaxRange(match.range)).trimmingCharacters(in: .whitespaces)
             let marked = raw.range(of: #"[¥￥元块万千]|(?i:CNY|RMB)"#, options: .regularExpression) != nil
-            if !marked, let first = suffix.first, "%％条笔天次周月年个项步:：".contains(first) { continue }
+            if !marked, let first = suffix.first, "%％条笔天次周月年日号个项步:：".contains(first) { continue }
             var normalized = raw.replacingOccurrences(of: "−", with: "-")
             let multiplier: Int64 = normalized.contains("万") ? 10_000 : (normalized.contains("千") ? 1000 : (normalized.contains("百元") ? 100 : 1))
             for token in ["万元", "千元", "百元", "块钱", "块", "万", "千"] { normalized = normalized.replacingOccurrences(of: token, with: "") }
