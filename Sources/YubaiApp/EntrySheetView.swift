@@ -590,7 +590,7 @@ private struct EntryTransferRouteView: View {
         return VStack(spacing: DS.Space.s4) {
             Button { model.toggleDrawer(destination ? .destination : .source) } label: {
                 HStack(spacing: DS.Space.s8) {
-                    (account?.kind.entryIcon ?? .acctWallet).view(size: EntrySpec.routeIcon, color: ink)
+                    (account?.kind.icon ?? .acctWallet).view(size: EntrySpec.routeIcon, color: ink)
                     Text(title).dsText(DS.Font.tLabelStrong)
                         .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
                 }
@@ -697,7 +697,7 @@ private struct EntryPillsRowView: View {
         FlowLayout {
             if !model.draft.isRoute {
                 let account = model.account(model.draft.accountID)
-                EntryPill(title: account?.name ?? "账户", icon: account?.kind.entryIcon ?? .acctWallet,
+                EntryPill(title: account?.name ?? "账户", icon: account?.kind.icon ?? .acctWallet,
                           hint: "选择这笔账的账户") { model.toggleDrawer(.source) }
             }
             EntryPill(title: time, icon: model.draft.repeatMonthly ? .subscription : .time,
@@ -760,7 +760,7 @@ private struct EntryExpandedPanelView: View {
                 let destination = model.drawer == .destination
                 FlowLayout {
                     ForEach(model.accounts(destination: destination)) { account in
-                        EntryPill(title: account.name, icon: account.kind.entryIcon,
+                        EntryPill(title: account.name, icon: account.kind.icon,
                                   selected: account.id == (destination ? model.draft.destinationID : model.draft.accountID),
                                   hint: "选择账户") { model.selectAccount(account.id, destination: destination) }
                     }
@@ -1154,53 +1154,6 @@ struct FlowLayout: Layout {
     }
 }
 
-private extension AccountKind {
-    var entryIcon: DS.Icon {
-        switch self {
-        case .bank: .acctDebit
-        case .credit: .acctCredit
-        case .investment: .acctInvest
-        case .cash: .acctWallet
-        default: .acctBalance
-        }
-    }
-}
-
 private extension YubaiCore.Category {
-    var entryIcon: DS.Icon {
-        switch name {
-        case "吃饭", "餐饮": .catFood
-        case "咖啡", "咖啡茶饮": .catCoffee
-        case "交通", "出行": .catTransport
-        case "买菜", "生鲜买菜": .catGrocery
-        case "购物": .catShopping
-        case "居住", "住房": .catHousing
-        case "娱乐": .catFun
-        case "日用", "日用百货": .catDaily
-        case "数码", "数码电器": .catDigital
-        case "工资", "工资奖金": .acctWallet
-        case "奖金": .acctBalance
-        case "投资收益": .acctInvest
-        case "礼金赠与": .saveFirst
-        case "兼职劳务": .edit
-        case "二手转卖": .transfer
-        case "退款", "报销": .reimburse
-        default: iconForSymbol
-        }
-    }
-
-    private var iconForSymbol: DS.Icon {
-        switch symbol {
-        case "fork.knife", "takeoutbag.and.cup.and.straw": .catFood
-        case "cup.and.saucer": .catCoffee
-        case "tram", "car", "bus": .catTransport
-        case "basket", "cart": .catGrocery
-        case "bag", "shoppingbag": .catShopping
-        case "house", "house.fill": .catHousing
-        case "ticket", "gamecontroller": .catFun
-        case "shippingbox": .catDaily
-        case "iphone", "desktopcomputer": .catDigital
-        default: .catOther
-        }
-    }
+    var entryIcon: DS.Icon { DS.Icon(category: name, symbol: symbol, income: income) }
 }

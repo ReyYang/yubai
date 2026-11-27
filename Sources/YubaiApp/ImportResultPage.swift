@@ -48,7 +48,7 @@ struct ImportResultPage: View {
                 actions
             } else {
                 Page {
-                    EmptyState("arrow.uturn.backward", "这一批已撤销", action: "继续导入", onAction: restart)
+                    EmptyState(.undo, "这一批已撤销", action: "继续导入", onAction: restart)
                     Text("有效记录 \(store.current.activeEntries.count) 笔").accessibilityIdentifier("activeEntryCount")
                 }
             }

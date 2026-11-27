@@ -38,7 +38,7 @@ struct FrequentEntriesView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { purpose = ""; keypad = EntryKeypad(); adding = true } label: {
-                        Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
+                        DSIconView(icon: .add, size: DS.Size.icon).yubaiHitTarget()
                     }.buttonStyle(TextLinkStyle()).accessibilityLabel("新建常用").accessibilityIdentifier("addFrequentButton")
                 }
             }

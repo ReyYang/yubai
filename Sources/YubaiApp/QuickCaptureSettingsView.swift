@@ -21,7 +21,7 @@ struct QuickCaptureSettingsView: View {
                         #if os(iOS)
                         Button {
                             Task { notificationStatus = await CaptureNotifications.requestPermission() ? "通知已开启" : "通知没开" }
-                        } label: { Image(systemName: "bell").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                        } label: { DSIconView(icon: .bell, size: DS.Size.icon).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                             .accessibilityLabel("开启记账通知")
                         #endif
                     }
@@ -50,11 +50,11 @@ struct QuickCaptureSettingsView: View {
                     }.accessibilityHint("打开快捷指令 App，查看余白的动作")
                 }
                 ChipFlow {
-                    infoBadge("小组件", systemImage: "square.grid.2x2")
+                    infoBadge("小组件", icon: .catAll)
                         .accessibilityLabel("锁屏和主屏小组件")
-                    infoBadge("控制中心", systemImage: "plus.circle")
+                    infoBadge("控制中心", icon: .addCircle)
                         .accessibilityLabel("控制中心和操作按钮")
-                    infoBadge("轻点背面", systemImage: "iphone")
+                    infoBadge("轻点背面", icon: .catDigital)
                         .accessibilityLabel("轻点背面截图记")
                 }.padding(.top, YubaiSpace.space4)
             }
@@ -88,9 +88,9 @@ struct QuickCaptureSettingsView: View {
             Text("\(count) 笔").yubaiFont(YubaiFont.amountAccount)
         }
     }
-    private func infoBadge(_ title: String, systemImage: String) -> some View {
+    private func infoBadge(_ title: String, icon: DS.Icon) -> some View {
         HStack(spacing: YubaiSpace.space6) {
-            Image(systemName: systemImage).yubaiFont(YubaiFont.meta).accessibilityHidden(true)
+            DSIconView(icon: icon, size: YubaiFont.meta.size)
             Text(title).yubaiFont(YubaiFont.caption)
         }.foregroundStyle(YubaiColor.labelSecondary)
             .padding(.horizontal, YubaiSpace.gapGroup).padding(.vertical, YubaiSpace.space8)
@@ -104,7 +104,7 @@ struct QuickCaptureSettingsView: View {
             Spacer(minLength: YubaiSpace.space4)
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
             if navigates {
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                DSIconView(icon: .chevron, size: YubaiFont.meta.size, color: YubaiColor.labelSecondary)
             } else {
                 Color.clear.frame(width: YubaiFont.meta.size, height: YubaiFont.meta.lineHeight).accessibilityHidden(true)
             }
@@ -152,8 +152,8 @@ private struct CaptureRulesView: View {
                 }
             }
         }.navigationTitle(kind.title).yubaiNavigation().accessibilityIdentifier("captureRulesPage")
-            .overlay { if names.isEmpty { EmptyState(kind == .card ? "creditcard" : "tag", "还没有映射", action: "添加", onAction: { editing = CaptureRuleSelection(name: nil) }) } }
-            .toolbar { ToolbarItem(placement: .primaryAction) { Button("添加", systemImage: "plus") { editing = CaptureRuleSelection(name: nil) }.accessibilityIdentifier("addCaptureRule") } }
+            .overlay { if names.isEmpty { EmptyState(kind == .card ? .acctWallet : .catAll, "还没有映射", action: "添加", onAction: { editing = CaptureRuleSelection(name: nil) }) } }
+            .toolbar { ToolbarItem(placement: .primaryAction) { Button { editing = CaptureRuleSelection(name: nil) } label: { Label("添加", icon: .add, size: DS.Size.icon) }.accessibilityIdentifier("addCaptureRule") } }
             .sheet(item: $editing) { selected in NavigationStack { CaptureRuleEditor(kind: kind, original: selected.name) }.environment(store).appErrors().yubaiSheetBackground() }
     }
     private func value(_ name: String) -> String {

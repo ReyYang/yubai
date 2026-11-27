@@ -124,7 +124,7 @@ struct ImportView: View {
     var body: some View {
         VStack(spacing: YubaiSpace.none) {
             if screenshot && preview != nil {
-                Menu { accountPicker; Button("添加账户") { showAccount = true } } label: { Label(store.accountName(accountID), systemImage: "creditcard") }
+                Menu { accountPicker; Button("添加账户") { showAccount = true } } label: { Label(store.accountName(accountID), icon: .acctWallet, size: YubaiFont.body.size) }
                     .accessibilityLabel("选择截图记账的账户").padding(.horizontal, YubaiSpace.space20).frame(minHeight: YubaiSize.tapMin)
             }
             if let result { resultView(result) }
@@ -243,7 +243,7 @@ struct ImportView: View {
                     Text(title).yubaiFont(YubaiFont.rowTitle)
                     Text(hint).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).multilineTextAlignment(.leading)
                 }.frame(maxWidth: .infinity, alignment: .leading)
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+                DSIconView(icon: .chevron, size: YubaiFont.meta.size, color: YubaiColor.labelSecondary)
             }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier).accessibilityLabel(title + "，" + hint)
     }
@@ -282,7 +282,7 @@ struct ImportView: View {
             } else if item.reading {
                 ImportReadingProgress(value: item.progress)
             } else {
-                Button { queue.removeAll { $0.id == item.id }; queueTotal = max(processed, queueTotal - 1) } label: { Image(systemName: "xmark").frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                Button { queue.removeAll { $0.id == item.id }; queueTotal = max(processed, queueTotal - 1) } label: { DSIconView(icon: .close, size: YubaiFont.body.size).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     .buttonStyle(PressButtonStyle()).accessibilityLabel("移除" + item.name).accessibilityIdentifier("removeImport_" + item.id.uuidString)
             }
         }.accessibilityIdentifier("importQueue_" + item.id.uuidString)
@@ -298,7 +298,7 @@ struct ImportView: View {
                             EntryFormRow(title: "没写账户的记到") { accountPicker.pickerStyle(.menu).labelsHidden() }
                             Divider().overlay(YubaiColor.separator)
                             Button { showCategories = true } label: {
-                                HStack(spacing: YubaiSpace.gapGroup) { Text("导入的分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); Image(systemName: "chevron.right") }
+                                HStack(spacing: YubaiSpace.gapGroup) { Text("导入的分类对应"); Spacer(); Text("\(directCategoryCount(p)) 个直接对上").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary); DSIconView(icon: .chevron, size: YubaiFont.body.size) }
                                     .frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("importCategoryMapping")
                             if accountID == nil { Button("添加账户") { showAccount = true }.frame(minHeight: YubaiSize.tapMin) }
@@ -496,7 +496,7 @@ struct ImportView: View {
         HStack(spacing: YubaiSpace.space8) {
             if row.entry != nil && [.ready, .possibleDuplicate].contains(row.status) {
                 Button { select(row, included: !row.included) } label: {
-                    Image(systemName: row.included ? "checkmark.square.fill" : "square").foregroundStyle(row.included ? YubaiColor.brand : YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
+                    DSIconView(icon: row.included ? .checkboxOn : .checkboxOff, size: DS.Size.icon, color: row.included ? YubaiColor.brand : YubaiColor.labelSecondary).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel(row.included ? "不导入这一行" : "导入这一行").accessibilityValue(row.included ? "已选" : "未选").accessibilityIdentifier("selectImportRow_" + String(row.line))
             }
             VStack(alignment: .leading, spacing: YubaiSpace.space4) {
@@ -505,7 +505,7 @@ struct ImportView: View {
             }.frame(maxWidth: .infinity, alignment: .leading)
             if let entry = row.entry { AmountLabel(cents: entry.amount, hide: store.preferences.hideAmounts, sign: entry.nature.inflow ? .inflow : .none) }
             if screenshot, row.entry != nil {
-                Button { editingScreenshotRow = row } label: { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
+                Button { editingScreenshotRow = row } label: { DSIconView(icon: .chevron, size: YubaiFont.meta.size).frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin) }
                     .buttonStyle(PressButtonStyle()).accessibilityLabel("核对这一笔").accessibilityIdentifier("editScreenshotRow_" + String(row.line))
             }
         }.opacity(row.status == .duplicate ? 0.6 : 1).padding(.vertical, YubaiSpace.space4)

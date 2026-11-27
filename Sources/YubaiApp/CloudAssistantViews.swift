@@ -31,7 +31,7 @@ struct CloudSendLogView: View {
                     .accessibilityHint("发送记录只存在本机内存，关掉应用就清空；汇总图仅包含保留的记录")
             }
             if groups.isEmpty {
-                EmptyState("paperplane", "还没有发送记录", action: "问余白", onAction: { store.openAsk() }).accessibilityIdentifier("emptyCloudSendLog")
+                EmptyState(.send, "还没有发送记录", action: "问余白", onAction: { store.openAsk() }).accessibilityIdentifier("emptyCloudSendLog")
             } else {
                 summaryCard
                 Segmented(choices: [(false, "全部"), (true, "没成功 \(groups.filter(\.hasFailure).count)")], selection: $onlyFailures).accessibilityIdentifier("cloudLogFilter")
@@ -40,7 +40,7 @@ struct CloudSendLogView: View {
                     NavigationLink { CloudSendLogDetailView(group: group) } label: { groupRow(group) }
                         .buttonStyle(PressButtonStyle()).accessibilityIdentifier("cloudLogGroup_" + group.id.uuidString)
                 }
-                if visible.isEmpty { EmptyState("checkmark", "没有没成功的记录", action: "查看全部", onAction: { onlyFailures = false }) }
+                if visible.isEmpty { EmptyState(.done, "没有没成功的记录", action: "查看全部", onAction: { onlyFailures = false }) }
             }
             Button("清空这份记录") { SendLog.shared.clear(); reload() }.buttonStyle(SecondaryButtonStyle()).accessibilityIdentifier("clearCloudSendLog")
         }.amountPrivacy(store.preferences.hideAmounts).navigationTitle("发给云端的内容").yubaiNavigation()
@@ -77,7 +77,7 @@ struct CloudSendLogView: View {
                 if group.hasFailure { Text(store.preferences.hideAmounts ? "这次没有成功" : group.failureReasons.joined(separator: "；")).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.amberInk) }
             }.frame(maxWidth: .infinity, alignment: .leading)
             if group.hasFailure { Circle().fill(YubaiColor.amberDot).frame(width: YubaiSize.marker, height: YubaiSize.marker).accessibilityHidden(true) }
-            Image(systemName: "chevron.right").foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+            DSIconView(icon: .chevron, size: YubaiFont.body.size, color: YubaiColor.labelSecondary)
         }.padding(.vertical, YubaiSpace.space8).contentShape(Rectangle())
     }
     private func reload() {
@@ -522,7 +522,7 @@ private struct CloudLogRawDisclosure: View {
         HStack(spacing: YubaiSpace.gapGroup) {
             Text(title).yubaiFont(YubaiFont.code)
             Spacer(minLength: YubaiSpace.none)
-            Image(systemName: expanded ? "chevron.down" : "chevron.right").yubaiFont(YubaiFont.caption)
+            DSIconView(icon: expanded ? .chevronDown : .chevron, size: YubaiFont.caption.size)
         }.foregroundStyle(color).contentShape(Rectangle()).yubaiHitTarget()
     }
 }

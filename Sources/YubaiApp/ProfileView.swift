@@ -74,12 +74,12 @@ struct ProfileView: View {
                 if !canChat {
                     Text(!configured ? "还没配密钥" : (!store.preferences.isAIEnabled(for: .answers) ? "云端智能没开" : "模型不可用")).yubaiFont(YubaiFont.caption)
                 }
-                Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta)
+                DSIconView(icon: .chevron, size: YubaiFont.meta.size)
             }.foregroundStyle(canChat ? YubaiColor.brandTintStrong : YubaiColor.amberInk).frame(minHeight: YubaiSize.rowDouble)
         }
     }
     private var chevron: some View {
-        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
+        DSIconView(icon: .chevron, size: YubaiFont.meta.size, color: YubaiColor.labelSecondary)
     }
 
     // MARK: 三栏
@@ -123,7 +123,7 @@ struct ProfileView: View {
     private func addRow(label: String, identifier: String = "", action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: YubaiSpace.space8) {
-                Image(systemName: "plus").yubaiFont(YubaiFont.callout)
+                DSIconView(icon: .add, size: YubaiFont.callout.size)
                 Text("添加").yubaiFont(YubaiFont.row)
                 Spacer(minLength: YubaiSpace.none)
             }.foregroundStyle(YubaiColor.brandInk).frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle, alignment: .leading).contentShape(Rectangle())
@@ -250,7 +250,7 @@ private struct ProfileAreaEditor: View {
                     }.yubaiHitTarget()
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("profileMonthlyLimit")
                 if !monthly.isEmpty {
-                    Button { monthly = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(YubaiColor.labelSecondary).yubaiHitTarget() }
+                    Button { monthly = "" } label: { DSIconView(icon: .clear, size: YubaiFont.body.size, color: YubaiColor.labelSecondary).yubaiHitTarget() }
                         .buttonStyle(PressButtonStyle()).accessibilityLabel("不限金额").accessibilityIdentifier("clearProfileMonthlyLimit")
                 }
             }

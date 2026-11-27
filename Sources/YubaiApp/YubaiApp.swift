@@ -12,8 +12,6 @@ enum Destination: String, CaseIterable, Identifiable {
     case ledger, insights, yubai
     var id: Self { self }
     var title: String { switch self { case .ledger: "账本"; case .insights: "全景"; case .yubai: "余白" } }
-    /// SF Symbol for the large content viewer and the macOS sidebar fallback.
-    var symbol: String { switch self { case .ledger: "text.book.closed"; case .insights: "chart.pie"; case .yubai: "leaf" } }
 }
 /// Kept for incoming presets from older feature pages; insights is now a tab.
 enum LedgerMode: String, CaseIterable, Identifiable {
@@ -1541,7 +1539,7 @@ struct RootView: View {
         }.padding(YubaiSpace.insetPage).accessibilityIdentifier("lockedPage")
     }
     func recoveryView(_ message: String) -> some View {
-        VStack(spacing: YubaiSpace.gapSection) { Image(systemName: "externaldrive.badge.exclamationmark").yubaiFont(YubaiFont.amountDisplay); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: YubaiSize.sheetMinimumWidth)
+        VStack(spacing: YubaiSpace.gapSection) { DSIconView(icon: .warning, size: YubaiFont.amountDisplay.size); Text("账本需要恢复").yubaiFont(YubaiFont.lead); Text(message).foregroundStyle(YubaiColor.labelSecondary); Button("查看本地恢复记录") { store.sheet = .history }; Button("从备份恢复") { store.sheet = .backup } }.padding(YubaiSpace.gapSection).frame(maxWidth: YubaiSize.sheetMinimumWidth)
     }
 }
 

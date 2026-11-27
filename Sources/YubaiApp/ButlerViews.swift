@@ -13,7 +13,7 @@ struct LetterDismissCard<Content: View>: View {
         content { action in withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { _ = action() } }
             .overlay(alignment: .topTrailing) {
                 Button { withAnimation(YubaiMotion.layout(reduceMotion: reduceMotion)) { _ = onDismiss() } } label: {
-                    Image(systemName: "xmark").font(.system(size: YubaiFont.callout.size)).foregroundStyle(YubaiColor.labelSecondary)
+                    DSIconView(icon: .close, size: YubaiFont.callout.size, color: YubaiColor.labelSecondary)
                         .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).contentShape(Rectangle())
                 }.buttonStyle(PressButtonStyle()).padding(YubaiSpace.space4).accessibilityLabel("收起").accessibilityIdentifier("dismissLetterCard")
             }

@@ -37,7 +37,7 @@ struct WishlistView: View {
                 NavigationLink {
                     Page { ForEach(past.sorted { $0.createdAt > $1.createdAt }) { wish in wishRow(wish) } }.navigationTitle("过去的心愿").yubaiNavigation()
                 } label: {
-                    HStack(spacing: YubaiSpace.gapGroup) { Text("买了 \(past.filter { $0.status == .bought }.count) 件 · 划掉 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); Image(systemName: "chevron.right") }
+                    HStack(spacing: YubaiSpace.gapGroup) { Text("买了 \(past.filter { $0.status == .bought }.count) 件 · 划掉 \(past.filter { $0.status == .dropped }.count) 件"); Spacer(); DSIconView(icon: .chevron, size: YubaiFont.row.size) }
                         .yubaiFont(YubaiFont.row).padding(.horizontal, YubaiSpace.insetCard).frame(minHeight: YubaiSize.tapMin).paperCardSurface(in: RoundedRectangle(cornerRadius: YubaiRadius.row, style: .continuous))
                 }.buttonStyle(PressButtonStyle()).accessibilityIdentifier("pastWishes")
             }
@@ -45,7 +45,7 @@ struct WishlistView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { addingWish = true } label: {
-                        Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
+                        DSIconView(icon: .add, size: DS.Size.icon).yubaiHitTarget()
                     }.buttonStyle(TextLinkStyle()).accessibilityLabel("写一个心愿").accessibilityIdentifier("addWishButton")
                 }
             }
@@ -95,7 +95,7 @@ struct WishlistView: View {
             }
             if wish.status == .bought {
                 if let due = wish.followUpAt {
-                    Label(Dates.text(due), systemImage: "calendar.badge.clock")
+                    Label(Dates.text(due), icon: .reminderDate, size: YubaiFont.caption.size)
                         .yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                         .accessibilityLabel("\(Dates.text(due)) 问你用得怎么样")
                         .accessibilityIdentifier("wishFollowUpDate_" + wish.id.uuidString)
@@ -143,7 +143,7 @@ struct WishEntryPicker: View {
                 let matches = Wishlist.candidates(for: wish, in: store.current, now: Dates.now)
                 let used = Set(store.current.wishlist.compactMap(\.boughtEntryID))
                 let rows = all ? store.sortedEntries.filter { $0.deletedAt == nil && $0.nature == .expense && $0.date <= Dates.now && !used.contains($0.id) } : matches
-                if rows.isEmpty { EmptyState("list.bullet", "没有匹配的支出", action: "查看全部支出", onAction: { all = true }) }
+                if rows.isEmpty { EmptyState(.heart, "没有匹配的支出", action: "查看全部支出", onAction: { all = true }) }
                 CardRows(rows) { entry in
                     Button {
                         if store.update("关联心愿购买记录", { try Wishlist.markBought(wishID, entryID: entry.id, in: &$0) }) { dismiss() }
