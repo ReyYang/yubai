@@ -28,7 +28,7 @@ public struct PurchaseBounds: Equatable, Sendable {
             return PurchaseBounds(allowedVerdicts: [.skip], boundReason: partReason + "买了以后，会回来的账单还差 \(Money.text(-after - funds.spendable.plannedSaving))。")
         }
         if after < 0 {
-            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "买了以后，这个月少攒 \(Money.text(min(funds.spendable.plannedSaving, -after)))。")
+            return PurchaseBounds(allowedVerdicts: [.wait, .skip], boundReason: partReason + "买了以后会超支 \(Money.text(-after))。")
         }
         let areas = Set(ledger.profile.restrain.filter { ButlerCards.matches($0, entry: sample, ledger: ledger) }.map(\.id))
         for line in SoftLines.usage(ledger, now: now) where areas.contains(line.areaID) {

@@ -53,7 +53,7 @@ final class HomeMonthSpendingTests: XCTestCase {
         var value = ledger(); value.accounts[0].anchorBalance = 0; salary(&value); value.entries = [row(value), row(value, 801_000, on: "2026-11-10", nature: .income)]
         value.entries[1].amount = 2799
         let hero = HomeHero.make(value, now: now)
-        XCTAssertEqual(hero.title, "缺口"); XCTAssertEqual(hero.amount, 1)
+        XCTAssertEqual(hero.title, "超支"); XCTAssertEqual(hero.amount, 1)
         XCTAssertTrue(HomeButler.queue(value, now: now).contains { if case .overspend = $0 { return true }; return false })
     }
     func testDeletedHistoryDoesNotReopenFirstScene() {

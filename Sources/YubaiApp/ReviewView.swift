@@ -27,7 +27,7 @@ struct ReviewView: View {
             if let anomaly = snapshot.anomaly {
                 DSAlertCard(title: anomaly.category + "多花了 " + OverviewDisplay.money(anomaly.amount - anomaly.previous, hidden: hidden),
                             subtitle: OverviewDisplay.money(anomaly.amount, hidden: hidden)
-                            + (hidden ? "" : " · 比上期 " + OverviewDisplay.percent(anomaly.changePercent ?? 0))) {
+                            + " · 近 \(snapshot.anomalyBaselineCycles) 期同期平均 " + OverviewDisplay.money(anomaly.previous, hidden: hidden)) {
                     open(anomaly)
                 }.accessibilityIdentifier("overviewAnomaly").padding(.top, DS.Space.s20)
             }

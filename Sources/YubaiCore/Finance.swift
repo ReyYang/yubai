@@ -24,7 +24,6 @@ public struct Funds: Equatable, Sendable {
     public var fixedSavingsTotal: Int64 { emergency }
     public var cycleSpent: Int64 = 0
     public var dueRest: Int64 = 0
-    public var savingShortfall: Int64 = 0
     public var spendable: SpendableBreakdown = .empty
     /// Retained for source compatibility; fixed savings are deducted directly.
     public var floorRoom: Int64? = nil
@@ -267,7 +266,7 @@ public enum Finance {
         let emergency = ledger.fixedSavingsTotal(now: now)
         let breakdown = makeSpendableBreakdown(ledger, now: now, cycle: cycle, commitments: commitments)
         let income = breakdown.income, spent = breakdown.spent
-        let savingTarget = breakdown.effectiveSaving
+        let savingTarget = breakdown.savingSetAside
         let available = breakdown.available
         let expectedIncome = occurrences.filter(\.inflow).reduce(Int64(0)) { $0 + $1.amount }
         var warnings: [String] = []
@@ -302,7 +301,6 @@ public enum Finance {
         value.cycleSpent = spent; value.dueRest = committed
         value.savingRuleTarget = (ledger.savingRule?.target(income: income) ?? 0) + Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).reduce(0) { $0 + $1.amount }
         value.salaryLateDays = cycle.lateSince.map { Dates.calendar.dateComponents([.day], from: $0, to: Dates.day(now)).day ?? 0 }
-        value.savingShortfall = breakdown.savingLess
         ledger.calculations.storeFunds(value, in: ledger, now: now, days: horizon)
         return value
     }
@@ -379,7 +377,7 @@ public enum Finance {
         let incomplete = ledger.accounts.isEmpty || ledger.accounts.contains { !$0.reconciled } || !f.warnings.isEmpty
         let severity = deficit > 0 ? 2 : (rawAfter < 0 || incomplete || amount > f.available / 3 ? 1 : 0)
         let title = deficit > 0 ? "先别买" : rawAfter < 0 ? "等等再说" : (incomplete ? "买前先核对明细" : "已知安排内，可以承受")
-        let explanation = deficit > 0 ? "买了以后，要付的账单还差 \(Money.text(deficit))。" : rawAfter < 0 ? "买了以后，这个月少攒 \(Money.text(min(f.spendable.plannedSaving, -rawAfter)))。" : "买了以后还能花 \(Money.text(after))。"
+        let explanation = deficit > 0 ? "买了以后，要付的账单还差 \(Money.text(deficit))。" : rawAfter < 0 ? "买了以后会超支 \(Money.text(-rawAfter))。" : "买了以后还能花 \(Money.text(after))。"
         let horizon = f.payday == nil ? "到 \(Dates.calendar.component(.month, from: f.horizonEnd))月\(Dates.calendar.component(.day, from: f.horizonEnd))日已知付款" : "发工资前已知付款"
         let bounds = PurchaseBounds.compute(ledger: ledger, amount: amount, title: purchaseTitle, category: category, subcategory: subcategory, now: now)
         let verdict: PurchaseVerdict = bounds.allowedVerdicts == [.skip] ? .skip : !bounds.allowedVerdicts.contains(.buy) || amount > max(0, f.available) / 3 ? .wait : .buy

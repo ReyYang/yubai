@@ -41,7 +41,7 @@ final class PurchaseSavingTests: XCTestCase {
         func bounds(_ amount: Int64) -> PurchaseBounds { PurchaseBounds.compute(ledger: ledger, amount: amount, title: "咖啡", now: now) }
         let below = bounds(2001)
         XCTAssertEqual(below.allowedVerdicts, [.wait, .skip])
-        XCTAssertEqual(below.boundReason, "买了以后，这个月少攒 \(Money.text(1))。")
+        XCTAssertEqual(below.boundReason, "买了以后会超支 \(Money.text(1))。")
         XCTAssertEqual(bounds(10_000).allowedVerdicts, [.wait, .skip])
         XCTAssertEqual(bounds(10_001).allowedVerdicts, [.skip]); XCTAssertEqual(bounds(10_001).boundReason, "买了以后，会回来的账单还差 \(Money.text(1))。")
         for amount: Int64 in [1999, 2000] { XCTAssertEqual(bounds(amount).allowedVerdicts, Set(PurchaseVerdict.allCases)) }
@@ -57,7 +57,7 @@ final class PurchaseSavingTests: XCTestCase {
         ledger.profile.restrain = [ProfileArea(title: "咖啡", match: .init(keywords: ["咖啡"]), softLimit: .init(perWeekCount: 0, perMonthAmount: 1000))]
         func bounds(_ amount: Int64) -> PurchaseBounds { PurchaseBounds.compute(ledger: ledger, amount: amount, title: "咖啡", now: now) }
         // Both floor and restrain allow wait/skip; the earlier floor rule keeps its reason.
-        XCTAssertEqual(bounds(2001).allowedVerdicts, [.wait, .skip]); XCTAssertEqual(bounds(2001).boundReason, "买了以后，这个月少攒 \(Money.text(1))。")
+        XCTAssertEqual(bounds(2001).allowedVerdicts, [.wait, .skip]); XCTAssertEqual(bounds(2001).boundReason, "买了以后会超支 \(Money.text(1))。")
         XCTAssertEqual(bounds(10_001).allowedVerdicts, [.skip]); XCTAssertFalse(bounds(10_001).boundReason.contains("始终留着"))
         XCTAssertEqual(bounds(2000).allowedVerdicts, [.wait, .skip]); XCTAssertTrue(bounds(2000).boundReason.contains("这个周期"))
         ledger.profile.restrain[0].softLimit?.perWeekCount = nil

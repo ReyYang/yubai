@@ -24,13 +24,15 @@ final class HomeBoardStateTests: XCTestCase {
     }
     func value(_ l: Ledger) -> SpendableBreakdown { Finance.spendableBreakdown(l, now: now) }
     func testBoardStatesTableAndEveryRowIdentity() throws {
-        for (spent, available, effective, less, deficit) in [
-            (Int64(83_600), Int64(186_400), Int64(200_000), Int64(0), Int64(0)),
-            (290_000, 0, 180_000, 20_000, 0), (470_000, 0, 0, 200_000, 0), (505_000, 0, 0, 200_000, 35_000)
+        for (spent, available, deficit, covered) in [
+            (Int64(83_600), Int64(186_400), Int64(0), Int64(200_000)),
+            (290_000, 0, 20_000, 180_000), (470_000, 0, 200_000, 0), (505_000, 0, 235_000, 0)
         ] {
             let l = ledger(spent: spent), f = value(l)
-            XCTAssertEqual(f.available, available); XCTAssertEqual(f.effectiveSaving, effective)
-            XCTAssertEqual(f.savingLess, less); XCTAssertEqual(f.deficit, deficit)
+            XCTAssertEqual(f.available, available); XCTAssertEqual(f.deficit, deficit)
+            XCTAssertEqual(f.plannedSaving, 200_000); XCTAssertEqual(f.savingCovered, covered)
+            XCTAssertEqual(f.rows.first { $0.kind == .saving }?.amount, -200_000)
+            XCTAssertEqual(f.headlineTitle, deficit > 0 ? "超支" : "还能花")
             XCTAssertEqual(f.rows.reduce(0) { $0 + $1.amount }, available - deficit)
             XCTAssertGreaterThanOrEqual(f.headlineAmount, 0)
             if deficit > 0 {
@@ -39,18 +41,18 @@ final class HomeBoardStateTests: XCTestCase {
             }
         }
     }
-    func testRescueBoard350BecomesZeroAndUndoRestoresDeficit() throws {
+    func testRescueOverspendBecomesZeroAndUndoRestoresIt() throws {
         var l = ledger(spent: 505_000); let before = value(l), cash = Finance.funds(l, now: now).cash
         let row = try HomeButler.rescueDeficit(in: &l, now: now)
-        XCTAssertEqual(row.amount, 35_000); XCTAssertEqual(value(l).deficit, 0); XCTAssertEqual(value(l).available, 0)
-        XCTAssertEqual(value(l).effectiveSaving, 0); XCTAssertEqual(Finance.funds(l, now: now).cash, cash)
+        XCTAssertEqual(row.amount, 235_000); XCTAssertEqual(value(l).deficit, 0); XCTAssertEqual(value(l).available, 0)
+        XCTAssertEqual(value(l).plannedSaving, 200_000); XCTAssertEqual(Finance.funds(l, now: now).cash, cash)
         XCTAssertEqual(value(l).rows.last?.transferIDs, [row.id])
         try Reserve.undoTransfer(row.id, in: &l, now: now); XCTAssertEqual(value(l), before)
     }
     func testRescueCapsAtAvailableSavingsAndStaysQueuedWhenInsufficient() throws {
         var l = ledger(spent: 505_000); l.fixedSavings = 10_000
         let row = try HomeButler.rescueDeficit(in: &l, now: now)
-        XCTAssertEqual(row.amount, 10_000); XCTAssertEqual(value(l).deficit, 25_000)
+        XCTAssertEqual(row.amount, 210_000); XCTAssertEqual(value(l).deficit, 25_000)
         XCTAssertEqual(Reserve.overview(l, now: now).total, 0)
         XCTAssertEqual(HomeButler.queue(l, now: now).first?.priority, 0)
     }
@@ -151,10 +153,11 @@ final class HomeBoardStateTests: XCTestCase {
         XCTAssertEqual(l.fixedSavingsTotal(now: now), saved)
         XCTAssertEqual(value(l).balanceGap, 0)
     }
-    func testReconcileUsesSavingBufferThenDeficitWithoutNegativeHeadline() throws {
-        for (cash, less, deficit) in [(Int64(801_000), Int64(30_000), Int64(0)), (500_000, 200_000, 131_000)] {
+    func testReconcileGapShowsOverspendWithoutNegativeHeadline() throws {
+        for (cash, deficit) in [(Int64(801_000), Int64(30_000)), (500_000, 331_000)] {
             let l = ledger(); let f = Reconciliation.preview(l, actual: [l.accounts[0].id: cash], now: now).spendableAfter
-            XCTAssertEqual(f.savingLess, less); XCTAssertEqual(f.deficit, deficit); XCTAssertEqual(f.available, 0)
+            XCTAssertEqual(f.plannedSaving, 200_000); XCTAssertEqual(f.deficit, deficit); XCTAssertEqual(f.available, 0)
+            XCTAssertEqual(f.headlineAmount, deficit)
         }
     }
     func testSoftLinesAmountCountRefundAndTypedPreviewArePerPeriod() throws {
@@ -187,7 +190,7 @@ final class HomeBoardStateTests: XCTestCase {
         XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 400_000, title: "相机", now: now).allowedVerdicts, [.skip])
         let less = Finance.assessPurchase(l, amount: 200_000, now: now)
         XCTAssertEqual(less.verdict, .wait); XCTAssertEqual(less.afterPurchase, 0); XCTAssertEqual(less.title, "等等再说")
-        XCTAssertEqual(less.explanation, "买了以后，这个月少攒 " + Money.text(13_600) + "。")
+        XCTAssertEqual(less.explanation, "买了以后会超支 " + Money.text(13_600) + "。")
         let gap = Finance.assessPurchase(l, amount: 400_000, now: now)
         XCTAssertEqual(gap.verdict, .skip); XCTAssertEqual(gap.title, "先别买")
         XCTAssertEqual(gap.explanation, "买了以后，要付的账单还差 " + Money.text(13_600) + "。")
@@ -216,7 +219,7 @@ final class HomeBoardStateTests: XCTestCase {
         l.plans += [earlier, current, today, later]
         let f = value(l)
         XCTAssertEqual(f.billsRest, 364_000)
-        XCTAssertEqual(f.deficit, 68_000)
+        XCTAssertEqual(f.deficit, 268_000)
         guard case .deficit(_, let bill) = f.state else { return XCTFail("Expected deficit") }
         XCTAssertEqual(bill?.planID, earlier.id)
         XCTAssertEqual(f.rows.first { $0.kind == .bills }?.occurrences.map(\.title), ["上期未付", "本期未付", "今天到期", "房租"])
@@ -249,7 +252,7 @@ final class HomeBoardStateTests: XCTestCase {
         Savings.closeCycles(&old, now: now)
         XCTAssertEqual(old.entries, entries); XCTAssertEqual(old.savingHistory, [prior])
         XCTAssertEqual(Reserve.overview(old, now: now).total, saved)
-        XCTAssertEqual(value(old).state, .savingLess(20_000))
+        XCTAssertEqual(value(old).deficit, 20_000); XCTAssertEqual(value(old).plannedSaving, 200_000)
         let once = old; Savings.closeCycles(&old, now: now); XCTAssertEqual(old, once)
         XCTAssertEqual(try JSONDecoder().decode(Ledger.self, from: JSONEncoder().encode(old)), old)
     }
@@ -261,7 +264,7 @@ final class HomeBoardStateTests: XCTestCase {
         let oldTotal = Money.limit * 2
         XCTAssertTrue(Savings.migrateSpendableModel(in: &l, now: now))
         XCTAssertEqual(Reserve.overview(l, now: now).total, oldTotal)
-        XCTAssertEqual(l.fixedSavings, Money.limit); XCTAssertEqual(l.migratedSavingCredit, Money.limit - 1)
+        XCTAssertEqual(l.fixedSavings, Money.limit); XCTAssertEqual(l.migratedSavingCredit, 0)
         let saved = l.fixedSavingsTotal(now: now)
         l.setFixedSavingsTotal(saved, now: now)
         XCTAssertEqual(l.fixedSavingsTotal(now: now), saved)

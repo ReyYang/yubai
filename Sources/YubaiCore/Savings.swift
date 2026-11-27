@@ -192,10 +192,11 @@ public enum Savings {
         let funds = Finance.funds(snapshot, now: close)
         let value = funds.spendable
         let adjustment = nonFloorAdjustment(snapshot, from: previous.start, through: close, floor: value.balanceGap)
-        let gross = value.effectiveSaving + value.available
+        // 先攒 is never shrunk during the period; at close only money that is
+        // really left can be saved, so an overspend reduces what is saved.
+        let gross = max(0, value.plannedSaving + value.rawR)
         let total = max(0, gross - adjustment)
-        // Missing money consumes unspent cash first, then the saving target.
-        let saved = min(value.effectiveSaving, total)
+        let saved = min(value.plannedSaving, total)
         let leftover = total - saved
         let baseTarget = snapshot.effectiveSavingTarget(snapshot.savingRule?.target(income: value.income) ?? 0, cycleStart: previous.start, now: close)
         Reserve.recordPaybacks(&ledger, cycleStart: previous.start, saved: saved, baseTarget: baseTarget, close: close)

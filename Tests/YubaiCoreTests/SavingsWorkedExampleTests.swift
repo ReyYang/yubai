@@ -25,15 +25,16 @@ final class SavingsWorkedExampleTests: XCTestCase {
     }
     func testWorkedExerciseMatchesBoardWithoutAnnualReserve() {
         let value = ledger(), formula = Finance.spendableBreakdown(value, now: now)
-        XCTAssertEqual(formula.income, 801_000); XCTAssertEqual(formula.effectiveSaving, 200_000)
+        XCTAssertEqual(formula.income, 801_000); XCTAssertEqual(formula.plannedSaving, 200_000)
         XCTAssertEqual(formula.billsRest, 331_000); XCTAssertEqual(formula.rows.map(\.kind), [.income, .saving, .bills, .spent])
         XCTAssertEqual(formula.spent, 83_600); XCTAssertEqual(formula.available, 186_400)
         assertIdentity(value)
     }
-    func testWorkedExerciseUsesSavingBufferBeforeDeficit() {
+    func testWorkedExerciseShowsOverspendWithoutShrinkingSaving() {
         var value = ledger(); value.entries.append(Entry(date: now, amount: 200_000, accountID: value.accounts[0].id, title: "旅行", category: "旅行"))
         let f = Finance.spendableBreakdown(value, now: now)
-        XCTAssertEqual(f.available, 0); XCTAssertEqual(f.state, .savingLess(13_600)); assertIdentity(value)
+        XCTAssertEqual(f.available, 0); XCTAssertEqual(f.deficit, 13_600); XCTAssertEqual(f.headlineTitle, "超支")
+        XCTAssertEqual(f.rows.first { $0.kind == .saving }?.amount, -200_000); assertIdentity(value)
     }
     func testIncomeSourceResolvesTheActualPostedEntry() {
         let value = ledger(), formula = Finance.spendableBreakdown(value, now: now)

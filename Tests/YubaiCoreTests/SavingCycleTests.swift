@@ -62,11 +62,11 @@ final class SavingCycleTests: XCTestCase {
     func testShortfallAndPurchaseCaps() {
         var l = ledger(150_000); l.savingRule = .fixed(200_000)
         let f = Finance.funds(l, now: now)
-        XCTAssertEqual(f.available, 0); XCTAssertEqual(f.savingShortfall, 200_000); XCTAssertEqual(f.spendable.available, 0)
+        XCTAssertEqual(f.available, 0); XCTAssertEqual(f.spendable.plannedSaving, 200_000); XCTAssertEqual(f.savingTarget, 0); XCTAssertEqual(f.spendable.deficit, -f.spendable.rawR); XCTAssertEqual(f.spendable.available, 0)
         XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 1000, title: "耳机", now: now).allowedVerdicts, [.skip])
         XCTAssertEqual(PurchaseBounds.compute(ledger: l, amount: 150_001, title: "耳机", now: now).allowedVerdicts, [.skip])
         l.accounts[0].anchorBalance = -50_000
-        XCTAssertEqual(Finance.funds(l, now: now).savingShortfall, 200_000)
+        XCTAssertEqual(Finance.funds(l, now: now).spendable.plannedSaving, 200_000)
     }
     func testCloseCyclesMergesOnlyLatestAndIsIdempotent() throws {
         var l = ledger(150_000); l.savingRule = .fixed(200_000); l.fixedSavings = 20_000
