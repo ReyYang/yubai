@@ -130,7 +130,7 @@ extension AccountKind {
         case .bank: .acctDebit
         case .credit: .acctCredit
         case .investment: .acctInvest
-        case .cash: .acctWallet
+        case .cash: .acctCash
         case .receivable: .acctReceivable
         }
     }

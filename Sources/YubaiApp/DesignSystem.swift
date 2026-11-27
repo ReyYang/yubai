@@ -1950,7 +1950,7 @@ struct EmptyState: View {
     }
     // Custom facts use the same ghost and sans title as the named page presets.
     init(_ icon: DS.Icon, _ title: String, action: String? = nil, actionIdentifier: String = "", onAction: (() -> Void)? = nil) {
-        self.kind = icon == .cycle ? .bills : icon == .memory ? .memories : .ledger
+        self.kind = icon == .cycle ? .bills : icon == .heart ? .wish : icon == .memory ? .memories : .ledger
         self.title = title; self.action = action; self.onAction = onAction
         self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = ""
     }
