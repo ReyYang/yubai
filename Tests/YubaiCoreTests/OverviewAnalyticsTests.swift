@@ -58,20 +58,56 @@ final class OverviewAnalyticsTests: XCTestCase {
         XCTAssertEqual(result.savedDelta, 10_000)
     }
 
-    func testAnomalyUsesLargestRealCategoryAndStrictThreshold() {
+    private func history(_ amounts: [String: Int64], account: Account, months: [String] = ["2026-08", "2026-09", "2026-10"]) -> [Entry] {
+        months.flatMap { month in amounts.map { expense($0.value, $0.key, account: account, at: month + "-12") } }
+    }
+
+    func testAnomalyUsesThreePeriodBaselineAndLargestExcess() {
         var (ledger, account) = sample()
-        ledger.entries = [
-            expense(13_000, "购物", account: account),
-            expense(10_000, "购物", account: account, at: "2026-10-12"),
-            expense(9_000, "吃饭", account: account),
-            expense(6_000, "吃饭", account: account, at: "2026-10-12"),
-            expense(8_000, "买菜", account: account),
-            expense(1_000, "买菜", account: account, at: "2026-10-12")
+        ledger.entries = history(["吃饭": 100_000, "购物": 200_000, "交通": 9_000], account: account) + [
+            expense(160_000, "吃饭", account: account),   // +60%, 多 600
+            expense(300_000, "购物", account: account),   // +50%, 多 1,000 → largest excess wins
+            expense(12_900, "交通", account: account)     // +43% but only 39 more
         ]
         let result = OverviewAnalytics.review(in: ledger, selection: .current, now: now)
+        XCTAssertEqual(result.anomaly?.category, "购物")
+        XCTAssertEqual(result.anomaly?.amount, 300_000)
+        XCTAssertEqual(result.anomaly?.previous, 200_000)
+        XCTAssertEqual(result.anomalyBaselineCycles, 3)
+        XCTAssertEqual(result.slices.filter(\.isAnomaly).map(\.category), ["购物"])
+        XCTAssertTrue(OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false, selection: .current, now: now).isAnomaly)
+    }
+
+    func testAnomalyNeedsExcessOverThirtyPercentAndAtLeastOneHundred() {
+        var (ledger, account) = sample()
+        ledger.entries = history(["吃饭": 100_000, "交通": 9_000], account: account)
+            + [expense(148_000, "吃饭", account: account), expense(12_900, "交通", account: account)]
+        let result = OverviewAnalytics.review(in: ledger, selection: .current, now: now)
         XCTAssertEqual(result.anomaly?.category, "吃饭")
-        XCTAssertEqual(result.slices.first?.changePercent, 30)
-        XCTAssertEqual(result.slices.filter(\.isAnomaly).count, 1)
+        XCTAssertEqual(result.anomaly.map { $0.amount - $0.previous }, 48_000)
+        ledger.entries[ledger.entries.count - 2].amount = 130_000
+        XCTAssertNil(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly)
+    }
+
+    func testRentFixedBillsAndPendingRecoveryNeverBecomeAnAnomaly() {
+        var (ledger, account) = sample()
+        var rent = expense(331_000, "居住", account: account); rent.rentID = UUID()
+        var fixed = expense(80_000, "会员订阅", account: account); fixed.planID = UUID()
+        var aa = expense(90_000, "吃饭", account: account); aa.pendingRecovery = .split
+        ledger.entries = history(["居住": 10_000, "会员订阅": 10_000, "吃饭": 100_000], account: account)
+            + [rent, fixed, aa, expense(100_000, "吃饭", account: account)]
+        XCTAssertNil(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly)
+    }
+
+    func testAnomalyNeedsTwoEarlierPeriodsAndANonzeroBaseline() {
+        var (ledger, account) = sample()
+        ledger.entries = history(["吃饭": 100_000], account: account, months: ["2026-10"])
+            + [expense(200_000, "吃饭", account: account)]
+        XCTAssertNil(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly)
+        ledger.entries += history(["吃饭": 100_000], account: account, months: ["2026-09"])
+        XCTAssertEqual(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomalyBaselineCycles, 2)
+        ledger.entries.append(expense(50_000, "旅行", account: account))
+        XCTAssertEqual(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly?.category, "吃饭")
     }
 
     func testTopFiveAndOtherAreSortedAfterAggregation() throws {
@@ -103,7 +139,7 @@ final class OverviewAnalyticsTests: XCTestCase {
         XCTAssertEqual(drill.entries.map(\.amount), [1_000, 12_000])
         XCTAssertEqual(drill.slices.first?.changePercent, 100)
         XCTAssertEqual(drill.slices.last?.category, "未分类")
-        XCTAssertTrue(drill.slices.first?.isAnomaly == true)
+        XCTAssertFalse(drill.isAnomaly) // one earlier period is not enough for 多花
         XCTAssertEqual(drill.budget?.name, "购物")
     }
 
@@ -254,14 +290,16 @@ final class OverviewAnalyticsTests: XCTestCase {
         XCTAssertNil(result.budget)
     }
 
-    func testPendingCategoryNeverBecomesAnAnomaly() {
+    func testPendingCategoryNeverBecomesAnAnomalyAndLargeShareIsReported() {
         var (ledger, bank) = sample()
         let pending = Classification.pendingCategory
-        ledger.entries = [expense(50_000, pending, account: bank),
-                          expense(5_000, pending, account: bank, at: "2026-10-12"),
-                          expense(8_000, "购物", account: bank),
-                          expense(4_000, "购物", account: bank, at: "2026-10-12")]
-        XCTAssertEqual(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly?.category, "购物")
+        ledger.entries = history([pending: 5_000, "购物": 40_000], account: bank)
+            + [expense(50_000, pending, account: bank), expense(80_000, "购物", account: bank)]
+        let result = OverviewAnalytics.review(in: ledger, selection: .current, now: now)
+        XCTAssertEqual(result.anomaly?.category, "购物")
+        XCTAssertEqual(result.unsorted?.count, 1); XCTAssertEqual(result.unsorted?.amount, 50_000)
+        ledger.entries[ledger.entries.count - 2].amount = 30_000
+        XCTAssertNil(OverviewAnalytics.review(in: ledger, selection: .current, now: now).unsorted)
     }
 
     func testRecentEntriesUseAccountPostingAndHighlightIgnoresAdjustments() {

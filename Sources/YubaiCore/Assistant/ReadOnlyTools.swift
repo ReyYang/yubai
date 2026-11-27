@@ -37,7 +37,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
     public var name: String { rawValue }
     public var description: String {
         switch self {
-        case .getFunds: return "本机计算这个周期的还能花：本期已到账可支配收入 + 上期留下 − 要攒 − 还要付 − 已经花了 + 拿出来用 − 余额差额。期初余额、未来收入、直接存入的收入和未明进账不计入收入。主数字使用headline_title和headline_amount；少攒和缺口使用本机事实，主数字不写负数。存下的钱单独保留。工资确认到账才开始新周期，晚到延续旧周期。"
+        case .getFunds: return "本机计算这个周期的还能花：本期已到账可支配收入 + 上期留下 − 要攒 − 还要付 − 已经花了 + 拿出来用 − 余额差额。期初余额、未来收入、直接存入的收入和未明进账不计入收入。主数字使用headline_title和headline_amount；超支使用本机事实，先攒不因超支变少，主数字不写负数。存下的钱单独保留。工资确认到账才开始新周期，晚到延续旧周期。"
 
         case .forecast: return "从今天预测指定日期的保守/预计余额及此前已知付款；可比较一笔金额。最远365天，预计收入不算保守资金。"
         case .queryEntries: return "筛选记录，返回本地证据ID及脱敏摘要，每页最多50条。offset从0开始，用next_offset继续查询。日期边界均包含当天，金额过滤用原始金额。"
@@ -95,7 +95,7 @@ public enum ReadOnlyTool: String, CaseIterable, AssistantTool {
                 "committed": .money(f.committed), "goals": .money(f.goals), "fixed_savings": .money(f.fixedSavingsTotal),
                 "cycle_start": .string(Dates.text(f.cycleStart)), "cycle_end": .string(Dates.text(f.cycleEnd)), "cycle_is_payday": .bool(f.cycleIsPayday),
                 "cycle_income": .money(f.cycleIncome), "saving_target": .money(f.savingTarget),
-                "cycle_spent": .money(f.cycleSpent), "due_rest": .money(f.dueRest), "saving_shortfall": .money(f.savingShortfall),
+                "cycle_spent": .money(f.cycleSpent), "due_rest": .money(f.dueRest),
                 "headline_title": .string(f.spendable.headlineTitle), "headline_amount": .money(f.spendable.headlineAmount),
                 "raw_remaining": .money(f.spendable.rawR), "deficit": .money(f.spendable.deficit),
                 "planned_saving": .money(f.spendable.plannedSaving),

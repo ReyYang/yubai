@@ -4,7 +4,7 @@ public struct SpendableRow: Equatable, Identifiable, Sendable {
     public enum Kind: String, CaseIterable, Sendable { case income, carry, saving, bills, spent, withdrawal, balanceGap, deposit }
     public var kind: Kind
     public var id: String { kind.rawValue }
-    /// Signed contribution to the worked exercise; saving uses its effective amount.
+    /// Signed contribution to the worked exercise. The saving row is always the planned amount.
     public var amount: Int64
     public var originalAmount: Int64
     public var entryIDs: [UUID] = []
@@ -24,7 +24,7 @@ public struct SpendableRow: Equatable, Identifiable, Sendable {
 public struct SpendableBreakdown: Equatable, Sendable {
     public enum State: Equatable, Sendable {
         case normal
-        case savingLess(Int64)
+        /// 还能花 below zero. 先攒 is never used to cover it automatically.
         case deficit(amount: Int64, bill: Occurrence?)
         case spentFallback
     }
@@ -38,12 +38,11 @@ public struct SpendableBreakdown: Equatable, Sendable {
     public var asOf: Date = .distantPast
     public var rows: [SpendableRow]
     public var state: State
-    /// R before the automatic saving buffer. Use available/headlineAmount for display.
+    /// Signed 还能花; negative means overspent. Use available/headlineAmount for display.
     public var rawR: Int64
     public var income: Int64
     public var carry: Int64
     public var plannedSaving: Int64
-    public var effectiveSaving: Int64
     public var billsRest: Int64
     public var spent: Int64
     public var withdrawal: Int64
@@ -55,21 +54,26 @@ public struct SpendableBreakdown: Equatable, Sendable {
     public var available: Int64 { max(0, rawR) }
     public var showsSpendableDeficit: Bool { income > 0 && deficit > 0 }
     public var spendableDisplayAmount: Int64 { showsSpendableDeficit ? deficit : available }
-    public var savingLess: Int64 { min(plannedSaving, max(0, -rawR)) }
-    public var deficit: Int64 { max(0, -rawR - plannedSaving) }
+    /// 超支: how far 还能花 is below zero. 先攒 stays at plannedSaving.
+    public var deficit: Int64 { max(0, -rawR) }
+    /// Money actually left for saving if the period closed now.
+    public var savingCovered: Int64 { max(0, min(plannedSaving, plannedSaving + rawR)) }
+    /// This period's 先攒 as shown in savings: the plan once income has arrived;
+    /// before that only money that really exists.
+    public var savingSetAside: Int64 { income > 0 ? plannedSaving : savingCovered }
     public var offersFormula: Bool { state != .spentFallback }
     public var headlineTitle: String {
-        switch state { case .deficit: "缺口"; case .spentFallback: "这个月花了"; default: "还能花" }
+        switch state { case .deficit: "超支"; case .spentFallback: "这个月花了"; default: "还能花" }
     }
     public var daysTotal: Int { max(1, (Dates.calendar.dateComponents([.day], from: cycleStart, to: cycleEnd).day ?? 0) + 1) }
     public var daysLeft: Int { max(1, (Dates.calendar.dateComponents([.day], from: Dates.day(asOf), to: cycleEnd).day ?? 0) + 1) }
     public var interval: DateInterval { DateInterval(start: cycleStart, end: Dates.addDays(1, to: cycleEnd)) }
     public var billCount: Int { rows.first { $0.kind == .bills }?.occurrences.count ?? 0 }
     public var billsPaid: Int { bills.filter { $0.state == .paid }.count }
-    public var saving: Int64 { effectiveSaving }
+    public var saving: Int64 { plannedSaving }
     public var savingRuleTarget: Int64 { plannedSaving }
     static let empty = Self(cycleStart: .distantPast, cycleEnd: .distantPast, rows: [], state: .spentFallback,
-                            rawR: 0, income: 0, carry: 0, plannedSaving: 0, effectiveSaving: 0, billsRest: 0,
+                            rawR: 0, income: 0, carry: 0, plannedSaving: 0, billsRest: 0,
                             spent: 0, withdrawal: 0, balanceGap: 0, headlineAmount: 0)
 }
 
@@ -140,10 +144,9 @@ extension Finance {
         let reconciliation = ledger.periodReconciliations.last { abs($0.cycleStart.timeIntervalSince(cycle.start)) <= 36 * 3600 && $0.date <= now }
         let gap = reconciliation?.floor ?? 0
         let raw = income + carry - planned - bills - spent + netWithdrawal - deposited - gap
-        let effective = max(0, planned - max(0, -raw))
-        let deficit = max(0, -raw - planned)
+        let deficit = max(0, -raw)
         let known = anchorPlan(in: ledger, now: now) != nil && income > 0
-        let state: SpendableBreakdown.State = !known ? .spentFallback : deficit > 0 ? .deficit(amount: deficit, bill: commitments.first) : raw < 0 ? .savingLess(-raw) : .normal
+        let state: SpendableBreakdown.State = !known ? .spentFallback : deficit > 0 ? .deficit(amount: deficit, bill: commitments.first) : .normal
         let totalDays = max(1, (Dates.calendar.dateComponents([.day], from: cycle.start, to: cycle.end).day ?? 0) + 1)
         let elapsed = (Dates.calendar.dateComponents([.day], from: cycle.start, to: Dates.day(now)).day ?? 0) + 1
         let elapsedDays = min(totalDays, max(0, elapsed))
@@ -153,14 +156,14 @@ extension Finance {
         let fast = fill >= 1 || (freeTotal > 0 && spent > 0 && Decimal(spent) * Decimal(totalDays) * 20 > Decimal(freeTotal) * (Decimal(elapsedDays) * 20 + Decimal(totalDays) * 3))
         var rows = [SpendableRow(kind: .income, amount: income, originalAmount: income, entryIDs: incomeEntries.map(\.id))]
         if carry != 0 { rows.append(SpendableRow(kind: .carry, amount: carry, originalAmount: carry, historyIDs: carries.map(\.sourceCycleStart), date: carries.last?.date)) }
-        if planned != 0 { rows.append(SpendableRow(kind: .saving, amount: -effective, originalAmount: planned, transferIDs: transfers.filter { $0.fromSetAside > 0 }.map(\.id), coverIDs: ledger.cycleCovers.filter { $0.source == .saveLess && $0.cycleStart == cycle.start && $0.date <= now }.map(\.id), paybackIDs: Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).map(\.id), setting: ledger.savingRule)) }
+        if planned != 0 { rows.append(SpendableRow(kind: .saving, amount: -planned, originalAmount: planned, transferIDs: transfers.filter { $0.fromSetAside > 0 }.map(\.id), coverIDs: ledger.cycleCovers.filter { $0.source == .saveLess && $0.cycleStart == cycle.start && $0.date <= now }.map(\.id), paybackIDs: Reserve.paybackAmounts(ledger, cycleStart: cycle.start, now: now).map(\.id), setting: ledger.savingRule)) }
         if deposited != 0 { rows.append(SpendableRow(kind: .deposit, amount: -deposited, originalAmount: deposited, entryIDs: deposits.map(\.id))) }
         if bills != 0 { rows.append(SpendableRow(kind: .bills, amount: -bills, originalAmount: bills, occurrences: commitments)) }
         rows.append(SpendableRow(kind: .spent, amount: -spent, originalAmount: spent, entryIDs: expenseEntries.map(\.id)))
         if netWithdrawal != 0 { rows.append(SpendableRow(kind: .withdrawal, amount: netWithdrawal, originalAmount: withdrawal, transferIDs: transfers.map(\.id), coverIDs: covers.map(\.id), date: transfers.last?.date ?? covers.last?.date)) }
         if gap != 0 { rows.append(SpendableRow(kind: .balanceGap, amount: -gap, originalAmount: gap, entryIDs: reconciliation?.entryIDs ?? [], accountIDs: ledger.accounts.filter { $0.kind == .bank || $0.kind == .cash }.map(\.id), date: reconciliation?.date)) }
         return SpendableBreakdown(cycleStart: cycle.start, cycleEnd: cycle.end, asOf: now, rows: rows, state: state, rawR: raw,
-            income: income, carry: carry, plannedSaving: planned, effectiveSaving: effective, billsRest: bills, spent: spent,
+            income: income, carry: carry, plannedSaving: planned, billsRest: bills, spent: spent,
             withdrawal: netWithdrawal, balanceGap: gap, headlineAmount: !known ? max(0, spent) : deficit > 0 ? deficit : max(0, raw),
             waterBar: known ? .init(fill: fill, tick: tick, fast: fast) : nil)
     }

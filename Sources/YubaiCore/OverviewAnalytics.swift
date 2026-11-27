@@ -49,8 +49,15 @@ public struct OverviewReviewSnapshot: Equatable, Sendable {
     public let previousSaved: Int64
     public var savedDelta: Int64 { saved - previousSaved }
     public let window: OverviewPeriodWindow
+    /// 多花: `previous` is the average of the same span in up to 3 earlier periods.
     public let anomaly: OverviewCategorySlice?
     public let slices: [OverviewCategorySlice]
+    /// How many earlier periods the anomaly baseline averages (2 or 3).
+    public var anomalyBaselineCycles: Int = 0
+    /// Spending still in the catch-all category, when it is over 30% of the period.
+    public var unsorted: (count: Int, amount: Int64)? { unsortedCount > 0 ? (unsortedCount, unsortedAmount) : nil }
+    var unsortedCount = 0
+    var unsortedAmount: Int64 = 0
 }
 
 public struct OverviewCategoryDrill: Equatable, Sendable {
@@ -146,7 +153,8 @@ public enum OverviewAnalytics {
         let data = spending(in: ledger, selection: selection, now: now)
         let byCategory = totals(data.current) { $0.assignment.category }
         let comparison = totals(data.previous) { $0.assignment.category }
-        let anomaly = anomalyCategory(byCategory, comparison)
+        let overspend = anomaly(in: ledger, selection: selection, window: data.window, current: data.current, now: now)
+        let anomaly = overspend?.category
         let ordered = orderedTotals(byCategory)
         var slices = ordered.prefix(5).map { category, amount in
             slice(category, amount: amount, previous: comparison[category, default: 0], anomaly: category == anomaly)
@@ -160,13 +168,22 @@ public enum OverviewAnalytics {
                                                 isOther: true, isAnomaly: false))
         }
         let savingsCycles = historicalSavingCycles(in: ledger, since: data.window.comparison.start, now: now)
-        return OverviewReviewSnapshot(spent: data.current.reduce(0) { $0 + $1.amount },
+        let spent = data.current.reduce(Int64(0)) { $0 + $1.amount }
+        let unsorted = data.current.filter { Classification.isPending($0.assignment.category) }
+        let unsortedAmount = unsorted.reduce(Int64(0)) { $0 + $1.amount }
+        var snapshot = OverviewReviewSnapshot(spent: spent,
                                       previousSpent: data.previous.reduce(0) { $0 + $1.amount },
                                       saved: saving(in: ledger, during: data.window.interval, closedCycles: savingsCycles, now: now),
                                       previousSaved: saving(in: ledger, during: data.window.comparison, closedCycles: savingsCycles, now: now),
                                       window: data.window,
-                                      anomaly: anomaly.map { slice($0, amount: byCategory[$0, default: 0], previous: comparison[$0, default: 0], anomaly: true) },
+                                      anomaly: overspend.map { slice($0.category, amount: $0.amount, previous: $0.baseline, anomaly: true) },
                                       slices: slices.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount })
+        snapshot.anomalyBaselineCycles = overspend?.cycles ?? 0
+        if spent > 0, unsortedAmount * 10 > spent * 3 {
+            snapshot.unsortedCount = unsorted.filter { $0.entry.nature == .expense }.count
+            snapshot.unsortedAmount = unsortedAmount
+        }
+        return snapshot
     }
 
     public static func categoryDrill(in ledger: Ledger, title: String, categories: [String], isOther: Bool,
@@ -175,8 +192,8 @@ public enum OverviewAnalytics {
         let members = Set(categories)
         let current = data.current.filter { members.contains($0.assignment.category) }
         let previous = data.previous.filter { members.contains($0.assignment.category) }
-        let anomaly = !isOther && categories.count == 1 && categories.first == anomalyCategory(
-            totals(data.current) { $0.assignment.category }, totals(data.previous) { $0.assignment.category })
+        let anomaly = !isOther && categories.count == 1 && categories.first == self.anomaly(
+            in: ledger, selection: selection, window: data.window, current: data.current, now: now)?.category
         func group(_ row: Spending) -> String {
             isOther ? row.assignment.category : row.assignment.subcategory ?? "未分类"
         }
@@ -257,7 +274,7 @@ public enum OverviewAnalytics {
         let afterAnchor: Bool
     }
 
-    private struct Spending {
+    struct Spending {
         let entry: Entry
         let amount: Int64
         let assignment: CategoryAssignment
@@ -288,7 +305,7 @@ public enum OverviewAnalytics {
         let start = Finance.cycle(in: ledger, now: now).start
         // Set-aside is a cycle fact. Include each overlapping cycle once, even for a partial range.
         let active = interval.start <= now && interval.end > start
-            ? Finance.spendableBreakdown(ledger, now: now).effectiveSaving : 0
+            ? Finance.spendableBreakdown(ledger, now: now).savingSetAside : 0
         var matched = Set<Date>()
         var closed: Int64 = 0
         for cycle in closedCycles where interval.start < cycle.end && cycle.start < interval.end {
@@ -312,10 +329,63 @@ public enum OverviewAnalytics {
         return active + closed + deposits
     }
 
-    private static func anomalyCategory(_ current: [String: Int64], _ previous: [String: Int64]) -> String? {
-        orderedTotals(current).first {
-            !Classification.isPending($0.key) && (changePercent($0.value, previous: previous[$0.key, default: 0]) ?? 0) > 30
-        }?.key
+    /// The same span in up to 3 earlier periods, most recent first.
+    static func baselineWindows(selection: OverviewPeriodSelection, window: OverviewPeriodWindow,
+                                in ledger: Ledger, now: Date) -> [DateInterval] {
+        let span = window.interval.duration
+        func clip(_ cycle: DateInterval) -> DateInterval {
+            DateInterval(start: cycle.start, end: min(cycle.end, cycle.start.addingTimeInterval(span)))
+        }
+        switch selection {
+        case .current:
+            return Finance.pastCycles(ledger, now: now, limit: 3).map(clip)
+        case .previous:
+            return Finance.pastCycles(ledger, now: now, limit: 4).dropFirst().map(clip)
+        case .custom:
+            return (1...3).map { k in
+                DateInterval(start: window.interval.start.addingTimeInterval(-span * Double(k)), duration: span)
+            }
+        }
+    }
+
+    /// 多花 compares everyday spending with the average of the same span in up to
+    /// 3 earlier periods. Fixed bills, rent, pending 报销/AA and the catch-all
+    /// category never count. Needs 2 earlier periods with spending, a nonzero
+    /// baseline, and an excess over 30% that is at least ¥100. The largest
+    /// excess wins.
+    static func anomaly(in ledger: Ledger, selection: OverviewPeriodSelection, window: OverviewPeriodWindow,
+                        current: [Spending], now: Date) -> (category: String, amount: Int64, baseline: Int64, cycles: Int)? {
+        let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        func everyday(_ row: Spending) -> Bool {
+            let source = row.entry.relatedEntryID.flatMap { lookup[$0] } ?? row.entry
+            return source.planID == nil && source.rentID == nil && source.pendingRecovery == nil
+                && row.entry.planID == nil && row.entry.rentID == nil
+                && !Classification.isPending(row.assignment.category)
+        }
+        let windows = baselineWindows(selection: selection, window: window, in: ledger, now: now)
+        var history: [[String: Int64]] = Array(repeating: [:], count: windows.count)
+        var active = Array(repeating: false, count: windows.count)
+        for entry in ledger.entries where entry.date <= now {
+            guard let index = windows.firstIndex(where: { contains($0, entry.date) }),
+                  let amount = Finance.periodSpending(for: entry, in: ledger, entriesByID: lookup) else { continue }
+            active[index] = true
+            let row = Spending(entry: entry, amount: amount, assignment: ledger.normalizedCategory(for: entry, entriesByID: lookup))
+            if everyday(row) { history[index][row.assignment.category, default: 0] += amount }
+        }
+        let used = history.indices.filter { active[$0] }.map { history[$0] }
+        guard used.count >= 2 else { return nil }
+        let currentTotals = totals(current.filter(everyday)) { $0.assignment.category }
+        var best: (category: String, amount: Int64, baseline: Int64, cycles: Int)?
+        for (category, amount) in currentTotals {
+            let sum = used.reduce(Int64(0)) { $0 + $1[category, default: 0] }
+            let baseline = (sum + Int64(used.count) / 2) / Int64(used.count)
+            let excess = amount - baseline
+            guard baseline > 0, excess >= 10_000, excess * 10 > baseline * 3 else { continue }
+            if best.map({ excess > $0.amount - $0.baseline || (excess == $0.amount - $0.baseline && category < $0.category) }) ?? true {
+                best = (category, amount, baseline, used.count)
+            }
+        }
+        return best
     }
 
     private static func totals(_ entries: [Spending], by key: (Spending) -> String) -> [String: Int64] {

@@ -341,7 +341,7 @@ enum AppSheet: Identifiable {
     var recordGap: Reconciliation.Gap? { derived(gapSlot) { Reconciliation.gap(in: $0, now: $1) } }
     /// 上期结余自动存好后的通知。
     var pendingLeftover: CycleSaving? { derived(leftoverSlot) { ledger, now in Savings.carryNotice(in: ledger, now: now) } }
-    /// 超过要攒缓冲后的缺口；无缺口为 `nil`。
+    /// 还能花低于零时的超支；没超支为 `nil`。
     var overspend: Overspend.Options? { derived(overspendSlot) { Overspend.options($0, now: $1) } }
 
     // MARK: 今天先不问

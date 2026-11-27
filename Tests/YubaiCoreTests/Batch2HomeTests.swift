@@ -19,35 +19,32 @@ final class Batch2HomeTests: XCTestCase {
         return (ledger, bank)
     }
 
-    func testSpendableDisplayAppliesSavingBufferBeforeReportingDeficit() throws {
+    func testOverspendIsShownWithoutShrinkingSaving() throws {
         var (ledger, bank) = sample()
         let now = date("2026-11-23")
         ledger.entries[1].amount = 800_000
         ledger.savingRule = .fixed(200_000)
         ledger.fixedSavings = 300_000
         ledger.entries.append(Entry(date: now, amount: 620_000, accountID: bank.id, title: "日常"))
-        let less = Finance.spendableBreakdown(ledger, now: now)
-        XCTAssertEqual(less.rawR, -20_000)
-        XCTAssertEqual(less.savingLess, 20_000)
-        XCTAssertEqual(less.deficit, 0)
-        XCTAssertFalse(less.showsSpendableDeficit)
-        XCTAssertEqual(less.spendableDisplayAmount, 0)
-
-        ledger.entries[2].amount = 835_000
         let over = Finance.spendableBreakdown(ledger, now: now)
-        XCTAssertEqual(over.rawR, -235_000)
+        XCTAssertEqual(over.rawR, -20_000)
         XCTAssertEqual(over.plannedSaving, 200_000)
-        XCTAssertEqual(over.effectiveSaving, 0)
+        XCTAssertEqual(over.rows.first { $0.kind == .saving }?.amount, -200_000)
+        XCTAssertEqual(over.deficit, 20_000)
+        XCTAssertEqual(over.headlineTitle, "超支")
+        XCTAssertEqual(over.headlineAmount, 20_000)
         XCTAssertTrue(over.showsSpendableDeficit)
-        XCTAssertEqual(over.spendableDisplayAmount, 35_000)
+        XCTAssertEqual(over.spendableDisplayAmount, 20_000)
+        XCTAssertEqual(over.savingCovered, 180_000)
         let cover = try Reserve.transfer(.take, amount: over.spendableDisplayAmount, in: &ledger, now: now)
-        XCTAssertEqual(cover.amount, 35_000)
-        XCTAssertEqual(ledger.fixedSavingsTotal(now: now), 265_000)
+        XCTAssertEqual(cover.amount, 20_000)
+        XCTAssertEqual(ledger.fixedSavingsTotal(now: now), 280_000)
         let covered = Finance.spendableBreakdown(ledger, now: now)
         XCTAssertFalse(covered.showsSpendableDeficit)
+        XCTAssertEqual(covered.headlineTitle, "还能花")
         XCTAssertEqual(covered.spendableDisplayAmount, 0)
         try Reserve.undoTransfer(cover.id, in: &ledger, now: now)
-        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).spendableDisplayAmount, 35_000)
+        XCTAssertEqual(Finance.spendableBreakdown(ledger, now: now).spendableDisplayAmount, 20_000)
     }
 
     func testReimbursementRestoresOnlyThePostingCyclesBucket() throws {

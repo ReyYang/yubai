@@ -69,13 +69,13 @@ final class ReservePurchaseTests: XCTestCase {
     func testOverspendBothRoutesAndCushion() throws {
         let at = LedgerFixture.date("2026-12-05 12:00")
         var l = overspent(); let options = try XCTUnwrap(Overspend.options(l, now: at))
-        XCTAssertEqual(options.overBy, 32_000); XCTAssertEqual(options.daysLeft, 5)
-        XCTAssertEqual(options.maxSaveLess, 0); XCTAssertEqual(options.maxFromReserve, 500_000)
+        XCTAssertEqual(options.overBy, 232_000); XCTAssertEqual(options.daysLeft, 5)
+        XCTAssertEqual(options.maxSaveLess, 0); XCTAssertEqual(options.maxFromReserve, 700_000)
         let row = try HomeButler.rescueDeficit(in: &l, now: at)
-        XCTAssertEqual(row.amount, 32_000); XCTAssertEqual(Finance.funds(l, now: at).available, 0)
-        XCTAssertNil(Overspend.options(l, now: at)); XCTAssertEqual(l.fixedSavingsTotal(now: at), 468_000)
+        XCTAssertEqual(row.amount, 232_000); XCTAssertEqual(Finance.funds(l, now: at).available, 0)
+        XCTAssertNil(Overspend.options(l, now: at)); XCTAssertEqual(l.fixedSavingsTotal(now: at), 268_000)
         try Reserve.undoTransfer(row.id, in: &l, now: at)
-        XCTAssertEqual(Overspend.options(l, now: at)?.overBy, 32_000)
+        XCTAssertEqual(Overspend.options(l, now: at)?.overBy, 232_000)
     }
     func testOverspendLimitsInvalidAmountsAndZeroOptions() throws {
         let at = LedgerFixture.date("2026-12-05 12:00")
@@ -148,7 +148,7 @@ extension ReservePurchaseTests {
         XCTAssertThrowsError(try ManualBookkeeping.edit(edited, in: &l, now: now))
         XCTAssertThrowsError(try ManualBookkeeping.edit(edited, in: &l))
     }
-    func testReserveTrueAndSpreadKeysRoundTripAndShareCoverUsesEffectiveTarget() throws {
+    func testReserveTrueAndSpreadKeysRoundTripAndShareCoverKeepsPlannedTarget() throws {
         var l = LedgerFixture.ledger()
         l.savingRule = .share(20)
         let rule = Finance.funds(l, now: now).savingRuleTarget
@@ -165,6 +165,6 @@ extension ReservePurchaseTests {
         let draft = EntryDraft(date: now, amount: 1000, accountID: l.accounts[0].id, title: "Test", fromReserve: true)
         XCTAssertEqual(try JSONDecoder().decode(EntryDraft.self, from: JSONEncoder().encode(draft)), draft)
         let at = LedgerFixture.date("2026-12-05 12:00")
-        XCTAssertEqual(Reserve.overview(overspent(), now: at).setAside, 0)
+        XCTAssertEqual(Reserve.overview(overspent(), now: at).setAside, 200_000)
     }
 }
