@@ -27,8 +27,12 @@ struct SettingsView: View {
                         DSSettingsCard {
                             link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(SettingsSummary.monthlyFixed(in: ledger, now: now).total, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
                             link(.catAll, "分类", "\(ledger.orderedCategories(income: false).count) 个", id: "openCategories") { store.tabRouteRequest = .categorySettings }
-                            link(.acctBalance, "币种", SettingsDisplay.currencies(store.preferences), id: "settingsCurrency") { store.tabRouteRequest = .currency }
-                            link(.bolt, "快速记账", "Apple Pay", id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
+                            link(.acctDebit, "账户", "\(store.accounts.filter { !$0.archived }.count) 个", id: "settingsAccounts") { store.tabRouteRequest = .assets }
+                        }
+                        // Canvas S-Settings: 主币种 and 快速记账 share a group.
+                        DSSettingsCard {
+                            link(.exchange, "主币种", SettingsDisplay.mainCurrency(store.preferences), brand: true, first: true, id: "settingsCurrency") { store.tabRouteRequest = .currency }
+                            link(.bolt, "快速记账", "近 7 天 \(store.recentCaptures.count) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
                         }
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
@@ -127,9 +131,10 @@ struct SettingsView: View {
         }
     }
 
-    static func currencies(_ preferences: Preferences) -> String {
-        let foreign = preferences.lastBillCurrency ?? (preferences.billExchangeRates ?? []).first?.currency
-        return ([BillCurrency.cny] + [foreign].compactMap { $0 }.filter { $0 != .cny }).map(\.rawValue).joined(separator: " · ")
+    /// 主币种 row: 「人民币 ¥」.
+    static func mainCurrency(_ preferences: Preferences) -> String {
+        let main = preferences.mainCurrency ?? .cny
+        return main.unit + " " + main.symbol
     }
 
     static func noticeCount(_ preferences: Preferences) -> Int {

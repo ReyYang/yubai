@@ -11,6 +11,7 @@ enum SettingsSheet: Hashable, Identifiable {
     case addCategory(income: Bool), addSubcategory(category: String, income: Bool)
     case renameSubcategory(category: String, sub: String, income: Bool)
     case addCurrency, rate(BillCurrency), mainCurrency(BillCurrency)
+    case captureCard(String), captureMerchant(String)
     case accountAdd(AccountType?, onboarding: Bool)
     case accountName(UUID), accountType(UUID), accountLimit(UUID), accountDay(UUID, statement: Bool)
     case onboardFloor
@@ -99,6 +100,8 @@ struct SettingsSheetHost: View {
         case .addCurrency: AddCurrencySheet()
         case .rate(let currency): RateSheet(currency: currency)
         case .mainCurrency(let currency): MainCurrencyConfirm(currency: currency)
+        case .captureCard(let card): CaptureCardSheet(card: card)
+        case .captureMerchant(let key): CaptureMerchantSheet(key: key)
         case let .accountAdd(type, onboarding): AccountAddSheet(type: type ?? .debit, onboarding: onboarding)
         case .accountName(let id): TextEntrySheet(title: "名称", placeholder: "名称", initial: store.accounts.first { $0.id == id }?.name ?? "", identifier: "accountName") { name, ledger in
             try Accounts.update(id, .init(name: name), in: &ledger, now: Dates.now)

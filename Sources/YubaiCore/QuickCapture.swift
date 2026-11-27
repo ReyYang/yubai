@@ -78,6 +78,51 @@ public enum QuickCapture {
         let sources: Set<String> = entrance == .siri ? [entrance.rawValue, "快捷指令"] : [entrance.rawValue]
         return ledger.activeEntries.filter { sources.contains($0.source) && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= now }.count
     }
+    /// 卡对应的账户 (S-Quick-Cards): every card seen in Apple Pay bills or given an account, with its
+    /// bills in the last `days` days and the account it records to.
+    public struct CardSummary: Equatable, Sendable, Identifiable {
+        public var id: String { card }
+        public let card: String
+        public let recentCount: Int
+        public let accountID: UUID?
+    }
+
+    public static func cards(in ledger: Ledger, now: Date = Dates.now, days: Int = 30) -> [CardSummary] {
+        let start = Dates.addDays(-(days - 1), to: Dates.day(now))
+        var names: [String: String] = [:]   // card key → shown name
+        var counts: [String: Int] = [:]
+        for entry in ledger.activeEntries {
+            guard let card = entry.quickCapture?.card?.trimmingCharacters(in: .whitespacesAndNewlines), !card.isEmpty else { continue }
+            let key = cardKey(card)
+            names[key] = names[key] ?? card
+            let when = entry.quickCapture?.transactionDate ?? entry.recordedAt ?? entry.date
+            if when >= start && when <= now { counts[key, default: 0] += 1 }
+        }
+        var accounts: [String: UUID] = [:]
+        for (name, id) in ledger.preferences.quickCapture.cardAccounts {
+            let key = cardKey(name)
+            names[key] = name
+            accounts[key] = id
+        }
+        return names.map { key, name in
+            CardSummary(card: name, recentCount: counts[key, default: 0], accountID: accounts[key])
+        }.sorted { $0.recentCount == $1.recentCount ? $0.card < $1.card : $0.recentCount > $1.recentCount }
+    }
+
+    /// 卡对应的账户 · 选账户: later Apple Pay bills on this card go to `accountID`.
+    public static func setAccount(_ accountID: UUID, forCard card: String, in ledger: inout Ledger) throws {
+        let clean = card.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !clean.isEmpty, ledger.accounts.contains(where: { $0.id == accountID && !$0.archived }) else {
+            throw YubaiError.invalid("请选择账户。")
+        }
+        var next = ledger
+        for name in next.preferences.quickCapture.cardAccounts.keys where cardKey(name) == cardKey(clean) {
+            next.preferences.quickCapture.cardAccounts.removeValue(forKey: name)
+        }
+        next.preferences.quickCapture.cardAccounts[clean] = accountID
+        try next.validate(); ledger = next
+    }
+
     @discardableResult public static func record(_ drafts: [EntryDraft], in ledger: inout Ledger, source: String = "快捷指令", withoutOpeningApp: Bool = true, now: Date = Dates.now) throws -> [UUID] {
         guard !drafts.isEmpty else { return [] }
         var next = ledger

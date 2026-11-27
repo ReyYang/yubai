@@ -759,3 +759,20 @@ struct WishesHubView: View {
         }.dsPressStyle().accessibilityIdentifier(id)
     }
 }
+
+/// 设置 › 账户: the same accounts and balances as 全景 · 资产, pushed with its own back.
+struct SettingsAccountsPage: View {
+    var body: some View {
+        VStack(spacing: .zero) {
+            OverviewNavigationBar(title: "账户")
+            ScrollView {
+                AssetsView().padding(.horizontal, DS.Space.s20).padding(.bottom, DS.Space.s28)
+            }.scrollIndicators(.hidden)
+        }
+        .background(DS.Color.bg.ignoresSafeArea())
+        .dsEdgeSwipeBack()
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
+    }
+}

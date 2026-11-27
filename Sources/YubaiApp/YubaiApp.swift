@@ -30,7 +30,7 @@ struct LedgerPreset: Equatable {
 }
 enum TabRoute: Hashable {
     case profile, wishlist
-    case quickCapture, importHistory, backup, storage, frequent
+    case quickCapture, quickCards, quickMerchants, importHistory, backup, storage, frequent
     case formula, settings, savingRule, reserve
     case weekly(UUID?), whereCategory(title: String, categories: [String], isOther: Bool, selection: OverviewPeriodSelection), memories
     /// The 多花 card's page: the same everyday bills, amount and baseline as the card.
@@ -1537,7 +1537,8 @@ struct RootView: View {
         case .savingRule: SavingsView()
         case .reserve: ReserveView()
         case .weekly(let id): weeklyDestination(id)
-        case .assets, .overviewBills: EmptyView()
+        case .assets: SettingsAccountsPage()
+        case .overviewBills: EmptyView()
         case .accountDetail(let id): AccountDetailView(accountID: id)
         case let .whereCategory(title, categories, isOther, selection): ReviewDrillView(title: title, categories: categories, isOther: isOther, selection: selection)
         case let .anomaly(category, selection): ReviewDrillView(title: category, categories: [category], isOther: false, selection: selection, anomaly: true)
@@ -1545,6 +1546,8 @@ struct RootView: View {
         case .memories: MemoryView()
         case .frequent: FrequentEntriesView()
         case .quickCapture: QuickCaptureSettingsView()
+        case .quickCards: QuickCardsView()
+        case .quickMerchants: QuickMerchantsView()
         case .importHistory: ImportHistoryView()
         case .backup: BackupView()
         case .storage: StorageView()

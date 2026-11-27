@@ -8,8 +8,9 @@ extension AppStore {
     /// Fixtures and UI tests never reach the network.
     private var mayFetchRates: Bool {
         guard !isDesignFixture else { return false }
-        #if DEBUG
-        if UITestSupport.script != nil || ProcessInfo.processInfo.arguments.contains("--test-ledger") { return false }
+        if ProcessInfo.processInfo.arguments.contains("--test-ledger") { return false }
+        #if DEBUG && targetEnvironment(simulator)
+        if UITestSupport.script != nil { return false }
         #endif
         return true
     }

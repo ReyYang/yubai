@@ -15,6 +15,14 @@ enum SettingsSpec {
     static let updateHeight: CGFloat = 32
     static let confirmWidth: CGFloat = 300
     static let confirmTop: CGFloat = 24
+    // design-v2 canvas Main.dc.html 快速记账 / 卡对应的账户 / 商户记到哪个分类
+    static let quickCount = DS.TextStyle(size: 26, lineHeight: 30, weight: .semibold, tracking: 0, family: .text, relativeTo: .title2, monospacedDigit: true)
+    static let quickRow: CGFloat = 60
+    static let addLabel = DS.TextStyle(size: 14, lineHeight: 20, weight: .semibold, tracking: 0, family: .text, relativeTo: .subheadline, monospacedDigit: false)
+    static let addInset: CGFloat = 14
+    static let addHeight: CGFloat = 32
+    static let searchHeight: CGFloat = 40
+    static let pickerMaxHeight: CGFloat = 420
     static let row: CGFloat = 52 // canvas Settings.dc.html: settings rows, SettingsMore.dc.html: account edit rows
     static let groupGap: CGFloat = 22 // canvas Settings.dc.html: gap between cards and above the version
     static let cardInset: CGFloat = 14 // canvas Settings.dc.html: card leading inset, weekend row, key field
