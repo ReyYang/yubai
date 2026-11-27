@@ -58,6 +58,7 @@ struct EntryCategoryManagerView: View {
                 DSSegmented(options: [Self.expense, Self.income], selection: $direction, width: nil)
                     .padding(.top, DS.Space.s8)
                     .padding(.bottom, DS.Space.s16)
+                    .padding(.horizontal, DS.Space.s16)
                     .entryPlainRow()
                 ForEach(Array(movable.enumerated()), id: \.element.id) { index, category in
                     categoryRow(category, index: index, count: count)
