@@ -27,9 +27,12 @@ final class ExchangeRateTests: XCTestCase {
         XCTAssertEqual(rates.date, Dates.parse("2026-11-26"))
         XCTAssertEqual(rates.rate(for: .eur), Decimal(string: "7.6518"))
         XCTAssertEqual(rates.rate(for: .cad), Decimal(string: "5.1012"))
-        XCTAssertEqual(rates.rate(for: .jpy), Decimal(string: "0.047824"))
+        XCTAssertEqual(rates.rate(for: .jpy), Decimal(string: "0.04782375"))
         XCTAssertNil(rates.rate(for: .hkd)); XCTAssertNil(rates.cnyPerUnit["XXX"])
         XCTAssertThrowsError(try ExchangeRates.parseECB(Data("<Cube currency='USD' rate='1'/>".utf8), fetchedAt: now))
+        XCTAssertThrowsError(try ExchangeRates.parseECB(Data("<Cube time='2026-11-26'><Cube currency='CNY' rate='7.6'/>".utf8), fetchedAt: now))
+        let garbage = try ExchangeRates.parseECB(Data(ecb.replacingOccurrences(of: "1.5000", with: "1.5garbage").utf8), fetchedAt: now)
+        XCTAssertNil(garbage.rate(for: .cad))
     }
 
     func testSyncCadenceIsTwelveHoursAndCanBeTurnedOff() throws {
@@ -91,6 +94,52 @@ final class ExchangeRateTests: XCTestCase {
         let draft = EntryDraft(date: now, amount: 3200, amountConfirmed: true, accountID: l.accounts[0].id, title: "午饭", category: "餐饮")
         try QuickCapture.record([draft], in: &l, source: QuickCapture.Entrance.siri.rawValue, now: now)
         XCTAssertEqual(QuickCapture.recentCount(.applePay, in: l, now: now), 1)
+        XCTAssertEqual(QuickCapture.recentCount(.siri, in: l, now: now), 1)
+    }
+
+    func testPartialSyncKeepsQuotesItDoesNotMention() throws {
+        var l = ledger()
+        try ExchangeRates.apply(try ExchangeRates.parseECB(Data(ecb.utf8), fetchedAt: now), to: &l)
+        let partial = ecb.replacingOccurrences(of: "<Cube currency='CAD' rate='1.5000'/>", with: "")
+        try ExchangeRates.apply(try ExchangeRates.parseECB(Data(partial.utf8), fetchedAt: now.addingTimeInterval(86_400)), to: &l)
+        XCTAssertEqual(l.preferences.syncedRates?.rate(for: .cad), Decimal(string: "5.1012"))
+    }
+
+    func testDisplayNeverOverflows() throws {
+        var l = ledger()
+        try FixedFlows.setRate(ManualExchangeRate(currency: .usd, cnyPerUnit: Decimal(string: "0.0000001")!, updatedAt: now), in: &l)
+        try ExchangeRates.setMainCurrency(.usd, in: &l, now: now)
+        XCTAssertEqual(ExchangeRates.display(Money.limit, in: l, now: now).currency, .cny)
+        XCTAssertEqual(ExchangeRates.display(Money.limit, in: l, now: now).cents, Money.limit)
+    }
+
+    func testEditingALegacyForeignEntryKeepsItsBookedAmount() throws {
+        var l = ledger(); let account = l.accounts[0].id
+        var legacy = Entry(date: now, amount: 2125, accountID: account, title: "咖啡", category: "餐饮")
+        legacy.originalCurrency = .cad; legacy.originalAmount = 425
+        l.entries.append(legacy)
+        try ExchangeRates.apply(try ExchangeRates.parseECB(Data(ecb.utf8), fetchedAt: now), to: &l)
+        try EntrySaveMapper.edit(legacy.id, input: input(425, .cad, account: account), in: &l, now: now)
+        XCTAssertEqual(l.entries.last?.amount, 2125); XCTAssertEqual(l.entries.last?.exchangeRate?.cnyPerUnit, 5)
+        try EntrySaveMapper.edit(legacy.id, input: input(850, .cad, account: account), in: &l, now: now)
+        XCTAssertEqual(l.entries.last?.amount, 4250)
+    }
+
+    func testImportMergeKeepsOrReplacesTheFrozenRate() {
+        let account = UUID()
+        var manual = Entry(date: now, amount: 2168, accountID: account, title: "咖啡", category: "餐饮")
+        manual.originalCurrency = .cad; manual.originalAmount = 425
+        manual.exchangeRate = EntryRate(cnyPerUnit: Decimal(string: "5.1012")!, date: now, manual: false)
+        let same = Entry(date: now, amount: 2168, accountID: account, title: "STARBUCKS", category: "餐饮")
+        XCTAssertEqual(BillImporter.mergedImport(same, preserving: manual, accountIsUnknown: false).exchangeRate, manual.exchangeRate)
+        let charged = Entry(date: now, amount: 2210, accountID: account, title: "STARBUCKS", category: "餐饮")
+        XCTAssertEqual(BillImporter.mergedImport(charged, preserving: manual, accountIsUnknown: false).exchangeRate?.cnyPerUnit, Decimal(2210) / Decimal(425))
+    }
+
+    func testShortcutDefaultSourceCountsAsSiri() throws {
+        var l = ledger()
+        let draft = EntryDraft(date: now, amount: 3200, amountConfirmed: true, accountID: l.accounts[0].id, title: "午饭", category: "餐饮")
+        try QuickCapture.record([draft], in: &l, now: now)
         XCTAssertEqual(QuickCapture.recentCount(.siri, in: l, now: now), 1)
     }
 }

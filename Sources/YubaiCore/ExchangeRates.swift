@@ -67,17 +67,18 @@ public enum ExchangeRates {
             let tag = piece.prefix { $0 != ">" }
             if let time = attribute("time", in: tag) { reference = Dates.parse(time) }
             if let code = attribute("currency", in: tag), let raw = attribute("rate", in: tag),
+               !raw.isEmpty, raw.allSatisfy({ "0123456789.".contains($0) }), raw.filter({ $0 == "." }).count <= 1,
                let value = Decimal(string: raw, locale: Locale(identifier: "en_US_POSIX")), value > 0 {
                 perEUR[code] = value
             }
         }
-        guard let reference, let cnyPerEUR = perEUR["CNY"] else { throw YubaiError.invalid("汇率数据不完整。") }
+        guard let reference, let cnyPerEUR = perEUR["CNY"], perEUR["USD"] != nil else { throw YubaiError.invalid("汇率数据不完整。") }
         perEUR["EUR"] = 1
         var result: [String: Decimal] = [:]
         for currency in BillCurrency.allCases where currency != .cny {
             guard let value = perEUR[currency.rawValue] else { continue }
             var quotient = cnyPerEUR / value, rounded = Decimal()
-            NSDecimalRound(&rounded, &quotient, 6, .plain)
+            NSDecimalRound(&rounded, &quotient, 10, .plain)
             if rounded > 0 { result[currency.rawValue] = rounded }
         }
         return SyncedExchangeRates(date: reference, fetchedAt: fetchedAt, cnyPerUnit: result)
@@ -88,8 +89,12 @@ public enum ExchangeRates {
         guard !rates.cnyPerUnit.isEmpty, rates.cnyPerUnit.values.allSatisfy({ $0 > 0 && $0 <= 100_000 }) else {
             throw YubaiError.invalid("汇率数据不完整。")
         }
-        var next = ledger
-        next.preferences.syncedRates = rates
+        var next = ledger, merged = rates
+        // A partial response never erases quotes it does not mention.
+        for (code, value) in ledger.preferences.syncedRates?.cnyPerUnit ?? [:] where merged.cnyPerUnit[code] == nil {
+            merged.cnyPerUnit[code] = value
+        }
+        next.preferences.syncedRates = merged
         try next.validate(); ledger = next
     }
 
@@ -120,6 +125,7 @@ public enum ExchangeRates {
         guard main != .cny, let rate = rate(for: main, in: ledger, now: now), rate.cnyPerUnit > 0 else { return (.cny, cnyCents) }
         var value = Decimal(cnyCents) / rate.cnyPerUnit, rounded = Decimal()
         NSDecimalRound(&rounded, &value, 0, .plain)
+        guard abs(rounded) <= Decimal(Money.limit) else { return (.cny, cnyCents) }
         return (main, NSDecimalNumber(decimal: rounded).int64Value)
     }
 

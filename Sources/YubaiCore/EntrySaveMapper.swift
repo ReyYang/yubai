@@ -404,7 +404,12 @@ public enum EntrySaveMapper {
         var input = input
         input.preserveTime = true
         input.repeatMonthly = false
-        if original.originalCurrency == input.currency { input.frozenRate = original.exchangeRate }
+        if original.originalCurrency == input.currency {
+            // Entries recorded before rates were stored freeze the rate they were booked at.
+            input.frozenRate = original.exchangeRate ?? original.originalAmount.flatMap { units in
+                units > 0 ? EntryRate(cnyPerUnit: Decimal(original.amount) / Decimal(units), date: Dates.day(original.date), manual: false) : nil
+            }
+        }
         let change = try makeChange(input, in: ledger, now: now)
         guard case .addEntry(let draft)? = change.items.first else { throw YubaiError.invalid("无法编辑这笔账单。") }
         var edited = original
