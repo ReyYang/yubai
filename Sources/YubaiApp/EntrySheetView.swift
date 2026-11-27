@@ -160,7 +160,9 @@ struct EntrySheetOverlay: View {
             // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
             let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
                 : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
-            let available = max(0, pill.minY - EntrySpec.popoverGap)
+            // Lists rise above their pill; 币种 and 汇率 hang under the amount.
+            let available = drawer.opensBelow ? max(0, geometry.size.height - pill.maxY - EntrySpec.popoverGap)
+                : max(0, pill.minY - EntrySpec.popoverGap)
             let margin = typeSize.isAccessibilitySize ? DS.Space.s16 : DS.Space.s20
             let leading = min(max(margin, pill.midX - width * EntrySpec.midpoint),
                               geometry.size.width - margin - width)
@@ -181,9 +183,9 @@ struct EntrySheetOverlay: View {
                     popoverContent(drawer).simultaneousGesture(closeDrag { model.drawer = nil })
                     ScrollView { popoverContent(drawer) }.scrollIndicators(.hidden)
                 }
-                .frame(width: width, height: available, alignment: .bottom)
-                .offset(x: leading)
-                .transition(reduced ? .opacity : .scale(scale: EntrySpec.popoverScale, anchor: .bottom).combined(with: .opacity))
+                .frame(width: width, height: available, alignment: drawer.opensBelow ? .top : .bottom)
+                .offset(x: leading, y: drawer.opensBelow ? pill.maxY + EntrySpec.popoverGap : 0)
+                .transition(reduced ? .opacity : .scale(scale: EntrySpec.popoverScale, anchor: drawer.opensBelow ? .top : .bottom).combined(with: .opacity))
                 .focusable()
                 .focusEffectDisabled()
                 .focused($calendarFocus, equals: .calendar)
@@ -208,6 +210,8 @@ struct EntrySheetOverlay: View {
         switch drawer {
         case .calendar: EntrySpec.calendarWidth
         case .more: DS.Size.menuW
+        case .currency: EntrySpec.currencyListWidth
+        case .rate: EntrySpec.ratePopoverWidth
         default: EntrySpec.accountListWidth
         }
     }
@@ -223,6 +227,10 @@ struct EntrySheetOverlay: View {
             EntryAccountList(model: model, destination: drawer == .destination, firstFocus: $listFocus)
         case .more:
             EntryMoreList(model: model, firstFocus: $listFocus)
+        case .currency:
+            EntryCurrencyList(model: model, firstFocus: $listFocus)
+        case .rate:
+            EntryRatePopover(model: model, firstFocus: $listFocus)
         default:
             EmptyView()
         }
@@ -366,7 +374,7 @@ struct EntrySheetView: View {
                     .padding(.horizontal, DS.Space.s20)
                     .padding(.bottom, DS.Space.s8)
             }
-            if model.drawer == .currency || model.drawer == .split {
+            if model.drawer == .split {
                 EntryExpandedPanelView(model: model)
                     .padding(.horizontal, DS.Space.s20)
                     .padding(.bottom, DS.Space.s8)
@@ -474,7 +482,7 @@ private struct EntryAmountBlockView: View {
             HStack(spacing: DS.Space.s8) {
                 Button { model.toggleDrawer(.currency) } label: {
                     HStack(spacing: EntrySpec.currencyGap) {
-                        Text(model.draft.currency == .cny ? "¥" : model.draft.currency.rawValue)
+                        Text(model.draft.currency.symbol)
                             .dsText(DS.Font.tBody).fontWeight(.semibold).monospacedDigit()
                         DS.Icon.chevronDown.view(size: EntrySpec.currencyChevron, color: DS.Color.ink3)
                     }
@@ -482,14 +490,15 @@ private struct EntryAmountBlockView: View {
                     .padding(.leading, EntrySpec.currencyInset)
                     .padding(.trailing, DS.Space.s8)
                     .frame(minHeight: EntrySpec.currencyHeight)
-                    .dsPill()
+                    .dsPill(model.drawer == .currency ? DS.Color.selected : DS.Color.surface)
+                    .entryAnchor(.currency)
                     .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
                 }
                 .buttonStyle(EntryTactileButtonStyle())
                 .fixedSize()
                 .entryHit(.currency)
                 .accessibilityLabel("币种，" + model.draft.currency.unit)
-                .accessibilityHint("选择外币和汇率")
+                .accessibilityHint("选择币种")
                 Text(amountText)
                     .dsText(DS.Font.nEntry)
                     .foregroundStyle(amountColor)
@@ -512,11 +521,11 @@ private struct EntryAmountBlockView: View {
                     .frame(height: DS.Space.s20)
                     .transition(.opacity)
             }
-            if model.draft.currency != .cny, let rate = model.signedRate, let local = model.localMoney {
-                Text(model.hidesAmounts ? "••••" : "≈ \(Money.text(local)) · 1 \(model.draft.currency.rawValue) = \(NSDecimalNumber(decimal: rate).stringValue)")
-                    .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
-                    .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
+            if model.draft.currency != .cny {
+                EntryRateLine(model: model)
                     .frame(height: DS.Space.s20)
+                    .modifier(EntryShake(trigger: model.ratePulse))
+                    .transition(.opacity)
             }
             purpose
         }
@@ -871,6 +880,127 @@ private struct EntryPillsRowView: View {
     }
 }
 
+/// Spec-Currency 记一笔: 「≈ ¥21.68」 under a foreign amount — tap to change this entry's rate. With no rate
+/// at all (never synced, none fixed) it is an amber 「填汇率」 and 记下 waits for it (X-entry-norate).
+private struct EntryRateLine: View {
+    let model: EntrySheetViewModel
+
+    var body: some View {
+        Button { model.toggleDrawer(.rate) } label: {
+            if model.hasRate, let local = model.localMoney {
+                HStack(spacing: DS.Space.s4) {
+                    Text(model.hidesAmounts ? "≈ ••••" : "≈ " + Money.text(local)).dsText(DS.Font.tSub).monospacedDigit()
+                        .foregroundStyle(DS.Color.ink3)
+                    if model.typedRate != nil {
+                        Text("手动汇率").dsText(EntrySpec.rateTag).foregroundStyle(DS.Color.ink2)
+                            .padding(.horizontal, EntrySpec.rateTagInset).frame(height: EntrySpec.rateTagHeight).dsPill()
+                    }
+                    DS.Icon.chevron.view(size: EntrySpec.currencyChevron, color: DS.Color.chevron)
+                }
+                .entryAnchor(.rate)
+                .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            } else {
+                Text("填汇率").dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.warnInk)
+                    .padding(.horizontal, EntrySpec.rateFillInset).frame(height: EntrySpec.rateFillHeight)
+                    .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.warn, lineWidth: DS.Stroke.hairline))
+                    .entryAnchor(.rate)
+                    .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            }
+        }
+        .buttonStyle(EntryTactileButtonStyle())
+        .entryHit(.rate)
+        .accessibilityLabel(model.hasRate ? "汇率" : "填汇率")
+        .accessibilityValue(model.hasRate && !model.hidesAmounts ? "约 " + Money.text(model.localMoney ?? 0) : "")
+        .accessibilityIdentifier("entryRateLine")
+    }
+}
+
+/// Canvas S-Entry-Ccy: the nine currencies, the main one marked; picking closes the list.
+private struct EntryCurrencyList: View {
+    let model: EntrySheetViewModel
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
+
+    var body: some View {
+        let main = model.ledger.preferences.mainCurrency ?? .cny
+        let all = BillCurrency.allCases
+        VStack(spacing: .zero) {
+            ForEach(Array(all.enumerated()), id: \.element) { index, currency in
+                Button { model.pickCurrency(currency) } label: {
+                    HStack(spacing: .zero) {
+                        Text(currency.symbol).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink2)
+                            .frame(width: EntrySpec.currencySymbolColumn, alignment: .leading)
+                        HStack(alignment: .firstTextBaseline, spacing: HomeSpec.gap6) {
+                            Text(currency.unit).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink)
+                            if currency == main {
+                                Text("主币种").dsText(EntrySpec.rateTag).foregroundStyle(DS.Color.ink3)
+                            }
+                        }.dsFillWidth()
+                        DS.Icon.done.view(size: EntrySpec.checkIcon, color: DS.Color.accentInk)
+                            .opacity(currency == model.draft.currency ? 1 : 0)
+                    }
+                    .padding(.horizontal, DS.Space.s16)
+                    .frame(minHeight: EntrySpec.listRow)
+                    .overlay(alignment: .bottom) {
+                        if index < all.count - 1 {
+                            DS.Color.separator.frame(height: DS.Stroke.hairline).padding(.leading, DS.Space.s16)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+                .accessibilityAddTraits(currency == model.draft.currency ? .isSelected : [])
+                .accessibilityIdentifier("entryCurrency_" + currency.rawValue)
+                .dsAccessibilityFocus(index == 0 ? firstFocus : nil)
+            }
+        }
+        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("币种")
+    }
+}
+
+/// Canvas S-Entry-Rate: 「1 C$ = [5.1012] ¥」, where the rate comes from, and 用同步的 after typing one.
+private struct EntryRatePopover: View {
+    @Bindable var model: EntrySheetViewModel
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: DS.Space.s12) {
+            HStack(spacing: DS.Space.s8) {
+                Text("1 " + model.draft.currency.symbol + " =").dsText(DS.Font.tLabel).monospacedDigit().foregroundStyle(DS.Color.ink2)
+                    .fixedSize()
+                    .dsAccessibilityFocus(firstFocus)
+                // The rate in use shows as the field's placeholder; typing one makes it 手动 for this entry only.
+                DSInlineTextField(title: model.autoRate.map(CurrencySettings.rateText) ?? "汇率", text: $model.draft.exchangeRate,
+                                  decimal: true, embedded: true) { model.drawer = nil }
+                .dsText(EntrySpec.rateField)
+                .multilineTextAlignment(.trailing)
+                .padding(.horizontal, DS.Space.s12)
+                .frame(minHeight: DS.Size.tapMin)
+                .background(DS.Color.bg, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous).strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus))
+                .accessibilityIdentifier("entryRateField")
+                Text("¥").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).fixedSize()
+            }
+            HStack(spacing: DS.Space.s8) {
+                Text(model.rateSource).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3).dsFillWidth()
+                if model.typedRate != nil, model.autoRate != nil {
+                    Button { model.draft.exchangeRate = "" } label: {
+                        Text("用同步的").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
+                            .frame(minHeight: DS.Size.tapMin)
+                    }.buttonStyle(EntryTactileButtonStyle()).accessibilityIdentifier("entryRateReset")
+                }
+            }
+        }
+        .padding(DS.Space.s16)
+        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("汇率")
+    }
+}
+
 /// Spec-Redlines 弹出列表 · 账户: name, balance, a check on the current one. Picking closes it.
 private struct EntryAccountList: View {
     let model: EntrySheetViewModel
@@ -984,31 +1114,6 @@ private struct EntryExpandedPanelView: View {
     var body: some View {
         Group {
             switch model.drawer {
-            case .currency:
-                VStack(alignment: .leading, spacing: DS.Space.s8) {
-                    Text("外币").dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
-                        .accessibilityAddTraits(.isHeader)
-                    FlowLayout(centered: false) {
-                        ForEach(BillCurrency.allCases) { currency in
-                            EntryPill(title: currency.rawValue, selected: currency == model.draft.currency,
-                                      label: currency.unit, hint: "切换记账币种") {
-                                if model.draft.currency != currency { model.draft.exchangeRate = "" }
-                                model.draft.currency = currency
-                                if currency == .cny { model.drawer = nil }
-                            }
-                        }
-                    }
-                    if model.draft.currency != .cny {
-                        HStack(spacing: DS.Space.s8) {
-                            Text("汇率").dsText(DS.Font.tPill).foregroundStyle(DS.Color.ink2)
-                            DSInlineTextField(title: "汇率", text: $model.draft.exchangeRate, decimal: true,
-                                              autoFocus: false) { model.drawer = nil }
-                            EntryPill(title: nil, icon: .done, label: "完成汇率", hint: "保留币种和汇率") {
-                                model.drawer = nil
-                            }
-                        }
-                    }
-                }
             case .split:
                 VStack(alignment: .leading, spacing: DS.Space.s8) {
                     HStack {

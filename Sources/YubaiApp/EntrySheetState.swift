@@ -2,10 +2,12 @@ import SwiftUI
 import YubaiCore
 
 enum EntryDrawer: Equatable {
-    case purpose, currency, calendar, source, destination, more, split
+    case purpose, currency, rate, calendar, source, destination, more, split
 
     /// Lists that pop out of a pill above the sheet; only one is open at a time.
-    var isPopover: Bool { [.calendar, .source, .destination, .more].contains(self) }
+    var isPopover: Bool { [.currency, .rate, .calendar, .source, .destination, .more].contains(self) }
+    /// 币种 and 汇率 hang under the amount (S-Entry-Ccy, S-Entry-Rate); the others rise above their pill.
+    var opensBelow: Bool { self == .currency || self == .rate }
 }
 
 /// The two accounts of a 转账 read back, its nature and whether it was 存入. While the draft keeps
@@ -152,6 +154,7 @@ struct EntryCategoryState: Equatable {
     /// 记下 was pressed without a category: the row keeps its amber ring until one is picked.
     var needsCategory = false
     var amountPulse = 0
+    var ratePulse = 0
     var suggestion: CategoryAssignment?
     var effect: EntryEffect?
     /// 算作存入: what this cycle will have saved once this transfer lands.
@@ -234,6 +237,10 @@ struct EntryCategoryState: Equatable {
     var signedRate: Decimal? {
         if let typed = typedRate { return typed }
         guard draft.exchangeRate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        return autoRate
+    }
+    /// The rate this entry gets without a typed one: frozen (editing), else Settings' fixed, else synced.
+    var autoRate: Decimal? {
         if let id = editingID, let entry = ledger.entries.first(where: { $0.id == id }),
            entry.originalCurrency == draft.currency, let original = entry.originalAmount, original > 0 {
             return entry.exchangeRate?.cnyPerUnit ?? Decimal(entry.amount) / Decimal(original)
@@ -283,7 +290,7 @@ struct EntryCategoryState: Equatable {
             || (!categoryTouched && initialCategory?.route == false && initialCategory?.category == nil
                 && initialCategory == EntryCategoryState(draft))
     }
-    var canSave: Bool { draft.expression.canSave && money > 0 && categoryReady }
+    var canSave: Bool { draft.expression.canSave && money > 0 && (draft.currency == .cny || (localMoney ?? 0) > 0) && categoryReady }
     var localMoney: Int64? {
         guard draft.currency != .cny else { return money }
         guard let rate = signedRate else { return nil }
@@ -607,12 +614,33 @@ struct EntryCategoryState: Equatable {
     }
 
     /// Why 记下 did nothing, so the sheet can point at the row that needs it.
-    enum SaveBlock { case amount, category }
+    enum SaveBlock { case amount, rate, category }
 
     func blockedSave() -> SaveBlock? {
         if !draft.expression.canSave || money <= 0 { return .amount }
+        if draft.currency != .cny, (localMoney ?? 0) <= 0 { return .rate }
         if !categoryReady { return .category }
         return nil
+    }
+
+    /// The ≈ line has a rate to show; otherwise it asks for one (X-entry-norate).
+    var hasRate: Bool { draft.currency == .cny || signedRate != nil }
+
+    /// Where the rate on the ≈ line comes from, said under the rate field.
+    var rateSource: String {
+        if typedRate != nil { return "只用于这一笔" }
+        if let id = editingID, let entry = ledger.entries.first(where: { $0.id == id }), entry.originalCurrency == draft.currency {
+            return "记下时的汇率"
+        }
+        if FixedFlows.exchangeRate(for: draft.currency, in: ledger, now: now) != nil { return "设置里的固定汇率" }
+        if let fetched = ledger.preferences.syncedRates?.fetchedAt { return CurrencySettings.syncTime(fetched, now: now) + " 同步" }
+        return ""
+    }
+
+    func pickCurrency(_ currency: BillCurrency) {
+        if draft.currency != currency { draft.exchangeRate = "" }
+        draft.currency = currency
+        drawer = nil
     }
 
     func save() -> Bool {
@@ -621,6 +649,10 @@ struct EntryCategoryState: Equatable {
         case .amount:
             amountPulse &+= 1
             AccessibilityNotification.Announcement("先输入金额").post()
+            return false
+        case .rate:
+            ratePulse &+= 1
+            AccessibilityNotification.Announcement("先填汇率").post()
             return false
         case .category:
             needsCategory = true
