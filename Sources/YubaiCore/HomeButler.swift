@@ -120,12 +120,7 @@ public enum HomeButler {
         items += (ledger.butlerAI?.reviews ?? []).filter { $0.answeredAt == nil && $0.dueAt <= now && !ledger.mutedTopics.contains("ai:" + $0.suggestion.topic) }.map(HomeTask.suggestionReview)
         return items.filter { task in
             guard !isAnswered(task.id, in: ledger, now: now) else { return false }
-            if (ledger.preferences.butlerNotices ?? ButlerNoticePreferences()).home { return true }
-            switch task {
-            case .butler(let card) where card.kind == .weeklyLetter: return false
-            case .cooldown, .restraint, .leftover, .billHeadsUp, .balanceMismatch, .suggestion, .suggestionReview: return false
-            default: return true
-            }
+            return true
         }.sorted {
             if $0.priority != $1.priority { return $0.priority < $1.priority }
             if case .billHeadsUp(let a) = $0, case .billHeadsUp(let b) = $1, a.date != b.date { return a.date < b.date }

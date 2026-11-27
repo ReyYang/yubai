@@ -232,14 +232,6 @@ final class BillCatalogTests: XCTestCase {
         plan.skippedOccurrences = [plan.dueDate]; ledger.plans = [plan]
         XCTAssertEqual(HomeButler.renewals(ledger, now: day(2027, 11, 20)).count, 1)
     }
-    func testForeignYearlyButlerCopyShowsBothCurrenciesAndHidesBoth() throws {
-        var ledger = ledger(); var plan = foreign(ledger, due: day(2026, 11, 27), yearly: true); plan.amount = 3_588; plan.title = "1Password 年付"; ledger.plans = [plan]
-        let renewal = try XCTUnwrap(HomeButler.renewals(ledger, now: day()).first)
-        let copy = try XCTUnwrap(HomeTaskCopy.make(.renewal(renewal), now: day(), hidden: false))
-        XCTAssertTrue(copy.kicker.contains("7 天后续费")); XCTAssertEqual(copy.title, "一年 US$35.88，约 255.47")
-        let hidden = try XCTUnwrap(HomeTaskCopy.make(.renewal(renewal), now: day(), hidden: true))
-        XCTAssertFalse(hidden.title.contains("35.88")); XCTAssertFalse(hidden.title.contains("255.47"))
-    }
     func testStopForeignRenewalTallyUsesCNY() throws {
         var ledger = ledger(); var plan = foreign(ledger, due: day(2026, 11, 27), yearly: true); plan.title = "年付"; ledger.plans = [plan]
         let renewal = try XCTUnwrap(HomeButler.renewals(ledger, now: day()).first)

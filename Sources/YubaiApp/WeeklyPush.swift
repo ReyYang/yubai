@@ -70,3 +70,20 @@ struct WeeklyLetterReminder: View {
         denied = settings.authorizationStatus == .denied
     }
 }
+
+/// Butler notifications were removed (owner 2026-11-26). Clears anything an older
+/// build already scheduled or delivered, plus the reservation keys it kept.
+struct ButlerNoticeCleanupTask: ViewModifier {
+    private static let prefix = "yubai.butler."
+    func body(content: Content) -> some View {
+        content.task {
+            let center = UNUserNotificationCenter.current()
+            let pending = await center.pendingNotificationRequests().map(\.identifier).filter { $0.hasPrefix(Self.prefix) }
+            if !pending.isEmpty { center.removePendingNotificationRequests(withIdentifiers: pending) }
+            let delivered = await center.deliveredNotifications().map(\.request.identifier).filter { $0.hasPrefix(Self.prefix) }
+            if !delivered.isEmpty { center.removeDeliveredNotifications(withIdentifiers: delivered) }
+            let defaults = UserDefaults.standard
+            for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(Self.prefix) { defaults.removeObject(forKey: key) }
+        }
+    }
+}

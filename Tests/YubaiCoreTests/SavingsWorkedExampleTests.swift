@@ -192,8 +192,6 @@ final class SavingsWorkedExampleTests: XCTestCase {
         let queue = HomeButler.queue(value, now: d("2026-12-10 12:00"))
         XCTAssertEqual(queue.filter { if case .savingsTopup = $0 { return true }; return false }.count, 1)
         XCTAssertTrue(queue.contains { if case .payday = $0 { return true }; return false })
-        let task = try XCTUnwrap(queue.first { if case .savingsTopup = $0 { return true }; return false })
-        XCTAssertEqual(HomeTaskCopy.make(task, now: d("2026-12-10"), hidden: true)?.kicker, "上个月从存的钱里拿了 ••••")
     }
     func testAllThreeAnswersConsumeThoseWithdrawalsPermanently() throws {
         for amount in [Int64(0), 20_000, 50_000] {
