@@ -11,27 +11,25 @@ struct QuickCaptureSettingsView: View {
 
     var body: some View {
         let _ = SettingsRenderCounts.hit("quickBody")
-        let ledger = store.current, now = store.financialNow
-        // One window for the headline and the rows, so 23 笔 is always the sum of the entrances.
-        let recent = QuickCapture.recentEntries(in: ledger, now: now)
+        let stats = store.quickCaptureStats
         VStack(spacing: .zero) {
             OverviewNavigationBar(title: "快速记账")
             ScrollView {
                 VStack(alignment: .leading, spacing: DS.Space.s20) {
                     HStack(alignment: .top, spacing: .zero) {
-                        statistic("近 7 天快速记下", count: recent.count).dsFillWidth()
-                        statistic("没打开余白", count: recent.filter { $0.quickCapture?.withoutOpeningApp == true }.count).dsFillWidth()
+                        statistic("近 7 天快速记下", count: stats.recent).dsFillWidth()
+                        statistic("没打开余白", count: stats.withoutOpening).dsFillWidth()
                     }.padding(.horizontal, DS.Space.s4)
                     DSSettingsCard(leading: DS.Space.s16) {
-                        entrance(.acctCredit, "Apple Pay 付完就记", count: recent.filter { $0.source == QuickCapture.Entrance.applePay.rawValue }.count,
+                        entrance(.acctCredit, "Apple Pay 付完就记", count: stats.applePay,
                                  first: true, id: "quickApplePay")
-                        entrance(.send, "Siri", count: recent.filter { $0.source != QuickCapture.Entrance.applePay.rawValue }.count, first: false, id: "quickSiri")
+                        entrance(.send, "Siri", count: stats.siri, first: false, id: "quickSiri")
                     }
                     DSSettingsCard(leading: DS.Space.s16) {
-                        link(.acctCredit, "卡对应的账户", "\(QuickCapture.cards(in: ledger, now: now).count) 张", first: true, id: "openCaptureCardRules") {
+                        link(.acctCredit, "卡对应的账户", "\(stats.cards.count) 张", first: true, id: "openCaptureCardRules") {
                             store.tabRouteRequest = .quickCards
                         }
-                        link(.recategorize, "商户记到哪个分类", "\(ledger.classificationMemory.count) 条", first: false, id: "openCaptureMerchantRules") {
+                        link(.recategorize, "商户记到哪个分类", "\(store.merchantRules.count) 条", first: false, id: "openCaptureMerchantRules") {
                             store.tabRouteRequest = .quickMerchants
                         }
                     }
@@ -102,49 +100,65 @@ struct QuickCaptureSettingsView: View {
 }
 
 /// Canvas S-Quick-Cards: each card with its bills in the last 30 days and the account it records to.
+/// A List, so a card's account can be removed with the native swipe; its bills then go to the default account.
 struct QuickCardsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         let ledger = store.current
-        let cards = QuickCapture.cards(in: ledger, now: store.financialNow)
+        let cards = store.quickCaptureStats.cards
         VStack(spacing: .zero) {
             OverviewNavigationBar(title: "卡对应的账户")
-            ScrollView {
-                DSSettingsCard(leading: DS.Space.s16) {
-                    ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
-                        let account = card.accountID.flatMap { id in ledger.accounts.first { $0.id == id && !$0.archived } }
-                        Button { store.settingsSheet = .captureCard(card.card) } label: {
-                            HStack(spacing: DS.Space.s8) {
-                                VStack(alignment: .leading, spacing: .zero) {
-                                    Text(card.card).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1)
-                                    Text(card.everUsed ? "近 30 天 \(card.recentCount) 笔" : "还没刷过")
-                                        .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
-                                }.dsFillWidth()
-                                HStack(spacing: HomeSpec.gap6) {
-                                    DSIconView(icon: account.map { $0.kind.icon } ?? .add, size: DS.Space.s16, color: DS.Color.ink2)
-                                    Text(account?.name ?? "选账户").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).lineLimit(1)
-                                    DSIconView(icon: .chevron, size: SettingsSpec.chevron, color: DS.Color.chevron)
-                                }
+            List {
+                Color.clear.frame(height: DS.Space.s8).dsPlainRow()
+                ForEach(Array(cards.enumerated()), id: \.element.id) { index, card in
+                    let account = card.accountID.flatMap { id in ledger.accounts.first { $0.id == id && !$0.archived } }
+                    Button { store.settingsSheet = .captureCard(card.card) } label: {
+                        HStack(spacing: DS.Space.s8) {
+                            VStack(alignment: .leading, spacing: .zero) {
+                                Text(card.card).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1)
+                                Text(card.everUsed ? "近 30 天 \(card.recentCount) 笔" : "还没刷过")
+                                    .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                            }.dsFillWidth()
+                            HStack(spacing: HomeSpec.gap6) {
+                                DSIconView(icon: account.map { $0.kind.icon } ?? .add, size: DS.Space.s16, color: DS.Color.ink2)
+                                Text(account?.name ?? "选账户").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).lineLimit(1)
+                                DSIconView(icon: .chevron, size: SettingsSpec.chevron, color: DS.Color.chevron)
                             }
-                            .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.subRow)
-                            .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
-                            .contentShape(Rectangle())
-                        }.dsPressStyle().accessibilityElement(children: .combine).accessibilityIdentifier("quickCard_\(index)")
-                    }
-                    // A new card can be pointed at an account before its first Apple Pay bill.
-                    Button { store.settingsSheet = .captureAddCard } label: {
-                        HStack(spacing: DS.Space.s12) {
-                            DSIconView(icon: .add, size: SettingsSpec.calendarArrow, color: DS.Color.accentInk)
-                            Text("添加卡").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk).dsFillWidth()
                         }
-                        .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
-                        .overlay(alignment: .top) { if !cards.isEmpty { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                        .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.subRow)
+                        .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
                         .contentShape(Rectangle())
-                    }.dsPressStyle().accessibilityIdentifier("quickAddCard")
+                    }
+                    .dsPressStyle().accessibilityElement(children: .combine).accessibilityIdentifier("quickCard_\(index)")
+                    .padding(.leading, DS.Space.s16)
+                    .dsCardRow(first: index == 0, last: false)
+                    .modifier(MappingDelete(enabled: card.accountID != nil, scale: displayScale) {
+                        store.update("删除卡对应的账户", entryMotion: false, showToast: false) {
+                            QuickCapture.removeAccount(forCard: card.card, in: &$0)
+                        }
+                    })
                 }
-                .padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s28)
-            }.scrollIndicators(.hidden)
+                // A new card can be pointed at an account before its first Apple Pay bill.
+                Button { store.settingsSheet = .captureAddCard } label: {
+                    HStack(spacing: DS.Space.s12) {
+                        DSIconView(icon: .add, size: SettingsSpec.calendarArrow, color: DS.Color.accentInk)
+                        Text("添加卡").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk).dsFillWidth()
+                    }
+                    .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
+                    .overlay(alignment: .top) { if !cards.isEmpty { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                    .contentShape(Rectangle())
+                }
+                .dsPressStyle().accessibilityIdentifier("quickAddCard")
+                .padding(.leading, DS.Space.s16)
+                .dsCardRow(first: cards.isEmpty, last: true)
+                Color.clear.frame(height: DS.Space.s28).dsPlainRow()
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollIndicators(.hidden)
+            .environment(\.defaultMinListRowHeight, .zero)
         }
         .background(DS.Color.bg.ignoresSafeArea())
         .dsEdgeSwipeBack()
@@ -155,53 +169,86 @@ struct QuickCardsView: View {
 }
 
 /// Canvas S-Quick-Merchants: search, then each remembered merchant with the category it records to.
+/// Swiping a merchant away forgets it; its next bill is guessed like any other.
 struct QuickMerchantsView: View {
     @Environment(AppStore.self) private var store
+    @Environment(\.displayScale) private var displayScale
     @State private var query = ""
     @FocusState private var searching: Bool
 
     var body: some View {
         let ledger = store.current
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let rules = QuickMerchantRule.all(in: ledger).filter { needle.isEmpty || $0.name.localizedCaseInsensitiveContains(needle) }
+        let rules = store.merchantRules.filter { needle.isEmpty || $0.name.localizedCaseInsensitiveContains(needle) }
         VStack(spacing: .zero) {
             OverviewNavigationBar(title: "商户记到哪个分类")
-            ScrollView {
-                VStack(spacing: DS.Space.s12) {
-                    HStack(spacing: DS.Space.s8) {
-                        DSIconView(icon: .search, size: DS.Space.s16, color: DS.Color.ink3)
-                        TextField("", text: $query, prompt: Text("搜商户").foregroundStyle(DS.Color.ink3))
-                            .textFieldStyle(.plain).dsText(DS.Font.tLabel).tint(DS.Color.accent).foregroundStyle(DS.Color.ink)
-                            .focused($searching).accessibilityLabel("搜商户").accessibilityIdentifier("merchantSearch")
-                    }
-                    .padding(.horizontal, DS.Space.s12).frame(height: SettingsSpec.searchHeight)
-                    .background(DS.Color.surface, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
-                    DSSettingsCard(leading: DS.Space.s16) {
-                        ForEach(Array(rules.enumerated()), id: \.element.id) { index, rule in
-                            Button { store.settingsSheet = .captureMerchant(rule.key) } label: {
-                                HStack(spacing: DS.Space.s8) {
-                                    Text(rule.name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1).dsFillWidth()
-                                    HStack(spacing: HomeSpec.gap6) {
-                                        DSIconView(icon: rule.icon, size: DS.Space.s16, color: DS.Color.ink2)
-                                        Text(rule.category).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).lineLimit(1)
-                                        DSIconView(icon: .chevron, size: SettingsSpec.chevron, color: DS.Color.chevron)
-                                    }
-                                }
-                                .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
-                                .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
-                                .contentShape(Rectangle())
-                            }.dsPressStyle().accessibilityElement(children: .combine).accessibilityIdentifier("quickMerchant_\(index)")
-                        }
-                    }
+            List {
+                HStack(spacing: DS.Space.s8) {
+                    DSIconView(icon: .search, size: DS.Space.s16, color: DS.Color.ink3)
+                    TextField("", text: $query, prompt: Text("搜商户").foregroundStyle(DS.Color.ink3))
+                        .textFieldStyle(.plain).dsText(DS.Font.tLabel).tint(DS.Color.accent).foregroundStyle(DS.Color.ink)
+                        .focused($searching).accessibilityLabel("搜商户").accessibilityIdentifier("merchantSearch")
                 }
-                .padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s28)
-            }.scrollIndicators(.hidden).scrollDismissesKeyboard(.interactively)
+                .padding(.horizontal, DS.Space.s12).frame(height: SettingsSpec.searchHeight)
+                .background(DS.Color.surface, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
+                .padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8).padding(.bottom, DS.Space.s12)
+                .dsPlainRow()
+                ForEach(Array(rules.enumerated()), id: \.element.id) { index, rule in
+                    Button { store.settingsSheet = .captureMerchant(rule.key) } label: {
+                        HStack(spacing: DS.Space.s8) {
+                            Text(rule.name).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).lineLimit(1).dsFillWidth()
+                            HStack(spacing: HomeSpec.gap6) {
+                                DSIconView(icon: rule.icon, size: DS.Space.s16, color: DS.Color.ink2)
+                                Text(rule.category).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).lineLimit(1)
+                                DSIconView(icon: .chevron, size: SettingsSpec.chevron, color: DS.Color.chevron)
+                            }
+                        }
+                        .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
+                        .overlay(alignment: .top) { if index > 0 { DS.Color.separator.frame(height: DS.Stroke.hairline) } }
+                        .contentShape(Rectangle())
+                    }
+                    .dsPressStyle().accessibilityElement(children: .combine).accessibilityIdentifier("quickMerchant_\(index)")
+                    .padding(.leading, DS.Space.s16)
+                    .dsCardRow(first: index == 0, last: index == rules.count - 1)
+                    .modifier(MappingDelete(enabled: true, scale: displayScale) {
+                        store.update("删除商户分类", entryMotion: false, showToast: false) {
+                            QuickCapture.forgetMerchant(key: rule.key, in: &$0)
+                        }
+                    })
+                }
+                Color.clear.frame(height: DS.Space.s28).dsPlainRow()
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollIndicators(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .environment(\.defaultMinListRowHeight, .zero)
         }
         .background(DS.Color.bg.ignoresSafeArea())
         .dsEdgeSwipeBack()
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
+    }
+}
+
+/// A mapping row's swipe: 删除 drops the rule at once; the default takes over and nothing is lost.
+private struct MappingDelete: ViewModifier {
+    let enabled: Bool
+    let scale: CGFloat
+    let delete: () -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.nativeSwipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive, action: delete) {
+                    Label { Text("删除") } icon: { DS.Icon.delete.templateImage(size: HomeSpec.swipeIcon, scale: scale) }
+                }
+                .tint(DS.Color.warnStrong)
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -244,7 +291,7 @@ struct CaptureCardSheet: View {
     var body: some View {
         let ledger = store.current
         let typed = card ?? name.trimmingCharacters(in: .whitespacesAndNewlines)
-        let current = QuickCapture.cards(in: ledger, now: store.financialNow).first { QuickCapture.cardKey($0.card) == QuickCapture.cardKey(typed) }?.accountID
+        let current = QuickCapture.account(forCard: typed, in: ledger)
         SettingsSheetFrame(title: card ?? "添加卡", identifier: "captureCardSheet") { close in
             if card == nil {
                 DSInlineTextField(title: "卡名", text: $name).padding(.horizontal, DS.Space.s20).padding(.top, DS.Space.s4)
@@ -267,7 +314,7 @@ struct CaptureMerchantSheet: View {
 
     var body: some View {
         let ledger = store.current
-        let rule = QuickMerchantRule.all(in: ledger).first { $0.key == key }
+        let rule = store.merchantRules.first { $0.key == key }
         let income = rule?.income ?? false
         SettingsSheetFrame(title: rule?.name ?? "", identifier: "captureMerchantSheet") { close in
             ScrollView {

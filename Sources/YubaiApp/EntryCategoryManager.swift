@@ -59,7 +59,7 @@ struct EntryCategoryManagerView: View {
                     .padding(.top, DS.Space.s8)
                     .padding(.bottom, DS.Space.s16)
                     .padding(.horizontal, DS.Space.s16)
-                    .entryPlainRow()
+                    .dsPlainRow()
                 ForEach(Array(movable.enumerated()), id: \.element.id) { index, category in
                     categoryRow(category, index: index, count: count)
                         .nativeSwipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -82,7 +82,7 @@ struct EntryCategoryManagerView: View {
                 ForEach(fixed) { category in
                     categoryRow(category, index: count - 1, count: count)
                 }
-                Color.clear.frame(height: DS.Space.s28).entryPlainRow()
+                Color.clear.frame(height: DS.Space.s28).dsPlainRow()
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -138,7 +138,7 @@ struct EntryCategoryManagerView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(EntryTactileButtonStyle())
-        .entryCardRow(first: index == 0, last: index == count - 1)
+        .dsCardRow(first: index == 0, last: index == count - 1)
         .accessibilityHint(category.isCatchAll ? "查看这个分类" : "编辑这个分类，按住拖动排序")
     }
 }
@@ -183,16 +183,16 @@ private struct EntryCategoryEditView: View {
                     .padding(.top, DS.Space.s12)
                     .padding(.bottom, DS.Space.s20)
                     .accessibilityHidden(true)
-                    .entryPlainRow()
+                    .dsPlainRow()
                 if !readOnly {
                     nameRow
-                        .entryCardRow(first: true, last: true)
+                        .dsCardRow(first: true, last: true)
                 }
                 // The picks are expense icons; income categories keep theirs.
                 if let category, !readOnly, !category.income {
                     iconGrid(category)
                         .padding(.vertical, DS.Space.s12)
-                        .entryCardRow(first: true, last: true)
+                        .dsCardRow(first: true, last: true)
                         .padding(.top, DS.Space.s20)
                 }
                 if let category { subcategories(category) }
@@ -205,9 +205,9 @@ private struct EntryCategoryEditView: View {
                     .buttonStyle(EntryTactileButtonStyle())
                     .padding(.top, DS.Space.s20)
                     .padding(.horizontal, DS.Space.s16)
-                    .entryPlainRow()
+                    .dsPlainRow()
                 }
-                Color.clear.frame(height: DS.Space.s28).entryPlainRow()
+                Color.clear.frame(height: DS.Space.s28).dsPlainRow()
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -285,7 +285,7 @@ private struct EntryCategoryEditView: View {
                 .padding(.bottom, DS.Space.s8)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityAddTraits(.isHeader)
-                .entryPlainRow()
+                .dsPlainRow()
             ForEach(Array(subs.enumerated()), id: \.element) { index, sub in
                 HStack {
                     Text(sub).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).dsFillWidth()
@@ -300,7 +300,7 @@ private struct EntryCategoryEditView: View {
                         DS.Color.separator.frame(height: DS.Stroke.hairline).padding(.leading, DS.Space.s16)
                     }
                 }
-                .entryCardRow(first: index == 0, last: index == rows - 1)
+                .dsCardRow(first: index == 0, last: index == rows - 1)
                 .modifier(EntrySubSwipe(enabled: !readOnly, scale: displayScale) { deletingSub = sub })
             }
             .onMove(perform: readOnly ? nil : { from, to in
@@ -309,7 +309,7 @@ private struct EntryCategoryEditView: View {
                 reorder(moved)
             })
             if !readOnly {
-                addRow.entryCardRow(first: subs.isEmpty, last: true)
+                addRow.dsCardRow(first: subs.isEmpty, last: true)
             }
         }
     }
@@ -410,16 +410,16 @@ private struct EntrySubSwipe: ViewModifier {
     }
 }
 
-private extension View {
+extension View {
     /// A List row that draws nothing of its own: spacing, headers, the segmented control.
-    func entryPlainRow() -> some View {
+    func dsPlainRow() -> some View {
         listRowInsets(EdgeInsets())
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
     }
 
     /// A row of a raised, radius-m group 16 in from each edge; the group's ends round.
-    func entryCardRow(first: Bool, last: Bool) -> some View {
+    func dsCardRow(first: Bool, last: Bool) -> some View {
         let radius = DS.Radius.m
         return listRowInsets(EdgeInsets(top: .zero, leading: DS.Space.s16, bottom: .zero, trailing: DS.Space.s16))
             .listRowSeparator(.hidden)

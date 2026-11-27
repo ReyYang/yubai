@@ -420,6 +420,7 @@ public struct LedgerPresentationCache {
         guard self.revision != revision || ledgerID != ledger.id else { return }
         self.revision = revision; ledgerID = ledger.id
         entryDates = ledger.entries.filter { $0.deletedAt == nil }.map(\.date).sorted()
+        sortedEntries = nil; byID = nil; flows = [:]; slices = [:]; records = [:]; subcategories = [:]; evidence = [:]; candidates = nil; settingsValue = nil; savingsValue = nil
     }
     // Two half-open intervals in the same gaps between posting dates select exactly
     // the same rows. This also caches a live interval whose end is Dates.now each render,
@@ -526,7 +527,10 @@ public struct LedgerPresentationCache {
             followUpCount: ledger.wishlist.filter { $0.status == .bought && $0.followUpAnswer == nil && $0.followUpAt.map { $0 <= now } == true }.count,
             memoryCount: ledger.memories.count,
             weeklyMemoryCount: ledger.memories.filter { ButlerCards.isoWeek($0.createdAt) == week }.count,
-            fixedFlowTitles: FixedFlowArrangement.rows(in: ledger).map(\.title))
+            fixedFlowTitles: FixedFlowArrangement.rows(in: ledger).map(\.title),
+            savingTarget: SettingsSummary.savingTarget(in: ledger, now: now),
+            monthlyFixed: SettingsSummary.monthlyFixed(in: ledger, now: now).total,
+            recentlyDeletedCount: RecentlyDeleted.entries(in: ledger, now: now).count)
         var expires = Dates.addDays(1, to: Dates.day(now))
         for entry in ledger.entries where entry.deletedAt == nil {
             if entry.date > now { expires = min(expires, entry.date) }
@@ -546,6 +550,10 @@ public struct LedgerSettingsSummary: Equatable, Sendable {
     public let memoryCount: Int
     public let weeklyMemoryCount: Int
     public let fixedFlowTitles: [String]
+    /// 设置's own rows: read once per ledger change instead of on every render.
+    public let savingTarget: Int64
+    public let monthlyFixed: Int64
+    public let recentlyDeletedCount: Int
 }
 
 public struct LedgerSavingsTotals: Equatable, Sendable {

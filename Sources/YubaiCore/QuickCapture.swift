@@ -134,6 +134,27 @@ public enum QuickCapture {
         try next.validate(); ledger = next
     }
 
+    /// The account a card records to, looked up by the card's normalized key.
+    public static func account(forCard card: String, in ledger: Ledger) -> UUID? {
+        let map = ledger.preferences.quickCapture.cardAccounts
+        if let exact = map[card] { return exact }
+        let key = cardKey(card)
+        return map.first { cardKey($0.key) == key }?.value
+    }
+
+    /// 卡对应的账户 · 左滑删除: the card's bills go to the default account again.
+    public static func removeAccount(forCard card: String, in ledger: inout Ledger) {
+        let key = cardKey(card)
+        for name in ledger.preferences.quickCapture.cardAccounts.keys where cardKey(name) == key {
+            ledger.preferences.quickCapture.cardAccounts.removeValue(forKey: name)
+        }
+    }
+
+    /// 商户记到哪个分类 · 左滑删除: the merchant is guessed again like any other.
+    public static func forgetMerchant(key: String, in ledger: inout Ledger) {
+        ledger.classificationMemory.removeValue(forKey: key)
+    }
+
     @discardableResult public static func record(_ drafts: [EntryDraft], in ledger: inout Ledger, source: String = "快捷指令", withoutOpeningApp: Bool = true, now: Date = Dates.now) throws -> [UUID] {
         guard !drafts.isEmpty else { return [] }
         var next = ledger
@@ -160,7 +181,7 @@ public enum QuickCapture {
         // 不按两分钟时间桶分组，跨桶重触发也能识别。软删除仍保留去重凭据。
         let identity = "apple-pay:" + LedgerCodec.checksum(try JSONEncoder().encode([cardKey(card), cardKey(merchant), String(cents)]))
         if let duplicate = ledger.entries.first(where: { $0.source == "Apple Pay" && $0.sourceIdentity == identity && abs(($0.quickCapture?.transactionDate ?? $0.date).timeIntervalSince(date)) <= 120 }) { return (duplicate, false) }
-        let mapped = ledger.preferences.quickCapture.cardAccounts.first { cardKey($0.key) == cardKey(card) }?.value
+        let mapped = account(forCard: card, in: ledger)
         let account = mapped.flatMap { id in ledger.accounts.first { $0.id == id && !$0.archived } } ?? ManualBookkeeping.defaultAccount(in: ledger)
         guard let account else { throw YubaiError.invalid("请先添加账户。") }
         let rule = CategoryMemory.value(key(merchant), income: false, in: ledger)

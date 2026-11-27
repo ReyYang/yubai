@@ -203,4 +203,22 @@ final class QuickCaptureTests: XCTestCase {
         QuickCapture.undo(entryID: ledger.entries.last!.id, in: &ledger, now: now)
         XCTAssertEqual(QuickCaptureSnapshot(ledger: ledger, now: now).todayCount, 2)
     }
+
+    func testDeletingAMappingFallsBackToTheDefault() throws {
+        var ledger = fixture()
+        let (cash, credit) = (ledger.accounts[0], ledger.accounts[1])
+        try QuickCapture.setAccount(credit.id, forCard: "招行 尾号 6214", in: &ledger)
+        XCTAssertEqual(QuickCapture.account(forCard: " 招行 尾号 6214", in: ledger), credit.id, "looked up by the normalized key")
+        XCTAssertEqual(try QuickCapture.applePay(merchant: "盒马", amount: "¥88.00", card: "招行 尾号 6214", date: now, in: &ledger, now: now).entry.accountID, credit.id)
+        QuickCapture.removeAccount(forCard: "招行 尾号 6214 ", in: &ledger)
+        XCTAssertNil(QuickCapture.account(forCard: "招行 尾号 6214", in: ledger))
+        XCTAssertEqual(try QuickCapture.applePay(merchant: "瑞幸", amount: "¥18.00", card: "招行 尾号 6214", date: now.addingTimeInterval(600), in: &ledger, now: now).entry.accountID,
+                       ManualBookkeeping.defaultAccount(in: ledger)?.id ?? cash.id)
+
+        ledger.categories = [Category("吃饭"), Category("购物")]
+        try QuickCapture.remember(merchant: "盒马", category: "吃饭", income: false, in: &ledger)
+        let key = try XCTUnwrap(ledger.classificationMemory.keys.first)
+        QuickCapture.forgetMerchant(key: key, in: &ledger)
+        XCTAssertTrue(ledger.classificationMemory.isEmpty)
+    }
 }

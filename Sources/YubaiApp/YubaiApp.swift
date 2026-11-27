@@ -186,6 +186,35 @@ enum AppSheet: Identifiable {
         _ = ledgerRevision
         return presentationCache.settings(in: derivedSource, revision: sourceRevision)
     }
+    /// 快速记账's counts and cards, worked out once per ledger change and clock tick rather than on every render.
+    struct QuickCaptureStats {
+        let recent: Int, withoutOpening: Int, applePay: Int, siri: Int
+        let cards: [QuickCapture.CardSummary]
+    }
+    @ObservationIgnored private var cachedQuickStats: (revision: UInt64, at: Date, value: QuickCaptureStats)?
+    var quickCaptureStats: QuickCaptureStats {
+        _ = ledgerRevision
+        let now = financialNow
+        if let cached = cachedQuickStats, cached.revision == sourceRevision, cached.at == now { return cached.value }
+        // One window for the headline and the rows, so 23 笔 is always the sum of the entrances.
+        let recent = QuickCapture.recentEntries(in: derivedSource, now: now)
+        let applePay = recent.filter { $0.source == QuickCapture.Entrance.applePay.rawValue }.count
+        let value = QuickCaptureStats(recent: recent.count,
+                                      withoutOpening: recent.filter { $0.quickCapture?.withoutOpeningApp == true }.count,
+                                      applePay: applePay, siri: recent.count - applePay,
+                                      cards: QuickCapture.cards(in: derivedSource, now: now))
+        cachedQuickStats = (sourceRevision, now, value)
+        return value
+    }
+    @ObservationIgnored private var cachedMerchantRules: (revision: UInt64, value: [QuickMerchantRule])?
+    /// 商户记到哪个分类, read from the merchant memory once per ledger change.
+    var merchantRules: [QuickMerchantRule] {
+        _ = ledgerRevision
+        if let cached = cachedMerchantRules, cached.revision == sourceRevision { return cached.value }
+        let value = QuickMerchantRule.all(in: derivedSource)
+        cachedMerchantRules = (sourceRevision, value)
+        return value
+    }
     func accountName(_ id: UUID?) -> String { accounts.first { $0.id == id }?.name ?? "未指定账户" }
     var freshLetter: ButlerCard? {
         _ = mutedTopics

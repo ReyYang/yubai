@@ -21,18 +21,18 @@ struct SettingsView: View {
                     VStack(spacing: SettingsSpec.groupGap) {
                         DSSettingsCard {
                             link(.cycle, "周期起始日", SettingsDisplay.cycleDay(CycleStart.day(in: ledger, now: now)), brand: true, first: true, id: "settingsCycle") { store.settingsSheet = .cycle }
-                            link(.saveFirst, "先攒", SettingsDisplay.money(SettingsSummary.savingTarget(in: ledger, now: now), hidden: hidden), brand: true, id: "settingsSaving") { store.settingsSheet = .saving }
+                            link(.saveFirst, "先攒", SettingsDisplay.money(store.settingsSummary.savingTarget, hidden: hidden), brand: true, id: "settingsSaving") { store.settingsSheet = .saving }
                             link(.floor, "底线存款", store.profile.floorAmount.map { SettingsDisplay.money($0, hidden: hidden) } ?? "未设", brand: true, id: "settingsFloor") { store.settingsSheet = .floor }
                         }
                         DSSettingsCard {
-                            link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(SettingsSummary.monthlyFixed(in: ledger, now: now).total, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
+                            link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(store.settingsSummary.monthlyFixed, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
                             link(.catAll, "分类", "\(ledger.orderedCategories(income: false).count) 个", id: "openCategories") { store.tabRouteRequest = .categorySettings }
                             link(.acctDebit, "账户", "\(store.accounts.filter { !$0.archived }.count) 个", id: "settingsAccounts") { store.tabRouteRequest = .settingsAccounts }
                         }
                         // Canvas S-Settings: 主币种 and 快速记账 share a group.
                         DSSettingsCard {
                             link(.exchange, "主币种", SettingsDisplay.mainCurrency(store.preferences), brand: true, first: true, id: "settingsCurrency") { store.tabRouteRequest = .currency }
-                            link(.bolt, "快速记账", "近 7 天 \(QuickCapture.recentEntries(in: ledger, now: now).count) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
+                            link(.bolt, "快速记账", "近 7 天 \(store.quickCaptureStats.recent) 笔", brand: true, id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }
                         }
                         DSSettingsCard {
                             link(.ai, "余白的 AI", cloudAI ? "DeepSeek" : "未开", first: true, id: "openIntelligencePrivacy") { store.tabRouteRequest = .aiSettings }
@@ -264,7 +264,7 @@ struct BackupView: View {
             if let pendingRestore { restorePreview(pendingRestore) }
             Card(style: .list) {
                 VStack(spacing: YubaiSpace.none) {
-                    NavigationLink { RecentlyDeletedView() } label: { SettingsRow(title: "最近删除", detail: "\(RecentlyDeleted.entries(in: store.current).count) 笔") }.accessibilityIdentifier("recentlyDeleted")
+                    NavigationLink { RecentlyDeletedView() } label: { SettingsRow(title: "最近删除", detail: "\(store.settingsSummary.recentlyDeletedCount) 笔") }.accessibilityIdentifier("recentlyDeleted")
                     EntryFormDivider()
                     NavigationLink { RecoveryVersionsView() } label: { SettingsRow(title: "恢复版本") }.accessibilityIdentifier("openRecoveryVersions")
                     EntryFormDivider()
