@@ -75,6 +75,17 @@ extension FixedFlows {
         next.preferences.lastBillCurrency = rate.currency
         try next.validate(); ledger = next
     }
+    /// 用同步的: drop the fixed rate so new entries use the synced one again.
+    /// A 固定收支 billed in this currency still needs it.
+    public static func removeRate(_ currency: BillCurrency, in ledger: inout Ledger) throws {
+        guard !ledger.plans.contains(where: { $0.currency == currency && $0.active }) else {
+            throw YubaiError.invalid("固定收支在用这个汇率。")
+        }
+        var next = ledger
+        next.preferences.billExchangeRates = (next.preferences.billExchangeRates ?? []).filter { $0.currency != currency }
+        if next.preferences.billExchangeRates?.isEmpty == true { next.preferences.billExchangeRates = nil }
+        try next.validate(); ledger = next
+    }
     public static func exchangeRate(for currency: BillCurrency, in ledger: Ledger, now: Date) -> ManualExchangeRate? {
         ManualBillExchangeRates(ledger.preferences.billExchangeRates ?? []).rate(for: currency, asOf: now)
     }

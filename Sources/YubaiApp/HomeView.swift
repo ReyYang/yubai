@@ -2,8 +2,13 @@ import SwiftUI
 import YubaiCore
 
 enum HomeDisplay {
+    /// Every amount on home, overview and settings: in the main currency (display only), CNY by default.
     static func money(_ cents: Int64, hidden: Bool, currency: Bool = false) -> String {
-        hidden ? (currency ? "¥••••" : "••••") : Money.text(cents, currency: currency)
+        let symbol = DisplayCurrency.symbol
+        if hidden { return currency ? symbol + "••••" : "••••" }
+        let shown = DisplayCurrency.convert(cents)
+        guard currency else { return Money.text(shown, currency: false) }
+        return (shown < 0 ? "-" : "") + symbol + Money.text(abs(shown), currency: false)
     }
 
     static func signed(_ cents: Int64, hidden: Bool) -> String {

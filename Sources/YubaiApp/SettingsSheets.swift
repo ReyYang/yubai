@@ -10,7 +10,7 @@ enum SettingsSheet: Hashable, Identifiable {
     case subAdd, subIcon
     case addCategory(income: Bool), addSubcategory(category: String, income: Bool)
     case renameSubcategory(category: String, sub: String, income: Bool)
-    case addCurrency, rate(BillCurrency)
+    case addCurrency, rate(BillCurrency), mainCurrency(BillCurrency)
     case accountAdd(AccountType?, onboarding: Bool)
     case accountName(UUID), accountType(UUID), accountLimit(UUID), accountDay(UUID, statement: Bool)
     case onboardFloor
@@ -98,6 +98,7 @@ struct SettingsSheetHost: View {
         }
         case .addCurrency: AddCurrencySheet()
         case .rate(let currency): RateSheet(currency: currency)
+        case .mainCurrency(let currency): MainCurrencyConfirm(currency: currency)
         case let .accountAdd(type, onboarding): AccountAddSheet(type: type ?? .debit, onboarding: onboarding)
         case .accountName(let id): TextEntrySheet(title: "名称", placeholder: "名称", initial: store.accounts.first { $0.id == id }?.name ?? "", identifier: "accountName") { name, ledger in
             try Accounts.update(id, .init(name: name), in: &ledger, now: Dates.now)
@@ -539,6 +540,16 @@ struct RateSheet: View {
                 if store.update("汇率", entryMotion: false, showToast: false, { try FixedFlows.setRate(rate, in: &$0) }) { close() }
             }) {
                 SettingsAmountBox(label: "1 " + currency.rawValue + " =", value: text.isEmpty ? "0" : text)
+                // Spec-Currency 设置 › 主币种与汇率: a fixed rate can go back to the daily synced one.
+                if FixedFlows.exchangeRate(for: currency, in: store.current, now: store.financialNow) != nil,
+                   let synced = store.preferences.syncedRates?.rate(for: currency) {
+                    Button {
+                        if store.update("汇率", entryMotion: false, showToast: false, { try FixedFlows.removeRate(currency, in: &$0) }) { close() }
+                    } label: {
+                        Text("用同步的 " + CurrencySettings.rateText(synced)).dsText(DS.Font.tLabelStrong).monospacedDigit()
+                            .foregroundStyle(DS.Color.accentInk).frame(maxWidth: .infinity, minHeight: DS.Size.tapMin, alignment: .trailing)
+                    }.dsPressStyle().accessibilityIdentifier("useSyncedRate")
+                }
             }
         }
         .onAppear {

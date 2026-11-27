@@ -4,6 +4,17 @@ import SwiftUI
 /// Settings, account and first-open numbers with no design token.
 enum SettingsSpec {
     // Shared
+    // design-v2 canvas Main.dc.html 主币种与汇率 / 改主币种确认
+    static let currencyRow: CGFloat = 48 // 主币种 rows
+    static let currencySymbolColumn: CGFloat = 52 // 40 pt symbol + 12 gap; the hairline starts at the name
+    static let tag = DS.TextStyle(size: 11, lineHeight: 18, weight: .semibold, tracking: 0, family: .text, relativeTo: .caption2, monospacedDigit: false) // 手动 tag
+    static let tagInset: CGFloat = 6
+    static let tagHeight: CGFloat = 18
+    static let updateLabel = DS.TextStyle(size: 14, lineHeight: 20, weight: .semibold, tracking: 0, family: .text, relativeTo: .subheadline, monospacedDigit: false) // 去更新
+    static let updateInset: CGFloat = 14
+    static let updateHeight: CGFloat = 32
+    static let confirmWidth: CGFloat = 300
+    static let confirmTop: CGFloat = 24
     static let row: CGFloat = 52 // canvas Settings.dc.html: settings rows, SettingsMore.dc.html: account edit rows
     static let groupGap: CGFloat = 22 // canvas Settings.dc.html: gap between cards and above the version
     static let cardInset: CGFloat = 14 // canvas Settings.dc.html: card leading inset, weekend row, key field

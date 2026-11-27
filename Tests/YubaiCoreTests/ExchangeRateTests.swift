@@ -22,6 +22,22 @@ final class ExchangeRateTests: XCTestCase {
                        purpose: "咖啡", category: "餐饮", accountID: account, date: now)
     }
 
+    func testRemovingAFixedRateFallsBackToTheSyncedOneUnlessAPlanNeedsIt() throws {
+        var ledger = ledger()
+        try ExchangeRates.apply(ExchangeRates.parseECB(Data(ecb.utf8), fetchedAt: now), to: &ledger)
+        try FixedFlows.setRate(ManualExchangeRate(currency: .usd, cnyPerUnit: 7.2, updatedAt: now), in: &ledger)
+        XCTAssertEqual(ExchangeRates.rate(for: .usd, in: ledger, now: now)?.manual, true)
+        try FixedFlows.removeRate(.usd, in: &ledger)
+        XCTAssertEqual(ExchangeRates.rate(for: .usd, in: ledger, now: now)?.manual, false)
+        XCTAssertNil(ledger.preferences.billExchangeRates)
+
+        try FixedFlows.setRate(ManualExchangeRate(currency: .usd, cnyPerUnit: 7.2, updatedAt: now), in: &ledger)
+        var plan = Plan(title: "iCloud", amount: 999, dueDate: now, frequency: .monthly, inflow: false, category: "会员订阅")
+        plan.currency = .usd
+        ledger.plans = [plan]
+        XCTAssertThrowsError(try FixedFlows.removeRate(.usd, in: &ledger))
+    }
+
     func testParsesECBIntoCNYPerUnit() throws {
         let rates = try ExchangeRates.parseECB(Data(ecb.utf8), fetchedAt: now)
         XCTAssertEqual(rates.date, Dates.parse("2026-11-26"))

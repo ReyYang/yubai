@@ -104,6 +104,7 @@ enum AppSheet: Identifiable {
             }
             if oldValue != ledger {
                 invalidateDerived()
+                if oldValue.preferences != ledger.preferences { DisplayCurrency.configure(ledger, now: Dates.now) }
                 // The long-press menu never outlives its bill (synced away, swiped, deleted by a shortcut).
                 if let id = billMenu?.entryID, !ledger.entries.contains(where: { $0.id == id && $0.deletedAt == nil }) {
                     billMenu = nil
@@ -552,6 +553,8 @@ enum AppSheet: Identifiable {
     var askRequest: AskRequest?
     /// The bill whose long-press menu is open.
     var billMenu: BillMenuRequest?
+    /// A rate fetch is in flight (主币种与汇率 · 去更新 waits on it).
+    var rateSyncRunning = false
     /// The last home deletion's 撤销 bar. Survives the lock screen; ends at its own deadline.
     var billUndo: BillUndoNotice?
     @ObservationIgnored var billUndoExpiry: Task<Void, Never>?
@@ -1318,6 +1321,7 @@ struct RootView: View {
             if newValue == .background { store.flushBeforeSuspension() }
             if newValue == .active {
                 store.purgeExpiredEntries(); store.ask.expireIfNeeded(ledgerID: store.current.id); store.refreshTimeDerived(); IntelligenceRuntime.cloud.refresh()
+                Task { await store.syncExchangeRatesIfNeeded() }
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
@@ -1337,6 +1341,7 @@ struct RootView: View {
             if !store.locked, store.pendingSavingPage { store.pendingSavingPage = false; store.openSavingPage() }
             if !store.locked, let pending = store.pendingQuickSheet { store.pendingQuickSheet = nil; store.requestCaptureSheet(pending) }
             await store.configureSync(); store.runCycleMaintenance()
+            await store.syncExchangeRatesIfNeeded()
         }
         .modifier(RootBackgroundTasks())
         .overlay(alignment: .top) {
