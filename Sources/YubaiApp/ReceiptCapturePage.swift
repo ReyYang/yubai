@@ -146,8 +146,8 @@ struct ReceiptCapturePage: View {
             Button {
                 if selected.contains(line.id) { selected.remove(line.id) } else { selected.insert(line.id) }
             } label: {
-                Image(systemName: selected.contains(line.id) ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(selected.contains(line.id) ? YubaiColor.brand : YubaiColor.labelSecondary)
+                DSIconView(icon: selected.contains(line.id) ? .radioOn : .radioOff, size: DS.Size.icon,
+                           color: selected.contains(line.id) ? YubaiColor.brand : YubaiColor.labelSecondary)
                     .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin)
             }.buttonStyle(PressButtonStyle()).accessibilityLabel(line.draft.title)
                 .accessibilityValue(selected.contains(line.id) ? "已选" : "未选").accessibilityIdentifier("receiptSelect_\(line.id)")

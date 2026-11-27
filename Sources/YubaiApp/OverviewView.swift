@@ -56,7 +56,7 @@ struct SavingsView: View {
             HStack(spacing: YubaiSpace.gapGroup) {
                 AmountLabel(cents: sharing ? fixed : fixedTarget, hide: hide, role: .hero)
                 Button { editing = sharing ? .fixed : .target } label: {
-                    Image(systemName: "pencil").yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.brandInk)
+                    DSIconView(icon: .edit, size: YubaiFont.callout.size, color: YubaiColor.brandInk)
                         .frame(width: YubaiSize.iconButton, height: YubaiSize.iconButton).controlSurface(in: Circle()).yubaiHitTarget()
                 }.buttonStyle(PressButtonStyle()).accessibilityLabel(sharing ? "修改存下的钱" : "修改每月存")
                     .accessibilityIdentifier(sharing ? "editFixedSavings" : "editSavingTarget")
@@ -70,7 +70,7 @@ struct SavingsView: View {
                 EntryFormRow(title: "存下的钱") {
                     HStack(spacing: YubaiSpace.space8) {
                         AmountLabel(cents: fixed, hide: hide, role: .small, ink: YubaiColor.labelSecondary)
-                        Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+                        DSIconView(icon: .chevron, size: YubaiFont.meta.size, color: YubaiColor.labelSecondary)
                     }
                 }
             }

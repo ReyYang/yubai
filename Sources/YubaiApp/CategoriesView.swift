@@ -317,7 +317,7 @@ private struct CategoryMergeView: View {
                 Button { target = category.name } label: {
                     HStack {
                         categoryName(category.name); Spacer()
-                        if target == category.name { Image(systemName: "checkmark").foregroundStyle(YubaiColor.brandInk) }
+                        if target == category.name { DSIconView(icon: .done, size: YubaiFont.body.size, color: YubaiColor.brandInk) }
                     }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 }.buttonStyle(.plain).accessibilityAddTraits(target == category.name ? .isSelected : [])
                     .accessibilityIdentifier("mergeInto_" + category.name)
@@ -347,7 +347,7 @@ private struct HiddenCategoriesView: View {
 }
 
 private func categoryName(_ name: String) -> some View { Text(name).accessibilityIdentifier("truncatableName").yubaiFont(YubaiFont.row).lineLimit(1).truncationMode(.tail) }
-private var categoryChevron: some View { Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
+private var categoryChevron: some View { DSIconView(icon: .chevron, size: YubaiFont.caption.size, color: YubaiColor.labelSecondary) }
 private var categorySeparator: some View { Rectangle().fill(YubaiColor.separator).frame(height: YubaiSize.separator).accessibilityHidden(true) }
 private func categoryEntryCount(_ category: String, subcategory: String? = nil, income: Bool, ledger: Ledger) -> Int {
     ledger.activeEntries.filter {

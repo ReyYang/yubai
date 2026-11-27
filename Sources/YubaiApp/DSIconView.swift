@@ -68,3 +68,70 @@ extension DS.Icon {
         DSIconView(icon: self, size: size, color: color)
     }
 }
+
+extension Label where Title == Text, Icon == DSIconView {
+    init(_ title: LocalizedStringKey, icon: DS.Icon, size: CGFloat, color: Color? = nil) {
+        self.init { Text(title) } icon: { DSIconView(icon: icon, size: size, color: color) }
+    }
+    @_disfavoredOverload
+    init<S: StringProtocol>(_ title: S, icon: DS.Icon, size: CGFloat, color: Color? = nil) {
+        self.init { Text(title) } icon: { DSIconView(icon: icon, size: size, color: color) }
+    }
+}
+
+extension DS.Icon {
+    /// Ledgers store SF Symbol names for categories; every screen draws them through this table.
+    /// Unknown names, including ones from older ledgers, fall back to `.catOther`.
+    /// A category's icon: a known name wins (custom categories keep the generic symbol), then its stored symbol.
+    init(category name: String, symbol: String, income: Bool) {
+        self = Self.categoryNames[name] ?? DS.Icon(symbol: symbol, income: income)
+    }
+
+    init(symbol: String, income: Bool = false) {
+        if symbol == "gift" { self = income ? .incGift : .catFamily; return }
+        self = Self.storedSymbols[symbol] ?? .catOther
+    }
+
+    private static let categoryNames: [String: DS.Icon] = [
+        "吃饭": .catFood, "餐饮": .catFood, "咖啡": .catCoffee, "咖啡茶饮": .catCoffee,
+        "交通": .catTransport, "出行": .catTransport, "买菜": .catGrocery, "生鲜买菜": .catGrocery,
+        "购物": .catShopping, "居住": .catHousing, "住房": .catHousing, "娱乐": .catFun,
+        "日用": .catDaily, "日用百货": .catDaily, "数码": .catDigital, "数码电器": .catDigital,
+        "工资": .incSalary, "奖金": .incSalary, "工资奖金": .incSalary, "兼职劳务": .incSideJob,
+        "礼金赠与": .incGift, "投资收益": .incInvestment, "二手转卖": .incResale,
+        "报销": .reimburse, "退款": .refund,
+    ]
+
+    private static let storedSymbols: [String: DS.Icon] = [
+        // Default expense categories.
+        "fork.knife": .catFood, "bag": .catShopping, "tram": .catTransport, "house": .catHousing,
+        "cross.case": .catHealth, "scissors": .catBeauty, "sparkles": .catFun, "suitcase": .catTravel,
+        "repeat": .catMembership, "book": .catLearning, "checkmark.shield": .catInsurance,
+        "percent": .catFees, "ellipsis": .catOther,
+        // Default income categories.
+        "briefcase": .incSalary, "hammer": .incSideJob, "chart.line.uptrend.xyaxis": .incInvestment,
+        "receipt": .reimburse, "arrow.triangle.2.circlepath": .incResale, "arrow.2.circlepath": .incResale,
+        "arrow.left.arrow.right": .transfer,
+        // Older ledgers and imports.
+        "takeoutbag.and.cup.and.straw": .catFood, "cup.and.saucer": .catCoffee,
+        "car": .catTransport, "bus": .catTransport, "basket": .catGrocery, "cart": .catGrocery,
+        "shoppingbag": .catShopping, "house.fill": .catHousing, "ticket": .catFun, "gamecontroller": .catFun,
+        "shippingbox": .catDaily, "iphone": .catDigital, "desktopcomputer": .catDigital,
+        "banknote": .incSalary, "square.grid.2x2": .catOther,
+        // Nature fallbacks written by ManualBookkeeping.
+        "arrow.down.left": .dirIncome, "arrow.up.right": .dirExpense, "arrow.uturn.backward": .refund,
+        "person.2": .split, "circle.dotted": .radioOff,
+    ]
+}
+
+extension AccountKind {
+    var icon: DS.Icon {
+        switch self {
+        case .bank: .acctDebit
+        case .credit: .acctCredit
+        case .investment: .acctInvest
+        case .cash: .acctWallet
+        case .receivable: .acctReceivable
+        }
+    }
+}

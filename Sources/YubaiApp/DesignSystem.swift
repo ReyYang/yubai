@@ -1669,7 +1669,7 @@ struct Pill: View {
         HStack(spacing: YubaiSpace.space8) {
             if showsDot { Circle().fill(variant == .amber ? YubaiColor.amberDot : YubaiColor.brandMark).frame(width: 6, height: 6).accessibilityHidden(true) }
             Text(text).yubaiFont(height < YubaiSize.pillHeight ? YubaiFont.meta : YubaiFont.caption)
-            if showsChevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta, weight: .medium).accessibilityHidden(true) }
+            if showsChevron { DSIconView(icon: .chevron, size: YubaiFont.meta.size) }
         }.padding(.horizontal, height < YubaiSize.pillHeight ? YubaiSpace.space8 : YubaiSpace.gapGroup)
             .padding(.vertical, YubaiSpace.space4).frame(minHeight: height).foregroundStyle(ink).background(background, in: Capsule()).contentShape(Capsule())
     }
@@ -1949,8 +1949,8 @@ struct EmptyState: View {
         self.titleIdentifier = titleIdentifier
     }
     // Custom facts use the same ghost and sans title as the named page presets.
-    init(_ icon: String, _ title: String, action: String? = nil, actionIdentifier: String = "", onAction: (() -> Void)? = nil) {
-        self.kind = icon == "calendar" ? .bills : icon == "heart" ? .wish : icon == "text.book.closed" ? .memories : .ledger
+    init(_ icon: DS.Icon, _ title: String, action: String? = nil, actionIdentifier: String = "", onAction: (() -> Void)? = nil) {
+        self.kind = icon == .cycle ? .bills : icon == .memory ? .memories : .ledger
         self.title = title; self.action = action; self.onAction = onAction
         self.actionIdentifier = actionIdentifier; self.secondaryIdentifier = ""
     }
@@ -1969,7 +1969,7 @@ struct EmptyState: View {
                 }.frame(maxWidth: 280, minHeight: 156, alignment: .leading)
                     .frame(maxWidth: .infinity)
             } else if kind == .search {
-                Image(systemName: "magnifyingglass").yubaiFont(YubaiFont.amountHero)
+                DSIconView(icon: .search, size: YubaiFont.amountHero.size)
                     .foregroundStyle(YubaiColor.separator).frame(height: 156).accessibilityHidden(true)
             } else {
                 EmptyGhostDrawing(kind: kind).frame(maxWidth: 240).frame(height: 156).accessibilityHidden(true)
@@ -2120,7 +2120,7 @@ struct Toast: View {
                         .padding(.trailing, hasChevron ? YubaiSpace.space8 : YubaiSpace.none)
                     if hasChevron {
                         Button(action: toggle) {
-                            Image(systemName: expanded ? "chevron.up" : "chevron.down").yubaiFont(YubaiFont.caption)
+                            DSIconView(icon: expanded ? .chevronUp : .chevronDown, size: YubaiFont.caption.size)
                                 .foregroundStyle(YubaiColor.labelSecondary)
                         }.buttonStyle(TextLinkStyle()).accessibilityIdentifier("expandToast")
                             .accessibilityLabel(expanded ? "关闭提示" : "展开完整提示")
@@ -2346,7 +2346,7 @@ struct HomeEntryPill: View {
     let quick: () -> Void
     var body: some View {
         HStack(spacing: YubaiSpace.space8) {
-            Image(systemName: "plus").yubaiFont(YubaiFont.tabIcon, weight: .semibold)
+            DSIconView(icon: .add, size: YubaiFont.tabIcon.size)
             Text(title).yubaiFont(YubaiFont.fieldValue, weight: .semibold)
         }.foregroundStyle(YubaiColor.onBrand)
             .padding(.leading, YubaiSpace.space22).padding(.trailing, YubaiSpace.space28)
@@ -2539,9 +2539,9 @@ struct DestinationGlyph: View {
     }
     @ViewBuilder private var glyph: some View {
         switch destination {
-        case .insights: Image(systemName: "chart.pie").font(.system(size: size, weight: selected ? .medium : .regular))
-        case .ledger: NowTabGlyph(size: size, selected: selected)
-        case .yubai: Image(systemName: "leaf.fill").font(.system(size: size, weight: selected ? .medium : .regular))
+        case .insights: DSIconView(icon: .tabOverview, size: size)
+        case .ledger: DSIconView(icon: .tabHome, size: size)
+        case .yubai: AssistantMark(size: size, color: selected ? YubaiColor.brandGlyph : YubaiColor.labelSecondary)
         }
     }
 }
@@ -2828,7 +2828,7 @@ struct ManualSheetHeader: View {
     @Environment(\.dynamicTypeSize) private var textSize
     let title: String
     var actionTitle = "保存"
-    var actionImage: String? = nil
+    var actionImage: DS.Icon? = nil
     var primary = true
     var showsAction = true
     var enabled = true
@@ -2849,7 +2849,7 @@ struct ManualSheetHeader: View {
                         titleText
                         HStack(spacing: 2) {
                             Text(subtitle).fixedSize(horizontal: false, vertical: true).yubaiTextLineBox(YubaiFont.meta)
-                            Image(systemName: "chevron.down").font(.system(size: 9))
+                            DSIconView(icon: .chevronDown, size: 9)
                         }.yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.brandInk)
                     }.frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
                 }.accessibilityIdentifier(subtitleIdentifier)
@@ -2874,7 +2874,7 @@ struct ManualSheetHeader: View {
     @ViewBuilder private var actionButton: some View {
         if showsAction {
             Button(action: action) {
-                HStack(spacing: 8) { if let actionImage { Image(systemName: actionImage) }; Text(actionTitle).fixedSize() }
+                HStack(spacing: 8) { if let actionImage { DSIconView(icon: actionImage, size: YubaiFont.body.size) }; Text(actionTitle).fixedSize() }
                     .yubaiFont(YubaiFont.body, weight: primary ? .medium : .regular)
                     .padding(.horizontal, 12).frame(minHeight: 36)
                     .foregroundStyle(primary ? YubaiColor.onBrand : YubaiColor.label)
@@ -3378,35 +3378,22 @@ struct CardTextFieldRow: View {
     }
 }
 
-enum SystemGlyph {
-    static func validated(_ candidate: String) -> String {
-        #if os(iOS)
-        return UIImage(systemName: candidate) == nil ? "square.grid.2x2" : candidate
-        #elseif os(macOS)
-        return NSImage(systemSymbolName: candidate, accessibilityDescription: nil) == nil ? "square.grid.2x2" : candidate
-        #else
-        return candidate.isEmpty ? "square.grid.2x2" : candidate
-        #endif
-    }
-}
-
 /// A row icon describes its category; an unknown category is a neutral dot.
 struct LedgerCategoryIcon: View {
     @Environment(AppStore.self) private var store
     let category: String
     var pending = false
     var income: Bool? = nil
-    private var symbol: String {
+    private var icon: DS.Icon {
         let name = category.components(separatedBy: " · ").first ?? category
-        let candidate = store.current.categories.first { $0.name == name && (income == nil || $0.income == income) }?.symbol ?? "square.grid.2x2"
-        return SystemGlyph.validated(candidate)
+        let match = store.current.categories.first { $0.name == name && (income == nil || $0.income == income) }
+        return match.map { DS.Icon(category: $0.name, symbol: $0.symbol, income: $0.income) } ?? .catOther
     }
     var body: some View {
         Group {
             if pending { Circle().fill(YubaiColor.labelSecondary).frame(width: 6, height: 6) }
             else {
-                Image(systemName: symbol)
-                    .yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelMuted)
+                DSIconView(icon: icon, size: YubaiFont.callout.size, color: YubaiColor.labelMuted)
             }
         }.accessibilityHidden(true)
     }
@@ -3523,7 +3510,7 @@ private struct AmountKeypadKey: View {
             keypad.press(key, replacingAmount: amountSelected); amountSelected = false
         } label: {
             Group {
-                if key == "⌫" { Image(systemName: "delete.left") }
+                if key == "⌫" { DSIconView(icon: .backspace, size: YubaiFont.amountAccount.size) }
                 else { Text(key) }
             }.yubaiFont(YubaiFont.amountAccount, weight: .regular)
                 .frame(maxWidth: .infinity).frame(height: height)
@@ -3637,7 +3624,7 @@ extension View {
 struct EntryForm<Content: View>: View {
     let title: String
     var actionTitle = "好"
-    var actionImage: String? = nil
+    var actionImage: DS.Icon? = nil
     var primary = true
     var showsAction = true
     var enabled = true
@@ -3741,7 +3728,7 @@ private struct EntrySaveReceipt: View {
     let deadline: Date?
     var body: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: deadline == nil)) { context in
-            Label("已记下", systemImage: "checkmark").yubaiFont(YubaiFont.keypadAction)
+            Label("已记下", icon: .done, size: YubaiFont.keypadAction.size).yubaiFont(YubaiFont.keypadAction)
                 .frame(maxWidth: .infinity, maxHeight: .infinity).foregroundStyle(YubaiColor.brandInk)
                 .background {
                     GeometryReader { proxy in
@@ -3816,13 +3803,13 @@ struct EntryCalendarView: View {
         HStack(spacing: YubaiSpace.space8) {
             Text(monthTitle).yubaiFont(YubaiFont.rowTitle, weight: .semibold).fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: YubaiSpace.space8)
-            monthButton(-1, symbol: "chevron.left", label: "上个月")
-            monthButton(1, symbol: "chevron.right", label: "下个月")
+            monthButton(-1, icon: .back, label: "上个月")
+            monthButton(1, icon: .chevron, label: "下个月")
         }
     }
-    private func monthButton(_ offset: Int, symbol: String, label: String) -> some View {
+    private func monthButton(_ offset: Int, icon: DS.Icon, label: String) -> some View {
         Button { month = Dates.addMonths(offset, to: month) } label: {
-            Image(systemName: symbol).yubaiFont(YubaiFont.callout)
+            DSIconView(icon: icon, size: YubaiFont.callout.size)
                 .frame(width: YubaiSize.tapMin, height: YubaiSize.tapMin).contentShape(Rectangle())
         }.buttonStyle(PressButtonStyle()).accessibilityLabel(label)
             .accessibilityIdentifier(identifier + (offset < 0 ? "Previous" : "Next"))
@@ -3960,7 +3947,7 @@ struct SettingsRow: View {
                 if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
                 if let detail { Text(detail).yubaiFont(YubaiFont.callout).foregroundStyle(YubaiColor.labelSecondary).fixedSize(horizontal: false, vertical: true) }
             }.frame(maxWidth: .infinity, alignment: .leading)
-            if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
+            if chevron { DSIconView(icon: .chevron, size: YubaiFont.meta.size, color: YubaiColor.labelSecondary) }
         }.frame(minHeight: YubaiSize.buttonHeight).contentShape(Rectangle()).accessibilityElement(children: .combine)
     }
 }
@@ -3978,8 +3965,8 @@ struct EntryDateChip: View {
             presentations.presentSheet { EntryDateSheet(date: $date, time: time, allowsFuture: allowsFuture, latestDate: Dates.now) }
         } label: {
             Group {
-                if iconOnly { Image(systemName: "calendar").frame(width: YubaiSize.headerIcon) }
-                else if inTray && !time { Label(ManualBookkeeping.dayLabel(date), systemImage: "calendar").fixedSize() }
+                if iconOnly { DSIconView(icon: .cycle, size: YubaiFont.callout.size).frame(width: YubaiSize.headerIcon) }
+                else if inTray && !time { Label(ManualBookkeeping.dayLabel(date), icon: .cycle, size: YubaiFont.callout.size).fixedSize() }
                 else { Text(time ? date.formatted(.dateTime.hour(.twoDigits(amPM: .omitted)).minute(.twoDigits)) : ManualBookkeeping.dayLabel(date)).fixedSize() }
             }
                 .yubaiFont(time ? YubaiFont.amountSmall : YubaiFont.callout)

@@ -126,7 +126,7 @@ struct StorageView: View {
         HStack(spacing: YubaiSpace.gapGroup) {
             Text(title).yubaiFont(YubaiFont.row)
             Spacer(minLength: YubaiSpace.space8)
-            if chevron { Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true) }
+            if chevron { DSIconView(icon: .chevron, size: YubaiFont.meta.size, color: YubaiColor.labelSecondary) }
         }.frame(maxWidth: .infinity, minHeight: YubaiSize.headerHeight).contentShape(Rectangle())
     }
 }

@@ -531,13 +531,15 @@ CCD4793E64F1A0B00E60149B = {isa = PBXFileReference; lastKnownFileType = sourceco
 A01764D85A486C7B8E36CDE3 = {isa = PBXBuildFile; fileRef = CCD4793E64F1A0B00E60149B;};
 CC5E0E0218010AD82A394634 = {isa = PBXBuildFile; fileRef = 68318D0C792F231F38E79D74;};
 1A8160CEAE693B4553CD5455 = {isa = PBXBuildFile; fileRef = D7407DB01A1940F090E72072;};
+4E3DC0D8233BCEA597A3717F = {isa = PBXBuildFile; fileRef = 964EBEBAA2907DF03C8B8EBE;};
+5D8BDBD5BA53515DA5A3D02F = {isa = PBXBuildFile; fileRef = 58DF0EC8580E8485D46180F6;};
 EC2402C79C60090A6B7C8035 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "Info.plist"; sourceTree = "<group>";};
 B5AE78144223E64855931556 = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "YubaiWidgets.entitlements"; sourceTree = "<group>";};
 726771E79DB6AA5402F2AD14 = {isa = PBXGroup; children = (CCD4793E64F1A0B00E60149B,EC2402C79C60090A6B7C8035,B5AE78144223E64855931556,); path = Sources/YubaiWidgets; sourceTree = "<group>";};
 7B67AFB1300AB7EBCB7BF6F5 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/Widgets.xcconfig; sourceTree = "<group>";};
 7FAA3A6D0C65EE7323324DC9 = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Config/AppGroup.xcconfig; sourceTree = "<group>";};
 D1FC3980C62A8D20F6C0FFF0 = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = YubaiWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR;};
-82CE34952E166218838BE670 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A01764D85A486C7B8E36CDE3,CC5E0E0218010AD82A394634,1A8160CEAE693B4553CD5455,); runOnlyForDeploymentPostprocessing = 0;};
+82CE34952E166218838BE670 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A01764D85A486C7B8E36CDE3,CC5E0E0218010AD82A394634,1A8160CEAE693B4553CD5455,4E3DC0D8233BCEA597A3717F,5D8BDBD5BA53515DA5A3D02F,); runOnlyForDeploymentPostprocessing = 0;};
 CD24E247C09566F51B159FBA = {isa = XCSwiftPackageProductDependency; package = 582681C2EAE02B3F3D399C0C; productName = YubaiCore;};
 064EF1DFF473D18F8B843BD3 = {isa = PBXBuildFile; productRef = CD24E247C09566F51B159FBA;};
 112482586DC9325ECD958FF1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (064EF1DFF473D18F8B843BD3,); runOnlyForDeploymentPostprocessing = 0;};

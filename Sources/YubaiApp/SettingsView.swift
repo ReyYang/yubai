@@ -405,7 +405,7 @@ struct BackupView: View {
                     Text(FixedFlowPresentation.monthDay(date)).yubaiFont(YubaiFont.amountLarge)
                     Text(days == 0 ? "今天" : "\(days) 天前").yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary)
                 }
-            } else { EmptyState("square.and.arrow.up", "还没备份过", action: "备份到文件", actionIdentifier: "backupToFile", onAction: { exportExpanded.toggle() }) }
+            } else { EmptyState(.export, "还没备份过", action: "备份到文件", actionIdentifier: "backupToFile", onAction: { exportExpanded.toggle() }) }
         }.frame(maxWidth: .infinity, alignment: .leading).accessibilityElement(children: .contain).accessibilityIdentifier("lastBackup")
             #if DEBUG && targetEnvironment(simulator)
             .uiTestAccessibilityValue("files=\(backupFileCount);csv=\(csvExport && exportDocument.data.starts(with: [0xEF, 0xBB, 0xBF]) ? 1 : 0)")
@@ -417,7 +417,7 @@ struct BackupView: View {
             Text(title).yubaiFont(YubaiFont.row).foregroundStyle(YubaiColor.label)
             if !textSize.isAccessibilitySize { Spacer(minLength: YubaiSpace.space8) }
             if let detail { Text(detail).yubaiFont(YubaiFont.caption).foregroundStyle(YubaiColor.labelSecondary) }
-            Image(systemName: "chevron.right").yubaiFont(YubaiFont.meta).foregroundStyle(YubaiColor.labelSecondary)
+            DSIconView(icon: .chevron, size: YubaiFont.meta.size, color: YubaiColor.labelSecondary)
         }.frame(minHeight: YubaiSize.rowDouble).contentShape(Rectangle())
     }
 }
@@ -519,7 +519,7 @@ struct RecentlyDeletedView: View {
     var body: some View {
         let rows = RecentlyDeleted.entries(in: store.current)
         Page(spacing: YubaiSpace.gapSection) {
-            if rows.isEmpty { EmptyState("trash", "最近删除里没有账目", action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) }) }
+            if rows.isEmpty { EmptyState(.delete, "最近删除里没有账目", action: "记一笔", onAction: { store.requestCaptureSheet(.addEntry) }) }
             group("今天", rows: rows.filter { Dates.calendar.isDate($0.deletedAt!, inSameDayAs: Dates.now) })
             group("更早", rows: rows.filter { !Dates.calendar.isDate($0.deletedAt!, inSameDayAs: Dates.now) })
             if !rows.isEmpty {

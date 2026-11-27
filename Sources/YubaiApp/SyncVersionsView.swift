@@ -16,7 +16,7 @@ struct SyncVersionsView: View {
                 }
                 if choice.switching { Button("取消切换", role: .cancel) { store.cancelSyncLocationChoice() }.disabled(store.syncBusy) }
                 if store.syncBusy { ProgressView("正在保存…") }
-            } else { EmptyState("clock", "没有待选择的版本", action: "返回", onAction: { dismiss() }) }
+            } else { EmptyState(.clock, "没有待选择的版本", action: "返回", onAction: { dismiss() }) }
         }.accessibilityIdentifier("syncVersionsPage").navigationTitle("选择账本版本").yubaiNavigation().manualSheetHeader("选择账本版本", cancelTitle: "关闭", showsAction: false)
     }
     private func versionCard(_ version: LedgerVersion, other: LedgerVersion?, choice: SyncChoice) -> some View {

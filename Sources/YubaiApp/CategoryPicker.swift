@@ -92,7 +92,7 @@ struct CategoryPicker: View {
                 entrySubcategories(main)
             }
             Button { add(parent: nil) } label: {
-                Label("新分类", systemImage: "plus").yubaiFont(YubaiFont.callout, weight: .medium)
+                Label("新分类", icon: .add, size: YubaiFont.callout.size).yubaiFont(YubaiFont.callout, weight: .medium)
                     .foregroundStyle(YubaiColor.brandInk).frame(minHeight: YubaiSize.tapMin).contentShape(Rectangle())
             }.buttonStyle(PressButtonStyle()).accessibilityIdentifier(identifier + "Add")
         }.frame(maxWidth: .infinity, alignment: .leading)
@@ -126,7 +126,7 @@ struct CategoryPicker: View {
     }
     private var addButton: some View {
         Button { add(parent: expanded) } label: {
-            Label("加一个", systemImage: "plus").yubaiFont(YubaiFont.button)
+            Label("加一个", icon: .add, size: YubaiFont.button.size).yubaiFont(YubaiFont.button)
                 .lineLimit(1).fixedSize().padding(.horizontal, YubaiSpace.gapGroup)
                 .frame(maxWidth: .infinity, minHeight: YubaiSize.rowSingle)
                 .foregroundStyle(YubaiColor.brandInk)
@@ -198,7 +198,7 @@ struct CategoryPickerField: View {
     private var value: some View {
         HStack(spacing: YubaiSpace.space8) {
             Text(Classification.displayCategory(selection.category) + (selection.subcategory.map { " · " + $0 } ?? "")).lineLimit(1).fixedSize()
-            Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption).accessibilityHidden(true)
+            DSIconView(icon: .chevron, size: YubaiFont.caption.size)
         }.foregroundStyle(YubaiColor.brandInk)
     }
 }

@@ -8,7 +8,7 @@ struct AccountsView: View {
     var body: some View {
         let hand = handAccounts, other = otherAccounts
         Page(spacing: YubaiSpace.gapSection, topPadding: YubaiSpace.gapGroup) {
-            if store.accounts.isEmpty { EmptyState("creditcard", "还没有账户", action: "添加账户", actionIdentifier: "addAccount", onAction: { store.settingsSheet = .accountAdd(nil, onboarding: false) }) }
+            if store.accounts.isEmpty { EmptyState(.acctDebit, "还没有账户", action: "添加账户", actionIdentifier: "addAccount", onAction: { store.settingsSheet = .accountAdd(nil, onboarding: false) }) }
             if !hand.isEmpty { totalBlock(hand) }
             if !hand.isEmpty { accountGroup(hand, heading: nil) }
             if !other.isEmpty { accountGroup(other, heading: "不算在手上的") }
@@ -18,7 +18,7 @@ struct AccountsView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { store.settingsSheet = .accountAdd(nil, onboarding: false) } label: {
-                        Image(systemName: "plus").yubaiHitTarget().accessibilityHidden(true)
+                        DSIconView(icon: .add, size: DS.Size.icon).yubaiHitTarget()
                     }.buttonStyle(TextLinkStyle()).accessibilityLabel("添加账户").accessibilityIdentifier("addAccountToolbar")
                 }
             }
@@ -45,7 +45,7 @@ struct AccountsView: View {
         }
     }
     private var chevron: some View {
-        Image(systemName: "chevron.right").yubaiFont(YubaiFont.caption, weight: .medium)
+        DSIconView(icon: .chevron, size: YubaiFont.caption.size)
             .foregroundStyle(YubaiColor.labelSecondary).accessibilityHidden(true)
     }
     private func accountRow(_ a: Account) -> some View {
@@ -114,7 +114,7 @@ struct AccountsView: View {
         }.navigationTitle(a.name).yubaiNavigation().accessibilityIdentifier("accountDetailPage")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    HeaderIconButton(action: { store.tabRouteRequest = .accountEdit(a.id) }) { size in Image(systemName: "pencil").font(.system(size: size)) }
+                    HeaderIconButton(action: { store.tabRouteRequest = .accountEdit(a.id) }) { size in DSIconView(icon: .edit, size: size) }
                         .accessibilityLabel("编辑账户").accessibilityIdentifier("editAccount")
                 }
             }

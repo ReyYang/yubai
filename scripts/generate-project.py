@@ -157,7 +157,7 @@ for file in sorted((root / "Sources/YubaiWidgets").glob("*.swift")):
     ref = add("widget-ref:" + file.name, f'isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = {quote(file.name)}; sourceTree = "<group>";')
     widget_refs.append(ref)
     widget_builds.append(add("widget-build:" + file.name, f'isa = PBXBuildFile; fileRef = {ref};'))
-for filename in ["CaptureWidgetSupport.swift", "CaptureControlIntent.swift"]:
+for filename in ["CaptureWidgetSupport.swift", "CaptureControlIntent.swift", "DSTheme.swift", "DSIconView.swift"]:
     ref = ident("Sources/YubaiApp/" + filename)
     widget_builds.append(add("widget-shared:" + filename, f'isa = PBXBuildFile; fileRef = {ref};'))
 for filename in ["Info.plist", "YubaiWidgets.entitlements"]:

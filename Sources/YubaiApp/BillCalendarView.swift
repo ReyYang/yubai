@@ -8,16 +8,15 @@ struct BillBrandIcon: View {
     var size: CGFloat = YubaiSize.headerIconMax
     @Environment(AppStore.self) private var store
     @Environment(\.colorScheme) private var scheme
-    private var symbol: String {
-        SystemGlyph.validated(store.current.categories.first { $0.name == category && $0.income == inflow }?.symbol ?? "square.grid.2x2")
+    private var icon: DS.Icon {
+        store.current.categories.first { $0.name == category && $0.income == inflow }.map { DS.Icon(category: $0.name, symbol: $0.symbol, income: $0.income) } ?? .catOther
     }
     var body: some View {
         Group {
             if let icon = BrandIcons.match(title) {
                 Image("Brand-" + icon.slug).resizable().renderingMode(.original).scaledToFit().padding(YubaiSpace.space4)
             } else {
-                Image(systemName: symbol).symbolRenderingMode(.monochrome)
-                    .yubaiFont(YubaiFont.row).foregroundStyle(scheme == .dark ? YubaiColor.label : YubaiColor.iconInk)
+                DSIconView(icon: icon, size: YubaiFont.row.size, color: scheme == .dark ? YubaiColor.label : YubaiColor.iconInk)
             }
         }.frame(width: size, height: size).background(YubaiColor.raised, in: RoundedRectangle(cornerRadius: YubaiRadius.control, style: .continuous))
             .accessibilityHidden(true)

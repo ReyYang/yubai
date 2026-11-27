@@ -39,7 +39,7 @@ private struct ScreenshotWidget: Widget {
     let kind = "app.yubai.screenshot-capture"
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: CaptureProvider()) { _ in
-            Image(systemName: "text.viewfinder").font(.title2).accessibilityLabel("截图记")
+            DSIconView(icon: .scanCapture, size: 22).accessibilityElement(children: .ignore).accessibilityLabel("截图记")
                 .widgetURL(URL(string: "yubai://capture")!).containerBackground(.clear, for: .widget)
         }.configurationDisplayName("截图记").description("打开截图记。")
             .supportedFamilies([.accessoryCircular])
@@ -56,13 +56,13 @@ private struct CaptureWidgetView: View {
     var body: some View {
         Group {
             switch family {
-            case .accessoryCircular: Image(systemName: "plus").font(.title2).accessibilityLabel("记一笔")
+            case .accessoryCircular: DSIconView(icon: .add, size: 22).accessibilityElement(children: .ignore).accessibilityLabel("记一笔")
             case .accessoryRectangular:
                 VStack(alignment: .leading, spacing: 2) {
                     if let snapshot = entry.snapshot {
                         Text((snapshot.headlineTitle ?? "还能花") + " " + Money.text(snapshot.available)).font(.headline).monospacedDigit().privacySensitive()
                         Text("今天记了 \(snapshot.todayCount) 笔").font(.caption).privacySensitive()
-                    } else { Label("记一笔", systemImage: "plus") }
+                    } else { Label("记一笔", icon: .add, size: 17) }
                 }
             case .systemMedium: medium
             default: small
@@ -79,7 +79,7 @@ private struct CaptureWidgetView: View {
                 Text("今天记了 \(snapshot.todayCount) 笔 · " + Money.text(snapshot.todayTotal)).font(.system(size: 11)).foregroundStyle(.secondary).privacySensitive()
             } else { Label("余白", systemImage: "square.righthalf.filled").font(.headline) }
             Spacer(minLength: 4)
-            Link(destination: CaptureSnapshotBridge.addURL()) { Label("记一笔", systemImage: "plus").font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 40).background(brand, in: Capsule()).foregroundStyle(scheme == .dark ? .black : .white) }
+            Link(destination: CaptureSnapshotBridge.addURL()) { Label("记一笔", icon: .add, size: 15).font(.subheadline.weight(.medium)).frame(maxWidth: .infinity, minHeight: 40).background(brand, in: Capsule()).foregroundStyle(scheme == .dark ? .black : .white) }
         }
     }
     private var medium: some View {
@@ -100,9 +100,9 @@ private struct CaptureWidgetView: View {
                         }
                     }
                 } else {
-                    Link(destination: URL(string: "yubai://capture")!) { Label("截图记", systemImage: "text.viewfinder").frame(maxWidth: .infinity, minHeight: 44).background(raised, in: RoundedRectangle(cornerRadius: 14)) }
+                    Link(destination: URL(string: "yubai://capture")!) { Label("截图记", icon: .scanCapture, size: 17).frame(maxWidth: .infinity, minHeight: 44).background(raised, in: RoundedRectangle(cornerRadius: 14)) }
                 }
-                Link(destination: CaptureSnapshotBridge.addURL()) { Image(systemName: "plus").frame(width: 44, height: 44).background(brand, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(scheme == .dark ? .black : .white) }.accessibilityLabel("记一笔")
+                Link(destination: CaptureSnapshotBridge.addURL()) { DSIconView(icon: .add, size: 20).frame(width: 44, height: 44).background(brand, in: RoundedRectangle(cornerRadius: 14)).foregroundStyle(scheme == .dark ? .black : .white) }.accessibilityLabel("记一笔")
             }
         }
     }
