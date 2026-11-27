@@ -65,6 +65,25 @@ final class AskCardsTests: XCTestCase {
         XCTAssertEqual(none.to, none.from)
     }
 
+    func testEntriesDatedAfterTodayAreMarkedDeferredInsteadOfAnUnchangedLine() {
+        let (ledger, bank) = sample()
+        let hotpot = EntryDraft(date: date("2026-11-24"), amount: 18_800, accountID: bank.id, title: "火锅", category: "吃饭")
+        let lunch = EntryDraft(date: date("2026-11-23"), amount: 3_200, accountID: bank.id, title: "午饭", category: "吃饭")
+        let later = AskBatch.total([hotpot], checked: [hotpot.id], in: ledger, now: now)
+        XCTAssertEqual(later.from, later.to)
+        XCTAssertEqual(later.deferredTo, date("2026-11-24"))
+        let mixed = AskBatch.total([hotpot, lunch], checked: [hotpot.id, lunch.id], in: ledger, now: now)
+        XCTAssertNil(mixed.deferredTo)
+        XCTAssertEqual(mixed.from - mixed.to, 3_200)
+        let approval = AskApproval.make(ChangeSet(source: "问余白", reason: "火锅", items: [.addEntry(hotpot)]), ledger: ledger, now: now)
+        XCTAssertEqual(approval.change.deferredTo, date("2026-11-24"))
+    }
+    func testPromptKeepsTheDateLastAndSeparatesPlansFromRecords() {
+        let today = AskYubai.prompt(now: now), tomorrow = AskYubai.prompt(now: date("2026-11-24 09:00"))
+        let shared = zip(today, tomorrow).prefix { $0 == $1 }.count
+        XCTAssertGreaterThan(shared, today.count - 20)
+        XCTAssertTrue(today.contains("还没发生的花费"))
+    }
     func testApprovalCardForReimbursementOffset() {
         let (ledger, bank) = sample()
         let taxi = ledger.entries.first { $0.title == "打车" }!

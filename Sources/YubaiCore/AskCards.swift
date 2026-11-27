@@ -6,8 +6,18 @@ public struct AskChange: Equatable, Sendable, Identifiable {
     public let label: String
     public let from: Int64
     public let to: Int64
-    public init(label: String, from: Int64, to: Int64) { self.label = label; self.from = from; self.to = to }
+    /// Set when every recorded entry is dated after today: 还能花 counts it on that
+    /// day, so today's line would read the same number on both sides.
+    public var deferredTo: Date? = nil
+    public init(label: String, from: Int64, to: Int64, deferredTo: Date? = nil) {
+        self.label = label; self.from = from; self.to = to; self.deferredTo = deferredTo
+    }
     public var id: String { label }
+    /// Entries dated after `now` that change nothing today.
+    static func deferredDate(_ drafts: [EntryDraft], before: Int64, after: Int64, now: Date) -> Date? {
+        guard !drafts.isEmpty, before == after, drafts.allSatisfy({ $0.date > now }) else { return nil }
+        return drafts.map(\.date).min()
+    }
     /// A budget pushed below zero reads 「超 X」.
     public var overrun: Bool { to < 0 }
     public var better: Bool { to > from }
@@ -110,7 +120,9 @@ public struct AskApproval: Equatable, Sendable {
         let change = proposed.confirmingAmounts()
         let before = Finance.funds(ledger, now: now).available
         let after = (try? ManualBookkeeping.available(after: change, in: ledger, now: now)) ?? before
-        let line = AskChange(label: "还能花", from: before, to: after)
+        let added = change.items.compactMap { item -> EntryDraft? in if case .addEntry(let draft) = item { return draft }; return nil }
+        let line = AskChange(label: "还能花", from: before, to: after,
+                             deferredTo: added.count == change.items.count ? AskChange.deferredDate(added, before: before, after: after, now: now) : nil)
         let entries = Dictionary(ledger.entries.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         // A refund draft linked to an existing expense: 报销 or 退款 到账.
         for case .linkRefund(let refundID, let originalID) in change.items {
@@ -178,7 +190,7 @@ public enum AskBatch {
         guard !chosen.isEmpty else { return AskChange(label: "记下后还能花", from: before, to: before) }
         let items = chosen.map { draft -> ChangeItem in var value = draft; value.amountConfirmed = true; return .addEntry(value) }
         let after = (try? ManualBookkeeping.available(after: ChangeSet(source: source, reason: "记一笔", items: items), in: ledger, now: now)) ?? before
-        return AskChange(label: "记下后还能花", from: before, to: after)
+        return AskChange(label: "记下后还能花", from: before, to: after, deferredTo: AskChange.deferredDate(chosen, before: before, after: after, now: now))
     }
 }
 

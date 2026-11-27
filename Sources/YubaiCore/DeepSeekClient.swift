@@ -356,7 +356,9 @@ public struct DeepSeekClient: ChatTransport {
         var payload = Payload(model: model, messages: messages,
             tools: definitions.isEmpty ? nil : definitions, temperature: input.temperature, max_tokens: input.maxTokens, response_format: input.responseFormat,
             thinking: input.thinking.map { ["type": $0 ? "enabled" : "disabled"] })
-        let body = try JSONEncoder().encode(payload)
+        // Stable key order keeps the tool list byte-identical, so DeepSeek can reuse its prompt cache.
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let body = try encoder.encode(payload)
         var request = URLRequest(url: Self.chatCompletionsURL(baseURL: configuration.baseURL), timeoutInterval: input.timeout ?? configuration.timeout)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.httpMethod = "POST"; request.httpBody = body
@@ -380,7 +382,7 @@ public struct DeepSeekClient: ChatTransport {
                 number += 1
                 model = fallbackTried ? selectedModel : await routing.current(preferred: preferred)
                 payload.model = model
-                let attemptBody = try JSONEncoder().encode(payload)
+                let attemptBody = try encoder.encode(payload)
                 request.httpBody = attemptBody
                 loggedResponse = SendLogResponse(durationMilliseconds: 0)
                 var retryable = false, fallbackAllowed = false

@@ -62,7 +62,7 @@ public struct PurchaseQuestion: Equatable, Sendable {
 public struct SubmitVerdictTool: AssistantTool {
     public init() {}
     public let name = "submit_verdict"
-    public let description = "在judge_purchase给定的allowed_verdicts中提交结论。reason为一句不超过60字的话，指向钱、习惯、用户原话或心愿单回答中的具体事实。引用记忆用memory_ids。"
+    public let description = "在judge_purchase给定的allowed_verdicts中提交结论。reason只写一句（不超过60字，不含句号、分号或换行），必须含有以下之一：bound_reason里的金额原文（如「买了以后还能花 ¥1,234.00」）、habit里的次数、用户原话中连续4个字、心愿单回答。引用记忆用memory_ids。"
     public var parameters: JSONValue { .object(["type": .string("object"), "properties": .object([
         "verdict": .object(["type": .string("string"), "enum": .strings(PurchaseVerdict.allCases.map(\.rawValue))]),
         "reason": .object(["type": .string("string"), "maxLength": .number(60)]),
@@ -77,9 +77,7 @@ public struct SubmitVerdictTool: AssistantTool {
               let raw = args["reason"]?.stringValue else { throw YubaiError.invalid("请提供verdict、reason和need。") }
         let bounds = PurchaseBounds.compute(ledger: context.ledger, amount: judgment.amount, title: judgment.title, category: judgment.category, subcategory: judgment.subcategory, now: context.now)
         guard bounds.allowedVerdicts.contains(verdict) else { throw YubaiError.invalid("这个结论不在allowed_verdicts中，请重选：\(PurchaseVerdict.allCases.filter { bounds.allowedVerdicts.contains($0) }.map(\.rawValue).joined(separator: "、"))。\(bounds.boundReason)") }
-        let reason = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let sentence = reason.replacingOccurrences(of: #"(?<=\d)\.(?=\d)"#, with: "", options: .regularExpression).trimmingCharacters(in: CharacterSet(charactersIn: "。.!！?？"))
-        guard !reason.isEmpty, reason.count <= 60, !sentence.contains(where: { "。.!！?？\n\r；;".contains($0) }) else { throw YubaiError.invalid("理由请用一句不超过60字的话。") }
+        let submitted = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         var ids: [UUID] = []
         if let value = fields["memory_ids"] {
             guard let rows = value.arrayValue else { throw YubaiError.invalid("memory_ids需要是列表。") }
@@ -90,7 +88,7 @@ public struct SubmitVerdictTool: AssistantTool {
         }
         let notes = context.ledger.memories.filter { ids.contains($0.id) }
         let quotes = context.ledger.profile.principles + (context.ledger.profile.generous + context.ledger.profile.restrain).map(\.note) + notes.map(\.text) + userFacts
-        func sharesPhrase(_ source: String) -> Bool {
+        func sharesPhrase(_ source: String, _ reason: String) -> Bool {
             let chars = Array(source)
             guard chars.count >= 4 else { return false }
             return (0...(chars.count - 4)).contains { offset in
@@ -108,25 +106,42 @@ public struct SubmitVerdictTool: AssistantTool {
             return [String(usage.count)] + (area.softLimit?.periodCount.map { [String($0)] } ?? [])
         }
         let countPattern = try NSRegularExpression(pattern: #"(\d+)\s*(?:次|笔)"#)
-        let countMatches = countPattern.matches(in: reason, range: NSRange(reason.startIndex..., in: reason))
-        let nsReason = reason as NSString
-        let countsGrounded = countMatches.allSatisfy { match in
-            let number = nsReason.substring(with: match.range(at: 1))
-            return allowedCountTexts.contains(number) || quotes.contains { $0.contains(nsReason.substring(with: match.range)) }
-        }
-        let groundedNumber = countsGrounded && reason.range(of: #"[¥￥]\s*-?\d|\d+(?:\.\d+)?\s*(?:元|次|笔)"#, options: .regularExpression) != nil
-            && AssistantAmountGuard.unverified(in: reason, results: [judgment.facts]).isEmpty
-        // The approved part sentence has bare numbers. Accept that exact local
-        // fact without requiring the model to add a currency symbol or prose.
-        let groundedPart = judgment.facts["spending_part"] != nil &&
-            reason.trimmingCharacters(in: CharacterSet(charactersIn: "。")) == bounds.boundReason.components(separatedBy: "。").first
         let followups = judgment.facts["similar_followups"]?.arrayValue ?? []
-        let groundedFollowup = followups.contains { row in
-            guard let title = row["title"]?.stringValue, let answer = row["answer"]?.stringValue else { return false }
-            return reason.contains(title) && reason.contains(answer)
+        func grounded(_ reason: String) -> Bool {
+            let countMatches = countPattern.matches(in: reason, range: NSRange(reason.startIndex..., in: reason))
+            let nsReason = reason as NSString
+            let countsGrounded = countMatches.allSatisfy { match in
+                let number = nsReason.substring(with: match.range(at: 1))
+                return allowedCountTexts.contains(number) || quotes.contains { $0.contains(nsReason.substring(with: match.range)) }
+            }
+            let groundedNumber = countsGrounded && reason.range(of: #"[¥￥]\s*-?\d|\d+(?:\.\d+)?\s*(?:元|次|笔)"#, options: .regularExpression) != nil
+                && AssistantAmountGuard.unverified(in: reason, results: [judgment.facts]).isEmpty
+            // The approved part sentence has bare numbers. Accept that exact local
+            // fact without requiring the model to add a currency symbol or prose.
+            let groundedPart = judgment.facts["spending_part"] != nil &&
+                reason.trimmingCharacters(in: CharacterSet(charactersIn: "。")) == bounds.boundReason.components(separatedBy: "。").first
+            let groundedFollowup = followups.contains { row in
+                guard let title = row["title"]?.stringValue, let answer = row["answer"]?.stringValue else { return false }
+                return reason.contains(title) && reason.contains(answer)
+            }
+            return groundedNumber || groundedPart || quotes.contains { sharesPhrase($0, reason) } || groundedFollowup
         }
-        guard groundedNumber || groundedPart || quotes.contains(where: sharesPhrase) || groundedFollowup else { throw YubaiError.invalid("理由需要引用一个具体事实，例如买后还能花、已发生的次数、用户原话或心愿单回答。") }
+        // A rejected reason costs another full round trip. Keep the model's first
+        // grounded sentence; otherwise state the local bound instead of asking again.
+        let candidates = [submitted, Self.firstSentence(submitted)] + [Self.firstSentence(bounds.boundReason)]
+        guard let reason = candidates.first(where: { Self.isOneSentence($0) && grounded($0) }) else {
+            throw YubaiError.invalid("理由需要引用一个具体事实，例如买后还能花、已发生的次数、用户原话或心愿单回答。")
+        }
         return SubmittedPurchaseVerdict(verdict: verdict, reason: reason, need: need, boundReason: bounds.boundReason, usedMemoryIDs: ids)
+    }
+    static func isOneSentence(_ reason: String) -> Bool {
+        let sentence = reason.replacingOccurrences(of: #"(?<=\d)\.(?=\d)"#, with: "", options: .regularExpression).trimmingCharacters(in: CharacterSet(charactersIn: "。.!！?？"))
+        return !reason.isEmpty && reason.count <= 60 && !sentence.contains(where: { "。.!！?？\n\r；;".contains($0) })
+    }
+    static func firstSentence(_ text: String) -> String {
+        let masked = text.replacingOccurrences(of: #"(?<=\d)\.(?=\d)"#, with: "\u{0}", options: .regularExpression)
+        let head = masked.split(whereSeparator: { "。.!！?？\n\r；;".contains($0) }).first.map(String.init) ?? ""
+        return head.replacingOccurrences(of: "\u{0}", with: ".").trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 public struct AskPurchaseQuestionsTool: AssistantTool {

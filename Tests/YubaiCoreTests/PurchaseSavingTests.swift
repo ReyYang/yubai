@@ -103,10 +103,12 @@ final class PurchaseSavingTests: XCTestCase {
         func submit(_ reason: String, ids: [String] = []) throws -> SubmittedPurchaseVerdict {
             try SubmitVerdictTool().submit(.object(["verdict": .string("buy"), "need": .string("need"), "reason": .string(reason), "memory_ids": .strings(ids)]), judgment: judgment, context: ctx)
         }
-        XCTAssertThrowsError(try submit("挺好的，值得买。"))
-        XCTAssertThrowsError(try submit(String(repeating: "很", count: 61)))
-        XCTAssertThrowsError(try submit("你说过长期徒步。现在买吧。", ids: [note.id.uuidString]))
-        XCTAssertThrowsError(try submit("本周已有999次。"))
+        // Ungrounded or overlong reasons fall back to the local bound instead of another round trip.
+        let bound = SubmitVerdictTool.firstSentence(judgment.facts["bound_reason"]!.stringValue!)
+        XCTAssertEqual(try submit("挺好的，值得买。").reason, bound)
+        XCTAssertEqual(try submit(String(repeating: "很", count: 61)).reason, bound)
+        XCTAssertEqual(try submit("本周已有999次。").reason, bound)
+        XCTAssertEqual(try submit("你说过长期徒步。现在买吧。", ids: [note.id.uuidString]).reason, "你说过长期徒步")
         XCTAssertThrowsError(try submit("你说过长期徒步旅行。", ids: [UUID().uuidString]))
         let verdict = try submit("你说过打算长期徒步旅行。", ids: [note.id.uuidString])
         XCTAssertEqual(verdict.usedMemoryIDs, [note.id])
