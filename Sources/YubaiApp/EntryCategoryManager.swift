@@ -188,6 +188,12 @@ private struct EntryCategoryEditView: View {
                     nameRow
                         .entryCardRow(first: true, last: true)
                 }
+                if let category, !readOnly {
+                    iconGrid(category)
+                        .padding(.vertical, DS.Space.s12)
+                        .entryCardRow(first: true, last: true)
+                        .padding(.top, DS.Space.s20)
+                }
                 if let category { subcategories(category) }
                 if category != nil && !readOnly {
                     Button { confirmDelete = true } label: {
@@ -223,6 +229,33 @@ private struct EntryCategoryEditView: View {
         } message: { sub in
             Text("已记的 \(model.entryCount(category: current ?? "", subcategory: sub, income: target.income)) 笔改到「\(current ?? "")」")
         }
+    }
+
+    /// Canvas S-CatEdit 图标: six to a row, 44 high, the picked one on accent-soft.
+    private func iconGrid(_ category: YubaiCore.Category) -> some View {
+        let picked = category.entryIcon
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: DS.Space.s8), count: EntrySpec.iconColumns),
+                         spacing: DS.Space.s8) {
+            ForEach(DS.Icon.categoryChoices, id: \.self) { icon in
+                let on = icon == picked
+                Button { pick(icon) } label: {
+                    icon.view(size: DS.Size.icon, color: on ? DS.Color.accentInk : DS.Color.ink2)
+                        .frame(maxWidth: .infinity, minHeight: DS.Size.tapMin)
+                        .background(on ? DS.Color.accentSoft : DS.Color.surface,
+                                    in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
+                }
+                .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+                .accessibilityLabel("图标")
+                .accessibilityAddTraits(on ? .isSelected : [])
+            }
+        }
+        .padding(.horizontal, DS.Space.s12)
+    }
+
+    private func pick(_ icon: DS.Icon) {
+        guard let current else { return }
+        let income = target.income
+        model.mutateLedger("分类图标") { try CategoryModel.setIcon(icon.rawValue, category: current, income: income, in: &$0) }
     }
 
     private var nameRow: some View {
@@ -309,8 +342,12 @@ private struct EntryCategoryEditView: View {
                 if model.draftUses(category: old, income: income) { model.draft.category = cleaned }
                 current = cleaned
             }
-        } else if model.mutateLedger("添加分类", { try CategoryModel.add(YubaiCore.Category(cleaned, income: income), in: &$0) }) {
-            current = cleaned
+        } else {
+            // Every category gets its own icon: a new one starts on the first pick no other category shows.
+            let taken = Set(model.ledger.categories.filter { $0.income == income && !$0.system }.map(\.entryIcon))
+            var added = YubaiCore.Category(cleaned, income: income)
+            added.icon = DS.Icon.categoryChoices.first { !taken.contains($0) && $0 != .catOther }?.rawValue
+            if model.mutateLedger("添加分类", { try CategoryModel.add(added, in: &$0) }) { current = cleaned }
         }
     }
 

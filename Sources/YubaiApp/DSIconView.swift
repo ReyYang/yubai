@@ -82,10 +82,16 @@ extension Label where Title == Text, Icon == DSIconView {
 extension DS.Icon {
     /// Ledgers store SF Symbol names for categories; every screen draws them through this table.
     /// Unknown names, including ones from older ledgers, fall back to `.catOther`.
-    /// A category's icon: a known name wins (custom categories keep the generic symbol), then its stored symbol.
-    init(category name: String, symbol: String, income: Bool) {
-        self = Self.categoryNames[name] ?? DS.Icon(symbol: symbol, income: income)
+    /// A category's icon: the one picked in 编辑分类, then a known name, then its stored symbol.
+    init(category name: String, symbol: String, income: Bool, icon: String? = nil) {
+        self = icon.flatMap(DS.Icon.init(rawValue:)) ?? Self.categoryNames[name] ?? DS.Icon(symbol: symbol, income: income)
     }
+
+    /// 编辑分类 · 图标: the 18 picks, in the canvas order (Main.dc.html iconChoices).
+    static let categoryChoices: [DS.Icon] = [
+        .catLearning, .catFood, .catCoffee, .catTransport, .catShopping, .catHousing, .catHealth, .catBeauty, .catFun,
+        .catTravel, .catFamily, .catInsurance, .catFees, .catDigital, .catDaily, .catGrocery, .catOther, .incInvestment,
+    ]
 
     init(symbol: String, income: Bool = false) {
         if symbol == "gift" { self = income ? .incGift : .catFamily; return }
@@ -97,6 +103,8 @@ extension DS.Icon {
         "交通": .catTransport, "出行": .catTransport, "买菜": .catGrocery, "生鲜买菜": .catGrocery,
         "购物": .catShopping, "居住": .catHousing, "住房": .catHousing, "娱乐": .catFun,
         "日用": .catDaily, "日用百货": .catDaily, "数码": .catDigital, "数码电器": .catDigital,
+        // Spec-Issues 4: 通讯 is the Remix smartphone, not the catch-all's three dots.
+        "通讯": .catDigital,
         "工资": .incSalary, "奖金": .incSalary, "工资奖金": .incSalary, "兼职劳务": .incSideJob,
         "礼金赠与": .incGift, "投资收益": .incInvestment, "二手转卖": .incResale,
         "报销": .reimburse, "退款": .refund,

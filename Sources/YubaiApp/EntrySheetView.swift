@@ -1389,5 +1389,5 @@ struct FlowLayout: Layout {
 }
 
 extension YubaiCore.Category {
-    var entryIcon: DS.Icon { DS.Icon(category: name, symbol: symbol, income: income) }
+    var entryIcon: DS.Icon { DS.Icon(category: name, symbol: symbol, income: income, icon: icon) }
 }

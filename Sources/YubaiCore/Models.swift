@@ -453,6 +453,9 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
     public var subcategoryKeywords: [String: [String]]
     public var system: Bool
     public var hidden: Bool
+    /// The design-system icon picked in 编辑分类 (e.g. "cat-learning"). Nil keeps the icon from the name or symbol.
+    /// Older ledgers have none; a nil icon is never written.
+    public var icon: String? = nil
     public var id: String { CategoryNamespace.key(name, income: income) }
     public var isCatchAll: Bool { name == (income ? "其他收入" : "其他支出") }
     public init(_ name: String, _ symbol: String = "square.grid.2x2", income: Bool = false,
@@ -461,7 +464,7 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
         self.name = name; self.symbol = symbol; self.income = income; self.subcategories = subcategories
         self.keywords = keywords; self.subcategoryKeywords = subcategoryKeywords; self.system = system; self.hidden = hidden
     }
-    private enum CodingKeys: String, CodingKey { case name, symbol, income, subcategories, keywords, subcategoryKeywords, system, hidden }
+    private enum CodingKeys: String, CodingKey { case name, symbol, income, subcategories, keywords, subcategoryKeywords, system, hidden, icon }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         name = try c.decode(String.self, forKey: .name); symbol = try c.decode(String.self, forKey: .symbol)
@@ -471,6 +474,8 @@ public struct Category: Codable, Identifiable, Equatable, Sendable {
         subcategoryKeywords = try c.decodeIfPresent([String: [String]].self, forKey: .subcategoryKeywords) ?? [:]
         system = try c.decodeIfPresent(Bool.self, forKey: .system) ?? false
         hidden = try c.decodeIfPresent(Bool.self, forKey: .hidden) ?? false
+        // A malformed icon never blocks opening the ledger.
+        icon = (try? c.decodeIfPresent(String.self, forKey: .icon)) ?? nil
     }
     /// Goods belong to shopping; services/experiences to their domain. Tickets
     /// belong to transport; recurring monthly/yearly services to subscriptions.

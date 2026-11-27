@@ -383,6 +383,14 @@ public enum CategoryModel {
             next.categories.remove(at: a); next.categoryAliases[CategoryNamespace.key(source, income: income)] = target
         }
     }
+    /// 编辑分类 · 图标: nil goes back to the icon from the name or symbol.
+    public static func setIcon(_ icon: String?, category: String, income: Bool, in ledger: inout Ledger) throws {
+        try update(&ledger) { next in
+            let i = try index(category, income: income, in: next, protected: false)
+            let cleaned = icon?.trimmingCharacters(in: .whitespacesAndNewlines)
+            next.categories[i].icon = cleaned?.isEmpty == false ? cleaned : nil
+        }
+    }
     public static func setHidden(_ hidden: Bool, category: String, income: Bool, in ledger: inout Ledger) throws {
         try update(&ledger) { next in let i = try index(category, income: income, in: next, protected: false); next.categories[i].hidden = hidden }
     }
