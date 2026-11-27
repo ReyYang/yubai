@@ -1144,10 +1144,16 @@ enum AppSheet: Identifiable {
         applicationRoot
         #endif
     }
+    private var rootColorScheme: ColorScheme? {
+        #if DEBUG
+        if store.isDesignFixture { return EntryFixture.launchTheme ?? colorScheme }
+        #endif
+        return colorScheme
+    }
     private var applicationRoot: some View {
         // A ledger boundary discards all tab NavigationPaths and pager state together.
         RootView().id(store.navigationRevision).environment(store).tint(YubaiColor.brandInk)
-            .preferredColorScheme(store.isDesignFixture ? EntryFixture.launchTheme ?? colorScheme : colorScheme)
+            .preferredColorScheme(rootColorScheme)
             #if os(macOS)
             .frame(minWidth: YubaiSize.desktopMinimumWidth, minHeight: YubaiSize.contentNarrow)
             #endif
