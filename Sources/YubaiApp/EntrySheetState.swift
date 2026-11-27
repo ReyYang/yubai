@@ -478,10 +478,8 @@ struct EntryCategoryState: Equatable {
     @discardableResult func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
         // Never an undo snapshot: it would replace a delete's 撤销 with this edit.
         if let store {
-            guard store.update(reason, recordUndo: false, entryMotion: false, showToast: false, update) else { return false }
-            // An older whole-ledger snapshot would now roll this edit back too; drop it. The delete bar stays.
-            store.clearUndo()
-            return true
+            // `update` drops an older whole-ledger snapshot, which would roll this edit back too. The delete bar stays.
+            return store.update(reason, recordUndo: false, entryMotion: false, showToast: false, update)
         }
         do { try update(&fixtureLedger); return true }
         catch { failure = error.localizedDescription; return false }

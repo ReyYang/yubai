@@ -200,13 +200,10 @@ public enum OverviewAnalytics {
         let anomaly = !isOther && categories.count == 1 && categories.first == self.anomaly(
             in: ledger, selection: selection, window: data.window, current: data.current, now: now)?.category
         func group(_ row: Spending) -> String {
-            isOther ? row.assignment.category : row.assignment.subcategory ?? "未分类"
+            row.amount < 0 ? refundGroup : isOther ? row.assignment.category : row.assignment.subcategory ?? "未分类"
         }
         let earlier = totals(previous, by: group)
-        let ordered = orderedTotals(totals(current, by: group))
-        let slices = ordered.enumerated().map { index, pair in
-            slice(pair.key, amount: pair.value, previous: earlier[pair.key, default: 0], anomaly: anomaly && index == 0)
-        }
+        let slices = drillSlices(totals(current, by: group), anomaly: anomaly) { earlier[$0, default: 0] }
         let budget = !isOther && categories.count == 1 ? HomeBudgets(in: ledger, now: now).ordered.first {
             $0.categories.contains(categories[0])
         } : nil
@@ -381,10 +378,8 @@ public enum OverviewAnalytics {
               found.category == category else { return nil }
         let lookup = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
         let rows = data.current.filter { $0.assignment.category == category && isEveryday($0, lookup: lookup) }
-        func group(_ row: Spending) -> String { row.assignment.subcategory ?? "未分类" }
-        let slices = orderedTotals(totals(rows, by: group)).enumerated().map { index, pair in
-            slice(pair.key, amount: pair.value, previous: 0, anomaly: index == 0)
-        }
+        func group(_ row: Spending) -> String { row.amount < 0 ? refundGroup : row.assignment.subcategory ?? "未分类" }
+        let slices = drillSlices(totals(rows, by: group), anomaly: true) { _ in 0 }
         let budget = HomeBudgets(in: ledger, now: now).ordered.first { $0.categories.contains(category) }
         var drill = OverviewCategoryDrill(title: category, amount: found.amount, previous: found.baseline, isAnomaly: true,
                                           slices: slices, entries: sortedEntries(rows.map(\.entry)),
@@ -431,6 +426,20 @@ public enum OverviewAnalytics {
 
     private static func totals(_ entries: [Spending], by key: (Spending) -> String) -> [String: Int64] {
         entries.reduce(into: [:]) { $0[key($1), default: 0] += $1.amount }
+    }
+
+    /// A drill's own row for money that came back (退款), so the rows add up to the page's amount.
+    public static let refundGroup = "退款"
+
+    /// Spending groups largest first, then the refunds row, negative, last.
+    private static func drillSlices(_ values: [String: Int64], anomaly: Bool, previous: (String) -> Int64) -> [OverviewCategorySlice] {
+        var slices = orderedTotals(values.filter { $0.key != refundGroup }).enumerated().map { index, pair in
+            slice(pair.key, amount: pair.value, previous: previous(pair.key), anomaly: anomaly && index == 0)
+        }
+        if let refunds = values[refundGroup], refunds < 0 {
+            slices.append(slice(refundGroup, amount: refunds, previous: 0, anomaly: false))
+        }
+        return slices
     }
 
     private static func orderedTotals(_ values: [String: Int64]) -> [(key: String, value: Int64)] {

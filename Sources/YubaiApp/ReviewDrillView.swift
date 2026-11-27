@@ -16,7 +16,9 @@ struct ReviewDrillView: View {
         let data = (anomaly ? OverviewAnalytics.anomalyDrill(in: store.current, category: title, selection: selection, now: now) : nil)
             ?? OverviewAnalytics.categoryDrill(in: store.current, title: title, categories: categories, isOther: isOther, selection: selection, now: now)
         let hidden = store.preferences.hideAmounts
-        let colors = DSChartPalette.colors(anomalies: data.slices.map(\.isAnomaly))
+        // The 退款 row is money back, not a share of the spending: neutral, and outside the bar.
+        let colors = DSChartPalette.colors(anomalies: data.slices.filter { $0.amount > 0 }.map(\.isAnomaly))
+            + data.slices.filter { $0.amount < 0 }.map { _ in DS.Color.track }
         VStack(spacing: .zero) {
             OverviewNavigationBar(title: data.title)
             ScrollView {
@@ -64,16 +66,16 @@ struct ReviewDrillView: View {
     }
 
     private func subcategories(_ rows: [OverviewCategorySlice], colors: [Color], hidden: Bool) -> some View {
-        let total = rows.reduce(Int64(0)) { $0 + $1.amount }
+        let total = rows.reduce(Int64(0)) { $0 + max(0, $1.amount) }
         return VStack(alignment: .leading, spacing: .zero) {
             Text("小类").dsText(DS.Font.tSubStrong).foregroundStyle(DS.Color.ink3)
                 .accessibilityAddTraits(.isHeader).padding(.bottom, DS.Space.s8)
-            DSStackedBar(segments: rows.enumerated().map { index, row in
+            DSStackedBar(segments: rows.enumerated().filter { $0.element.amount > 0 }.map { index, row in
                 .init(id: row.id, value: Double(row.amount), color: colors[index])
             }, hidesAmounts: hidden).padding(.bottom, DS.Space.s4)
             ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
                 DSOverviewLegendRow(name: row.category, amount: OverviewDisplay.money(row.amount, hidden: hidden), color: colors[index],
-                                    share: hidden ? nil : OverviewDisplay.share(row.amount, of: total),
+                                    share: hidden || row.amount < 0 ? nil : OverviewDisplay.share(row.amount, of: total),
                                     delta: hidden ? nil : row.changePercent.map(OverviewDisplay.percent),
                                     isAnomaly: row.isAnomaly, isDrill: true)
                     .frame(minHeight: OverviewSpec.drillRowHeight)

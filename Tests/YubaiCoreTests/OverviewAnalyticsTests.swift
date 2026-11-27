@@ -102,6 +102,27 @@ final class OverviewAnalyticsTests: XCTestCase {
                                                        selection: .current, now: now).amount, 410_000)
     }
 
+    func testAnomalyDrillRowsAddUpToTheCardWithRefundsAsTheirOwnRow() {
+        var (ledger, account) = sample()
+        let coat = expense(250_000, "购物", account: account, subcategory: "衣服")
+        var refund = Entry(date: date("2026-11-14"), amount: 30_000, nature: .refund, accountID: account.id, title: "退大衣", category: "购物")
+        refund.relatedEntryID = coat.id
+        ledger.entries = history(["购物": 200_000], account: account) + [
+            coat, expense(120_000, "购物", account: account, subcategory: "数码"), refund
+        ]
+        let anomaly = try! XCTUnwrap(OverviewAnalytics.review(in: ledger, selection: .current, now: now).anomaly)
+        let drill = try! XCTUnwrap(OverviewAnalytics.anomalyDrill(in: ledger, category: "购物", selection: .current, now: now))
+        XCTAssertEqual(anomaly.amount, 340_000)
+        XCTAssertEqual(drill.slices.map(\.category), ["衣服", "数码", OverviewAnalytics.refundGroup])
+        XCTAssertEqual(drill.slices.last?.amount, -30_000)
+        XCTAssertFalse(drill.slices.last!.isAnomaly)
+        XCTAssertEqual(drill.slices.reduce(0) { $0 + $1.amount }, anomaly.amount, "the rows add up to the card")
+        XCTAssertEqual(drill.entryGroups[refund.id], OverviewAnalytics.refundGroup)
+        // The plain category page reconciles the same way.
+        let page = OverviewAnalytics.categoryDrill(in: ledger, title: "购物", categories: ["购物"], isOther: false, selection: .current, now: now)
+        XCTAssertEqual(page.slices.reduce(0) { $0 + $1.amount }, page.amount)
+    }
+
     func testUnsortedListsTheEntriesToOrganize() {
         var (ledger, bank) = sample()
         let pending = expense(50_000, Classification.pendingCategory, account: bank)

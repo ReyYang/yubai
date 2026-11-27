@@ -819,6 +819,10 @@ enum AppSheet: Identifiable {
             if entryMotion && !motion.deleted.isEmpty { entryDeleteTrigger &+= 1 }
             ledger = next
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
+            if !recordUndo && !preservingUpdatedAt {
+                // A whole-ledger snapshot taken before this write would now roll it back too (主币种, 分类…).
+                clearUndo()
+            }
             if recordUndo {
                 unsortedUndo = nil
                 // Only a change the person sees replaces the delete bar; quiet background writes leave it.
@@ -849,7 +853,7 @@ enum AppSheet: Identifiable {
     func purgeExpiredEntries() {
         var next = current
         guard RecentlyDeleted.purge(in: &next) > 0 else { return }
-        if update("清掉过期账目", recordUndo: false, entryMotion: false, showToast: false, { $0 = next }) { clearUndo() }
+        _ = update("清掉过期账目", recordUndo: false, entryMotion: false, showToast: false) { $0 = next }
     }
     /// Prepare the full import off the main actor, then publish one atomic update.
     func commitImport(_ preview: ImportPreview?, data: Data?, confirmedNewCategories: Set<String> = []) async throws -> ImportBatch? {
