@@ -6,13 +6,13 @@ final class SVGPathParserTests: XCTestCase {
     private struct DesignTokensDocument: Decodable {
         struct IconSection: Decodable {
             struct Glyph: Decodable {
-                struct Line: Decodable { let grid: Double; let stroke: Double }
-                let phosphor: String?
-                let line: Line?
+                struct Stroke: Decodable { let d: String; let width: Double }
+                let remix: String?
+                let custom: String?
+                let stroke: Stroke?
                 let d: String
             }
             let grid: Double
-            let outline: Double
             let glyphs: [String: Glyph]
         }
         let icon: IconSection
@@ -28,17 +28,16 @@ final class SVGPathParserTests: XCTestCase {
         return try JSONDecoder().decode(DesignTokensDocument.self, from: data)
     }
 
-    func testAllDesignSystemGlyphsParseInside256Grid() throws {
+    func testAllDesignSystemGlyphsParseInside24Grid() throws {
         let tokens = try loadDesignTokens()
-        XCTAssertEqual(tokens.icon.grid, 256)
-        XCTAssertEqual(tokens.icon.outline, 6)
-        XCTAssertEqual(tokens.icon.glyphs.count, 58)
-        XCTAssertEqual(tokens.icon.glyphs.values.filter { $0.line != nil }.count, 12)
+        XCTAssertEqual(tokens.icon.grid, 24)
+        XCTAssertEqual(tokens.icon.glyphs.count, 89)
 
         for (name, glyph) in tokens.icon.glyphs {
-            // Phosphor glyphs fill a 256 grid; canvas line glyphs stroke their own grid.
-            XCTAssertTrue((glyph.phosphor != nil) != (glyph.line != nil), "\(name) needs exactly one source")
-            let grid = glyph.line?.grid ?? 256
+            // Remix glyphs fill the 24 grid; custom 余白 glyphs share it and may add one stroked line.
+            XCTAssertTrue((glyph.remix != nil) != (glyph.custom != nil), "\(name) needs exactly one source")
+            if glyph.stroke != nil { XCTAssertNotNil(glyph.custom, "\(name) only custom glyphs stroke") }
+            let grid = tokens.icon.grid
             let commands = try SVGPathParser.parse(glyph.d)
             XCTAssertFalse(commands.isEmpty, "Empty commands for \(name)")
             let bounds = try XCTUnwrap(SVGPathParser.boundingBox(of: commands), "Missing bounds for \(name)")
@@ -56,17 +55,17 @@ final class SVGPathParserTests: XCTestCase {
 
         let addGlyph = try XCTUnwrap(tokens.icon.glyphs["add"])
         let addBounds = try XCTUnwrap(SVGPathParser.boundingBox(of: try SVGPathParser.parse(addGlyph.d)))
-        XCTAssertEqual(addBounds.minX, 32.0, accuracy: 0.5)
-        XCTAssertEqual(addBounds.minY, 32.0, accuracy: 0.5)
-        XCTAssertEqual(addBounds.maxX, 224.0, accuracy: 0.5)
-        XCTAssertEqual(addBounds.maxY, 224.0, accuracy: 0.5)
+        XCTAssertEqual(addBounds.minX, 5.0, accuracy: 0.05)
+        XCTAssertEqual(addBounds.minY, 5.0, accuracy: 0.05)
+        XCTAssertEqual(addBounds.maxX, 19.0, accuracy: 0.05)
+        XCTAssertEqual(addBounds.maxY, 19.0, accuracy: 0.05)
 
         let foodGlyph = try XCTUnwrap(tokens.icon.glyphs["cat-food"])
         let foodBounds = try XCTUnwrap(SVGPathParser.boundingBox(of: try SVGPathParser.parse(foodGlyph.d)))
-        XCTAssertEqual(foodBounds.minX, 24.0, accuracy: 0.5)
-        XCTAssertEqual(foodBounds.minY, 24.0, accuracy: 0.5)
-        XCTAssertEqual(foodBounds.maxX, 232.0, accuracy: 0.5)
-        XCTAssertEqual(foodBounds.maxY, 232.0, accuracy: 0.5)
+        XCTAssertEqual(foodBounds.minX, 2.0, accuracy: 0.1)
+        XCTAssertEqual(foodBounds.minY, 0.5, accuracy: 0.1)
+        XCTAssertEqual(foodBounds.maxX, 22.0, accuracy: 0.1)
+        XCTAssertEqual(foodBounds.maxY, 21.0, accuracy: 0.1)
     }
 
     func testSupportsAllSVGCommandsAndCompressedArcFlags() throws {

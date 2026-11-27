@@ -82,11 +82,13 @@ class TokenGenerationTests(unittest.TestCase):
     def test_icons_emit_all_glyphs_with_path_data(self):
         theme = self.outputs['DSTheme.swift']
         self.assertIn('enum Icon: String, CaseIterable, Identifiable, Sendable', theme)
-        self.assertIn('static let grid: CGFloat = 256', theme)
-        self.assertIn('static let outline: CGFloat = 6', theme)
+        self.assertIn('static let grid: CGFloat = 24', theme)
+        self.assertNotIn('static let outline', theme)
         for name, token in GEN.items(self.data['icon']['glyphs']):
             self.assertIn(f'case {GEN.camel(name)} = {GEN.literal(name)}', theme)
             self.assertIn(GEN.literal(token['d']), theme)
+            if 'stroke' in token:
+                self.assertIn(GEN.literal(token['stroke']['d']), theme)
 
     def test_shadow_has_four_fields_and_separate_scheme_opacity(self):
         theme = self.outputs['DSTheme.swift']

@@ -850,24 +850,13 @@ private struct NavigationBackPaper: UIViewControllerRepresentable {
     }
     final class Controller: UIViewController, UIGestureRecognizerDelegate {
         var dark = false
-        /// DS `back` at 22 pt, drawn like DSIconView: filled outline plus its 6/256 stroke.
+        /// DS `back` at 22 pt, drawn like DSIconView: Remix filled outline on the 24 grid.
         static func backGlyph(color: UIColor) -> UIImage {
             let size = HomeSpec.navIcon, scale = size / DS.Icon.grid
-            var path = Path()
-            for command in (try? SVGPathParser.parse(DS.Icon.back.pathData)) ?? [] {
-                switch command {
-                case .moveTo(let p): path.move(to: CGPoint(x: p.x, y: p.y))
-                case .lineTo(let p): path.addLine(to: CGPoint(x: p.x, y: p.y))
-                case .cubicTo(let c1, let c2, let e): path.addCurve(to: CGPoint(x: e.x, y: e.y), control1: CGPoint(x: c1.x, y: c1.y), control2: CGPoint(x: c2.x, y: c2.y))
-                case .quadTo(let c, let e): path.addQuadCurve(to: CGPoint(x: e.x, y: e.y), control: CGPoint(x: c.x, y: c.y))
-                case .close: path.closeSubpath()
-                }
-            }
+            let path = DSIconView.buildPath(from: DS.Icon.back.pathData)
             let bezier = UIBezierPath(cgPath: path.applying(CGAffineTransform(scaleX: scale, y: scale)).cgPath)
-            bezier.lineWidth = size * DS.Icon.outline / DS.Icon.grid
-            bezier.lineCapStyle = .round; bezier.lineJoinStyle = .round
             return UIGraphicsImageRenderer(size: CGSize(width: size, height: size)).image { _ in
-                color.setFill(); color.setStroke(); bezier.fill(); bezier.stroke()
+                color.setFill(); bezier.fill()
             }.withRenderingMode(.alwaysOriginal)
         }
         override func loadView() {

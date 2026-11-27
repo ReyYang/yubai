@@ -78,19 +78,18 @@ def theme(data):
         lines += [f'        case {camel(name)} = {literal(name)}']
     lines += ['', '        var id: String { rawValue }',
               f'        static let grid: CGFloat = {data["icon"]["grid"]}',
-              f'        static let outline: CGFloat = {data["icon"]["outline"]}',
-              '', '        var phosphor: String {', '            switch self {']
+              '', '        /// Remix Icon name, or the custom 余白 glyph name.', '        var source: String {', '            switch self {']
     for name, token in glyphs:
-        lines += [f'            case .{camel(name)}: {literal(token.get("phosphor", ""))}']
-    lines += ['            }', '        }', '', '        var pathData: String {', '            switch self {']
+        lines += [f'            case .{camel(name)}: {literal(token.get("remix") or "custom:" + token["custom"])}']
+    lines += ['            }', '        }', '', '        /// Filled outline on the 24 grid (nonzero).', '        var pathData: String {', '            switch self {']
     for name, token in glyphs:
         lines += [f'            case .{camel(name)}: {literal(token["d"])}']
-    line_glyphs = [(name, token) for name, token in glyphs if 'line' in token]
+    stroke_glyphs = [(name, token) for name, token in glyphs if 'stroke' in token]
     lines += ['            }', '        }', '',
-              '        /// Canvas line glyphs: stroke only on their own grid. Nil for the filled outline glyphs.',
-              '        var line: (grid: CGFloat, stroke: CGFloat)? {', '            switch self {']
-    for name, token in line_glyphs:
-        lines += [f'            case .{camel(name)}: ({token["line"]["grid"]}, {token["line"]["stroke"]})']
+              '        /// Extra stroked line for custom glyphs, width on the 24 grid. Nil for Remix glyphs.',
+              '        var stroke: (pathData: String, width: CGFloat)? {', '            switch self {']
+    for name, token in stroke_glyphs:
+        lines += [f'            case .{camel(name)}: ({literal(token["stroke"]["d"])}, {token["stroke"]["width"]})']
     lines += ['            default: nil', '            }', '        }', '    }', '',
               '    private static func adaptive(_ light: UInt32, _ dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) -> SwiftUI.Color {',
               '        #if os(iOS)',

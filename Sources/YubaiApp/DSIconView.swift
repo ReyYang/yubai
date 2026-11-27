@@ -6,16 +6,17 @@ struct DSIconView: View {
     let size: CGFloat
     var color: Color? = nil
 
-    private static let cachedPaths: [DS.Icon: Path] = {
-        var map: [DS.Icon: Path] = [:]
+    /// Remix filled outlines, plus the stroked line of custom glyphs, parsed once on the 24 grid.
+    private static let cachedPaths: [DS.Icon: (fill: Path, stroke: Path?)] = {
+        var map: [DS.Icon: (fill: Path, stroke: Path?)] = [:]
         map.reserveCapacity(DS.Icon.allCases.count)
         for glyph in DS.Icon.allCases {
-            map[glyph] = buildPath(from: glyph.pathData)
+            map[glyph] = (buildPath(from: glyph.pathData), glyph.stroke.map { buildPath(from: $0.pathData) })
         }
         return map
     }()
 
-    private static func buildPath(from d: String) -> Path {
+    static func buildPath(from d: String) -> Path {
         var path = Path()
         guard let commands = try? SVGPathParser.parse(d) else { return path }
         for command in commands {
@@ -43,28 +44,18 @@ struct DSIconView: View {
     }
 
     var body: some View {
-        let line = icon.line
-        let scale = size / (line?.grid ?? DS.Icon.grid)
-        let basePath = Self.cachedPaths[icon] ?? Path()
-        let scaled = basePath.applying(CGAffineTransform(scaleX: scale, y: scale))
+        let scale = size / DS.Icon.grid
+        let transform = CGAffineTransform(scaleX: scale, y: scale)
+        let paths = Self.cachedPaths[icon] ?? (Path(), nil)
         let fillStyle: AnyShapeStyle = color.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.foreground)
         Rectangle()
             .fill(fillStyle)
             .frame(width: size, height: size)
             .mask {
                 ZStack {
-                    if let line {
-                        scaled.stroke(Color.black, style: StrokeStyle(lineWidth: line.stroke * scale, lineCap: .round, lineJoin: .round))
-                    } else {
-                        scaled.fill(Color.black)
-                        scaled.stroke(
-                            Color.black,
-                            style: StrokeStyle(
-                                lineWidth: size * DS.Icon.outline / DS.Icon.grid,
-                                lineCap: .round,
-                                lineJoin: .round
-                            )
-                        )
+                    paths.fill.applying(transform).fill(Color.black)
+                    if let stroke = paths.stroke, let width = icon.stroke?.width {
+                        stroke.applying(transform).stroke(Color.black, style: StrokeStyle(lineWidth: width * scale, lineCap: .round, lineJoin: .round))
                     }
                 }
             }
