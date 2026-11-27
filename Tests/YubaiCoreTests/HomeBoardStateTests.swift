@@ -52,7 +52,7 @@ final class HomeBoardStateTests: XCTestCase {
     func testRescueCapsAtAvailableSavingsAndStaysQueuedWhenInsufficient() throws {
         var l = ledger(spent: 505_000); l.fixedSavings = 10_000
         let row = try HomeButler.rescueDeficit(in: &l, now: now)
-        XCTAssertEqual(row.amount, 210_000); XCTAssertEqual(value(l).deficit, 25_000)
+        XCTAssertEqual(row.amount, 10_000); XCTAssertEqual(value(l).deficit, 225_000)
         XCTAssertEqual(Reserve.overview(l, now: now).total, 0)
         XCTAssertEqual(HomeButler.queue(l, now: now).first?.priority, 0)
     }
@@ -152,6 +152,13 @@ final class HomeBoardStateTests: XCTestCase {
         try Reconciliation.apply(&l, actual: [l.accounts[0].id: 1_027_400], now: now)
         XCTAssertEqual(l.fixedSavingsTotal(now: now), saved)
         XCTAssertEqual(value(l).balanceGap, 0)
+    }
+    func testReconcileDoesNotCountAnOverspendTwice() throws {
+        let l = ledger(spent: 290_000), book = Finance.funds(l, now: now).cash
+        XCTAssertEqual(value(l).deficit, 20_000)
+        XCTAssertNil(Reconciliation.mismatch(in: l, now: now))
+        let result = Reconciliation.preview(l, actual: [l.accounts[0].id: book - 1000], now: now)
+        XCTAssertEqual(result.floor, 1000); XCTAssertEqual(result.spendableAfter.deficit, 21_000)
     }
     func testReconcileGapShowsOverspendWithoutNegativeHeadline() throws {
         for (cash, deficit) in [(Int64(801_000), Int64(30_000)), (500_000, 331_000)] {
@@ -264,7 +271,7 @@ final class HomeBoardStateTests: XCTestCase {
         let oldTotal = Money.limit * 2
         XCTAssertTrue(Savings.migrateSpendableModel(in: &l, now: now))
         XCTAssertEqual(Reserve.overview(l, now: now).total, oldTotal)
-        XCTAssertEqual(l.fixedSavings, Money.limit); XCTAssertEqual(l.migratedSavingCredit, 0)
+        XCTAssertEqual(l.fixedSavings, Money.limit); XCTAssertEqual(l.migratedSavingCredit, Money.limit - 1)
         let saved = l.fixedSavingsTotal(now: now)
         l.setFixedSavingsTotal(saved, now: now)
         XCTAssertEqual(l.fixedSavingsTotal(now: now), saved)

@@ -272,6 +272,8 @@ public struct EntrySaveInput: Equatable, Sendable {
     public var amountCents: Int64
     public var currency: BillCurrency
     public var exchangeRate: Decimal?
+    /// Set when editing: the rate the entry was recorded with stays frozen.
+    var frozenRate: EntryRate?
     public var purpose: String
     public var category: String
     public var subcategory: String?
@@ -354,14 +356,19 @@ public enum EntryEffect: Equatable, Sendable {
 }
 
 public enum EntrySaveMapper {
+    /// The rate frozen into a foreign entry: the one typed for this entry, else
+    /// a fixed manual rate from Settings, else the latest synced rate.
+    public static func entryRate(for input: EntrySaveInput, in ledger: Ledger, now: Date) -> EntryRate? {
+        guard input.currency != .cny else { return nil }
+        if let typed = input.exchangeRate { return EntryRate(cnyPerUnit: typed, date: Dates.day(now), manual: true) }
+        if let frozen = input.frozenRate { return frozen }
+        return ExchangeRates.rate(for: input.currency, in: ledger, now: now)
+    }
+
     public static func cnyAmount(for input: EntrySaveInput, in ledger: Ledger, now: Date) -> Int64? {
         guard input.amountCents > 0 else { return nil }
         guard input.currency != .cny else { return input.amountCents }
-        if let rateValue = input.exchangeRate {
-            let quote = ManualExchangeRate(currency: input.currency, cnyPerUnit: rateValue, updatedAt: now)
-            return quote.convert(input.amountCents)
-        }
-        return FixedFlows.exchangeRate(for: input.currency, in: ledger, now: now)?.convert(input.amountCents)
+        return entryRate(for: input, in: ledger, now: now).flatMap { ExchangeRates.convert(input.amountCents, at: $0) }
     }
 
     public static func effect(for input: EntrySaveInput, in ledger: Ledger, now: Date) -> EntryEffect? {
@@ -409,6 +416,12 @@ public enum EntrySaveMapper {
         var input = input
         input.preserveTime = true
         input.repeatMonthly = false
+        if original.originalCurrency == input.currency {
+            // Entries recorded before rates were stored freeze the rate they were booked at.
+            input.frozenRate = original.exchangeRate ?? original.originalAmount.flatMap { units in
+                units > 0 ? EntryRate(cnyPerUnit: Decimal(original.amount) / Decimal(units), date: Dates.day(original.date), manual: false) : nil
+            }
+        }
         let change = try makeChange(input, in: ledger, now: now)
         guard case .addEntry(let draft)? = change.items.first else { throw YubaiError.invalid("无法编辑这笔账单。") }
         var edited = original
@@ -431,6 +444,7 @@ public enum EntrySaveMapper {
         edited.countsFromCycleStart = draft.countsFromCycleStart
         edited.originalCurrency = draft.originalCurrency
         edited.originalAmount = draft.originalAmount
+        edited.exchangeRate = draft.exchangeRate
         edited.category = draft.category
         edited.subcategory = draft.subcategory
         edited.subcategoryUserEdited = true
@@ -455,6 +469,7 @@ public enum EntrySaveMapper {
 
         let originalCurrency: BillCurrency? = input.currency == .cny ? nil : input.currency
         let originalAmount: Int64? = input.currency == .cny ? nil : input.amountCents
+        let frozenRate = entryRate(for: input, in: ledger, now: now)
         let effectiveRepeat = input.repeatMonthly && input.exception == nil
 
         func patchDraft(_ change: inout ChangeSet, transform: (inout EntryDraft) -> Void) {
@@ -475,7 +490,7 @@ public enum EntrySaveMapper {
             patchDraft(&change) { draft in
                 draft.subcategory = nature.paired ? nil : input.subcategory
                 draft.originalCurrency = originalCurrency
-                draft.originalAmount = originalAmount
+                draft.originalAmount = originalAmount; draft.exchangeRate = frozenRate
             }
             if nature == .refund, let original = input.relatedEntryID,
                case .addEntry(let draft)? = change.items.first {
@@ -532,7 +547,7 @@ public enum EntrySaveMapper {
                         ?? [RecoveryParticipant(name: "TA", amount: cnyCents - myShare)]
                 }
                 draft.originalCurrency = originalCurrency
-                draft.originalAmount = originalAmount
+                draft.originalAmount = originalAmount; draft.exchangeRate = frozenRate
             }
             return change
 
@@ -577,7 +592,7 @@ public enum EntrySaveMapper {
                 draft.categoryUserEdited = true
                 draft.countsFromCycleStart = countsFromCycleStart
                 draft.originalCurrency = originalCurrency
-                draft.originalAmount = originalAmount
+                draft.originalAmount = originalAmount; draft.exchangeRate = frozenRate
             }
             return change
 
@@ -601,7 +616,7 @@ public enum EntrySaveMapper {
             )
             patchDraft(&change) { draft in
                 draft.originalCurrency = originalCurrency
-                draft.originalAmount = originalAmount
+                draft.originalAmount = originalAmount; draft.exchangeRate = frozenRate
             }
             return change
 
@@ -647,7 +662,7 @@ public enum EntrySaveMapper {
             }
             patchDraft(&change) { draft in
                 draft.originalCurrency = originalCurrency
-                draft.originalAmount = originalAmount
+                draft.originalAmount = originalAmount; draft.exchangeRate = frozenRate
             }
             return change
         }

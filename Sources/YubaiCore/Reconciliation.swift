@@ -42,7 +42,8 @@ public enum Reconciliation {
         }
         if ledger.lastReconciledAt == nil && hasOpeningBalance.isEmpty { return nil }
         let funds = Finance.funds(ledger, now: now)
-        let need = max(0, funds.fixedSavingsTotal + funds.savingTarget) + funds.dueRest + funds.available
+        // Money that must really be there: an overspend already shrank what can be saved.
+        let need = max(0, funds.fixedSavingsTotal + funds.spendable.savingCovered) + funds.dueRest + funds.available
         let amount = max(0, need - funds.cash)
         let last = ledger.lastReconciledAt ?? hasOpeningBalance.filter(\.reconciled).map(\.anchorDate).max()
         let stale = last.map { (Dates.calendar.dateComponents([.day], from: Dates.day($0), to: Dates.day(now)).day ?? 0) >= staleDays } ?? false
@@ -62,7 +63,7 @@ public enum Reconciliation {
         projected.periodReconciliations.removeAll { abs($0.cycleStart.timeIntervalSince(before.cycleStart)) <= 36 * 3600 }
         let base = Finance.funds(projected, now: now)
         let real = base.cash - missing
-        let need = max(0, base.fixedSavingsTotal + base.savingTarget) + base.dueRest + base.available
+        let need = max(0, base.fixedSavingsTotal + base.spendable.savingCovered) + base.dueRest + base.available
         let floor = max(0, need - real)
         projected.periodReconciliations.append(PeriodReconciliation(cycleStart: base.cycleStart, date: now, floor: floor, entryIDs: []))
         return Result(missing: missing, from: from, through: Dates.day(now), floor: floor,

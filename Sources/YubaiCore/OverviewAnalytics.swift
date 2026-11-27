@@ -179,7 +179,7 @@ public enum OverviewAnalytics {
                                       anomaly: overspend.map { slice($0.category, amount: $0.amount, previous: $0.baseline, anomaly: true) },
                                       slices: slices.sorted { $0.amount == $1.amount ? $0.category < $1.category : $0.amount > $1.amount })
         snapshot.anomalyBaselineCycles = overspend?.cycles ?? 0
-        if spent > 0, unsortedAmount * 10 > spent * 3 {
+        if spent > 0, Decimal(unsortedAmount) * 10 > Decimal(spent) * 3 {
             snapshot.unsortedCount = unsorted.filter { $0.entry.nature == .expense }.count
             snapshot.unsortedAmount = unsortedAmount
         }
@@ -305,7 +305,7 @@ public enum OverviewAnalytics {
         let start = Finance.cycle(in: ledger, now: now).start
         // Set-aside is a cycle fact. Include each overlapping cycle once, even for a partial range.
         let active = interval.start <= now && interval.end > start
-            ? Finance.spendableBreakdown(ledger, now: now).savingSetAside : 0
+            ? Finance.spendableBreakdown(ledger, now: now).savingCovered : 0
         var matched = Set<Date>()
         var closed: Int64 = 0
         for cycle in closedCycles where interval.start < cycle.end && cycle.start < interval.end {
@@ -333,8 +333,12 @@ public enum OverviewAnalytics {
     static func baselineWindows(selection: OverviewPeriodSelection, window: OverviewPeriodWindow,
                                 in ledger: Ledger, now: Date) -> [DateInterval] {
         let span = window.interval.duration
+        // Calendar components, not seconds, so a DST change does not move the cutoff.
+        let elapsed = Dates.calendar.dateComponents([.day, .hour, .minute, .second, .nanosecond],
+                                                    from: window.interval.start, to: window.interval.end)
         func clip(_ cycle: DateInterval) -> DateInterval {
-            DateInterval(start: cycle.start, end: min(cycle.end, cycle.start.addingTimeInterval(span)))
+            let end = Dates.calendar.date(byAdding: elapsed, to: cycle.start) ?? cycle.start.addingTimeInterval(span)
+            return DateInterval(start: cycle.start, end: max(cycle.start, min(cycle.end, end)))
         }
         switch selection {
         case .current:
@@ -342,8 +346,10 @@ public enum OverviewAnalytics {
         case .previous:
             return Finance.pastCycles(ledger, now: now, limit: 4).dropFirst().map(clip)
         case .custom:
+            let days = Dates.calendar.dateComponents([.day], from: window.interval.start, to: window.interval.end).day ?? 0
             return (1...3).map { k in
-                DateInterval(start: window.interval.start.addingTimeInterval(-span * Double(k)), duration: span)
+                let start = Dates.addDays(-days * k, to: window.interval.start)
+                return DateInterval(start: start, end: Dates.addDays(days, to: start))
             }
         }
     }
@@ -361,6 +367,7 @@ public enum OverviewAnalytics {
             return source.planID == nil && source.rentID == nil && source.pendingRecovery == nil
                 && row.entry.planID == nil && row.entry.rentID == nil
                 && !Classification.isPending(row.assignment.category)
+                && row.assignment.category != "其他支出"
         }
         let windows = baselineWindows(selection: selection, window: window, in: ledger, now: now)
         var history: [[String: Int64]] = Array(repeating: [:], count: windows.count)
@@ -368,24 +375,29 @@ public enum OverviewAnalytics {
         for entry in ledger.entries where entry.date <= now {
             guard let index = windows.firstIndex(where: { contains($0, entry.date) }),
                   let amount = Finance.periodSpending(for: entry, in: ledger, entriesByID: lookup) else { continue }
-            active[index] = true
             let row = Spending(entry: entry, amount: amount, assignment: ledger.normalizedCategory(for: entry, entriesByID: lookup))
-            if everyday(row) { history[index][row.assignment.category, default: 0] += amount }
+            // Only everyday spending makes a period count as history, so an
+            // excluded bill landing inside a window cannot change the average.
+            if everyday(row) { active[index] = true; history[index][row.assignment.category, default: 0] += amount }
         }
         let used = history.indices.filter { active[$0] }.map { history[$0] }
         guard used.count >= 2 else { return nil }
         let currentTotals = totals(current.filter(everyday)) { $0.assignment.category }
-        var best: (category: String, amount: Int64, baseline: Int64, cycles: Int)?
+        var best: (category: String, amount: Int64, average: Decimal, excess: Decimal)?
         for (category, amount) in currentTotals {
-            let sum = used.reduce(Int64(0)) { $0 + $1[category, default: 0] }
-            let baseline = (sum + Int64(used.count) / 2) / Int64(used.count)
-            let excess = amount - baseline
-            guard baseline > 0, excess >= 10_000, excess * 10 > baseline * 3 else { continue }
-            if best.map({ excess > $0.amount - $0.baseline || (excess == $0.amount - $0.baseline && category < $0.category) }) ?? true {
-                best = (category, amount, baseline, used.count)
+            // Compare against the exact average (Decimal), round only for display.
+            let sum = used.reduce(Decimal(0)) { $0 + Decimal($1[category, default: 0]) }
+            let average = sum / Decimal(used.count), excess = Decimal(amount) - average
+            guard average > 0, excess >= 10_000, excess * 10 > average * 3 else { continue }
+            if best.map({ excess > $0.excess || (excess == $0.excess && category < $0.category) }) ?? true {
+                best = (category, amount, average, excess)
             }
         }
-        return best
+        return best.map { value in
+            var exact = value.average, rounded = Decimal()
+            NSDecimalRound(&rounded, &exact, 0, .plain)
+            return (value.category, value.amount, NSDecimalNumber(decimal: rounded).int64Value, used.count)
+        }
     }
 
     private static func totals(_ entries: [Spending], by key: (Spending) -> String) -> [String: Int64] {
