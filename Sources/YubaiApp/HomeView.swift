@@ -87,11 +87,14 @@ struct HomeView: View {
                  openSettings: { store.tabRouteRequest = .settings },
                  openBill: { store.billCardID = $0 },
                  openAsk: { store.openAsk($0, send: true) },
-                 openVoice: { store.openAsk(voice: true) },
+                 openMenu: { store.billMenu = $0 },
+                 deleteBill: { store.deleteBill($0) },
+                 menuAction: { store.perform($1, on: $0) },
                  recordSalary: { store.requestCaptureSheet(.prefilledEntry(.init(category: nil, amount: nil, purpose: "工资", nature: .income))) },
                  cover: { amount in
                      _ = store.update("补上") { try Reserve.transfer(.take, amount: amount, in: &$0, now: store.financialNow) }
                  })
+        .modifier(HomeMenuScrollLock())
         .overlay(alignment: .bottom) { HomeRunningOverlay() }
     }
 }
@@ -106,15 +109,20 @@ private struct HomePage: View {
     let openSettings: () -> Void
     let openBill: (UUID) -> Void
     let openAsk: (String) -> Void
-    let openVoice: () -> Void
+    let openMenu: (BillMenuRequest) -> Void
+    let deleteBill: (Entry) -> Void
+    let menuAction: (Entry, BillMenuAction) -> Void
     let recordSalary: () -> Void
     let cover: (Int64) -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
     @Environment(\.yubaiToastClearance) private var toastClearance
+    @Environment(\.displayScale) private var displayScale
     @State private var searching = HomeFixture.current?.isSearch == true
     @State private var query = HomeFixture.current?.isSearch == true ? "打车" : ""
     @State private var preset: LedgerPreset?
+    @State private var frames = BillRowFrames()
+    @State private var groupsCache = HomeBillGroupsCache()
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -123,18 +131,25 @@ private struct HomePage: View {
             if searching { searchBar.padding(.horizontal, DS.Space.s20) }
             else { HomeTopBar(openSettings: openSettings) }
             ScrollViewReader { scroll in
-                ScrollView {
-                    VStack(spacing: .zero) {
+                // A List, so rows get the system swipe (iOS 26 only offers it here).
+                List {
+                    Group {
                         if searching {
                             searchResults
                         } else {
                             if preset == nil { hero.id("homeTop") }
-                            DSAskBar(onAsk: beginSearch, onVoice: openVoice).padding(.top, DS.Space.s16)
-                            billDays.padding(.top, DS.Space.s8)
+                            DSAskBar(onAsk: beginSearch).padding(.top, DS.Space.s16).padding(.bottom, DS.Space.s8)
+                            billDays
                         }
-                    }.padding(.horizontal, DS.Space.s20)
-                        .padding(.bottom, navigationHeight + DS.Space.s12 + toastClearance)
+                    }
+                    .listRowInsets(EdgeInsets(top: .zero, leading: DS.Space.s20, bottom: .zero, trailing: DS.Space.s20))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(DS.Color.bg)
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.defaultMinListRowHeight, .zero)
+                .contentMargins(.bottom, navigationHeight + DS.Space.s12 + toastClearance, for: .scrollContent)
                 .scrollDismissesKeyboard(.interactively)
                 .accessibilityElement(children: .contain)
                 .accessibilityIdentifier("entriesScroll")
@@ -203,38 +218,32 @@ private struct HomePage: View {
         }
     }
 
-    private var billDays: some View {
+    /// Bills grouped by day: one `Section` a day, the day line as its header, every row a single view.
+    /// The grouping is cached per ledger version, preset and moment, never sorted again in a body pass.
+    @ViewBuilder private var billDays: some View {
         let accounts = Dictionary(uniqueKeysWithValues: ledger.accounts.map { ($0.id, $0) })
         let recoveryIDs = pendingIDs
-        let rows = ledger.activeEntries.filter { entry in
-            guard entry.date <= now, fixture?.shows(entry) ?? true else { return false }
-            guard let preset else { return true }
-            return (preset.entryIDs?.contains(entry.id) ?? true)
-                && (preset.interval.map { $0.start <= entry.date && entry.date < $0.end } ?? true)
-                && (preset.categories?.contains(ledger.normalizedCategory(for: entry).category) ?? true)
-                && (preset.category.map { $0 == ledger.normalizedCategory(for: entry).category } ?? true)
-        }.sorted(by: newestFirst)
-        let groups = Dictionary(grouping: rows, by: { Dates.day($0.date) })
-        let days = groups.keys.sorted(by: >)
-        let offsets = rowOffsets(days: days, groups: groups)
-        return LazyVStack(spacing: .zero) {
-            if preset != nil {
-                DSDayHeader(title: "\(rows.count) 笔", total: HomeDisplay.signed(billNet(rows), hidden: hide))
-                    .accessibilityIdentifier("entriesSearchTotal")
-            }
-            ForEach(days, id: \.self) { day in
-                let entries = groups[day] ?? []
-                let net = billNet(entries)
-                DSDayHeader(title: dayTitle(day),
-                            total: net == 0 || fixture == .home(.empty) ? "" : HomeDisplay.signed(net, hidden: hide),
-                            today: day == Dates.day(now), first: day == days.first)
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+        let groups = groupsCache.groups(ledger: ledger, now: now, preset: preset, fixture: fixture)
+        if preset != nil {
+            DSDayHeader(title: "\(groups.count) 笔", total: HomeDisplay.signed(groups.net, hidden: hide))
+                .accessibilityIdentifier("entriesSearchTotal")
+                .homeRow()
+        }
+        ForEach(groups.days) { day in
+            Section {
+                // The day line is the section's first row, not its header, so it scrolls away like the canvas.
+                DSDayHeader(title: dayTitle(day.day),
+                            total: day.net == 0 || fixture == .home(.empty) ? "" : HomeDisplay.signed(day.net, hidden: hide),
+                            today: day.day == Dates.day(now), first: day.day == groups.days.first?.day)
+                    .accessibilityAddTraits(.isHeader)
+                    .homeRow()
+                ForEach(Array(day.entries.enumerated()), id: \.element.id) { index, entry in
                     billRow(entry, account: accounts[entry.accountID], pending: recoveryIDs.contains(entry.id), separator: index > 0)
-                        .dsRowEnter(index: min((offsets[day] ?? 0) + index, DailySpending.columnCount))
+                        .dsRowEnter(index: min(day.offset + index, DailySpending.columnCount))
+                        .homeRow()
                 }
             }
         }
-        .animation(reduceMotion ? nil : DSMotion.smoothAnimation, value: rows.first?.id)
     }
 
     private var pendingIDs: Set<UUID> {
@@ -253,26 +262,7 @@ private struct HomePage: View {
         return label + " " + days[weekday - 1]
     }
 
-    private func rowOffsets(days: [Date], groups: [Date: [Entry]]) -> [Date: Int] {
-        var offset = 0
-        var result: [Date: Int] = [:]
-        for day in days {
-            result[day] = offset
-            offset += groups[day]?.count ?? 0
-        }
-        return result
-    }
-
-    private func newestFirst(_ a: Entry, _ b: Entry) -> Bool {
-        (a.date, a.recordedAt ?? a.date, a.id.uuidString) > (b.date, b.recordedAt ?? b.date, b.id.uuidString)
-    }
-
-    private func billNet(_ rows: [Entry]) -> Int64 {
-        rows.reduce(0) { net, entry in
-            guard !entry.nature.paired else { return net }
-            return net + (entry.nature.inflow ? entry.amount : -entry.amount)
-        }
-    }
+    private func billNet(_ rows: [Entry]) -> Int64 { HomeBillGroups.net(rows) }
 
     private func billRow(_ entry: Entry, account: Account?, pending: Bool, separator: Bool) -> some View {
         let category = ledger.normalizedCategory(for: entry).category
@@ -281,16 +271,37 @@ private struct HomePage: View {
         let secondLine = searching
             ? [Dates.monthDay(entry.date), account?.name].compactMap { $0 }.joined(separator: " · ")
             : entry.originalCurrency != nil || account?.kind == .credit ? account?.name : nil
-        return Button {
+        let icon = HomeDisplay.icon(entry, category: category)
+        let amount = HomeDisplay.billAmount(entry, hidden: hide)
+        let detailAmount = entry.originalCurrency.map { _ in "≈ " + HomeDisplay.money(entry.amount, hidden: hide) }
+        let amountColor = entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink
+        let frames = frames
+        return HomeBillButton(onTap: {
             focused = false
             openBill(entry.id)
-        } label: {
-            DSListRow(icon: HomeDisplay.icon(entry, category: category), name: entry.displayTitle,
-                      amount: HomeDisplay.billAmount(entry, hidden: hide), detail: secondLine, tag: tag, separator: separator,
-                      detailAmount: entry.originalCurrency.map { _ in "≈ " + HomeDisplay.money(entry.amount, hidden: hide) },
-                      amountColor: entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink)
+        }, onHold: {
+            focused = false
+            openMenu(BillMenuRequest(entryID: entry.id, frame: frames.frames[entry.id] ?? .zero, icon: icon,
+                                     name: entry.displayTitle, amount: amount, detail: secondLine,
+                                     detailAmount: detailAmount, amountColor: amountColor))
+        }) {
+            DSListRow(icon: icon, name: entry.displayTitle, amount: amount, detail: secondLine, tag: tag, separator: separator,
+                      detailAmount: detailAmount, amountColor: amountColor)
                 .contentShape(Rectangle())
-        }.dsPressStyle().accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+        }
+            .accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames[entry.id] = $0 }
+            .nativeSwipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) { deleteBill(entry) } label: {
+                    Label { Text("删除") } icon: { DS.Icon.delete.templateImage(size: HomeSpec.swipeIcon, scale: displayScale) }
+                }.tint(DS.Color.warnStrong)
+            }
+            // 改分类 only where the menu offers it; deleting stays the system swipe's own action.
+            .accessibilityActions {
+                Button("编辑") { menuAction(entry, .edit) }
+                Button("再记一笔") { menuAction(entry, .duplicate) }
+                if entry.canRecategorize { Button("改分类") { menuAction(entry, .recategorize) } }
+            }
     }
 
     private var searchBar: some View {
@@ -335,10 +346,8 @@ private struct HomePage: View {
             DS.Color.separator.frame(height: DS.Stroke.hairline)
             DSDayHeader(title: "\(results.count) 笔", total: HomeDisplay.signed(billNet(results), hidden: hide))
                 .accessibilityIdentifier("entriesSearchTotal")
-            LazyVStack(spacing: .zero) {
-                ForEach(Array(results.enumerated()), id: \.element.id) { index, entry in
-                    billRow(entry, account: accounts[entry.accountID], pending: pending.contains(entry.id), separator: index > 0)
-                }
+            ForEach(Array(results.enumerated()), id: \.element.id) { index, entry in
+                billRow(entry, account: accounts[entry.accountID], pending: pending.contains(entry.id), separator: index > 0)
             }
         }
     }
@@ -358,6 +367,85 @@ private struct HomePage: View {
             query = ""
             preset = nil
         }
+    }
+}
+
+/// Home's bills by day, newest first, with each day's net and where its rows start (for the entrance stagger).
+struct HomeBillGroups {
+    struct Day: Identifiable {
+        var id: Date { day }
+        let day: Date
+        let entries: [Entry]
+        let net: Int64
+        let offset: Int
+    }
+    let days: [Day]
+    let count: Int
+    let net: Int64
+
+    static func net(_ rows: [Entry]) -> Int64 {
+        rows.reduce(0) { net, entry in
+            guard !entry.nature.paired else { return net }
+            return net + (entry.nature.inflow ? entry.amount : -entry.amount)
+        }
+    }
+
+    init(ledger: Ledger, now: Date, preset: LedgerPreset?, fixture: HomeFixture?) {
+        let rows = ledger.activeEntries.filter { entry in
+            guard entry.date <= now, fixture?.shows(entry) ?? true else { return false }
+            guard let preset else { return true }
+            return (preset.entryIDs?.contains(entry.id) ?? true)
+                && (preset.interval.map { $0.start <= entry.date && entry.date < $0.end } ?? true)
+                && (preset.categories?.contains(ledger.normalizedCategory(for: entry).category) ?? true)
+                && (preset.category.map { $0 == ledger.normalizedCategory(for: entry).category } ?? true)
+        }.sorted { a, b in
+            (a.date, a.recordedAt ?? a.date, a.id.uuidString) > (b.date, b.recordedAt ?? b.date, b.id.uuidString)
+        }
+        let grouped = Dictionary(grouping: rows, by: { Dates.day($0.date) })
+        var offset = 0
+        days = grouped.keys.sorted(by: >).map { day in
+            let entries = grouped[day] ?? []
+            defer { offset += entries.count }
+            return Day(day: day, entries: entries, net: Self.net(entries), offset: offset)
+        }
+        count = rows.count
+        net = Self.net(rows)
+    }
+}
+
+/// Keeps the last grouping; a body pass with the same ledger version, moment and preset reuses it.
+final class HomeBillGroupsCache {
+    private var key: (ledger: UUID, updated: Date, entries: Int, now: Date, preset: LedgerPreset?, fixture: HomeFixture?)?
+    private var value: HomeBillGroups?
+
+    func groups(ledger: Ledger, now: Date, preset: LedgerPreset?, fixture: HomeFixture?) -> HomeBillGroups {
+        if let key, let value, key.ledger == ledger.id, key.updated == ledger.updatedAt, key.entries == ledger.entries.count,
+           key.now == now, key.preset == preset, key.fixture == fixture {
+            return value
+        }
+        let fresh = HomeBillGroups(ledger: ledger, now: now, preset: preset, fixture: fixture)
+        key = (ledger.id, ledger.updatedAt, ledger.entries.count, now, preset, fixture)
+        value = fresh
+        return fresh
+    }
+}
+
+private extension View {
+    /// A home List row: 20 in from each edge, no system separator, page background.
+    func homeRow() -> some View {
+        listRowInsets(EdgeInsets(top: .zero, leading: DS.Space.s20, bottom: .zero, trailing: DS.Space.s20))
+            .listRowSeparator(.hidden)
+            .listRowBackground(DS.Color.bg)
+    }
+}
+
+/// While the long-press menu is up the finger that opened it must not scroll the list.
+/// Read here, not in `HomeView.body`, so opening the menu does not rebuild the page.
+private struct HomeMenuScrollLock: ViewModifier {
+    @Environment(AppStore.self) private var store
+
+    func body(content: Content) -> some View {
+        content.scrollDisabled(store.billMenu != nil)
     }
 }
 
@@ -460,7 +548,8 @@ private struct HomeRunningDots: View {
     let fixture = HomeFixture.home(.normal)
     HomePage(ledger: fixture.makeLedger().ledger, now: fixture.now, request: nil, fixture: fixture, scrollRequest: 0,
              openBudget: {}, openSettings: {}, openBill: { _ in }, openAsk: { _ in },
-             openVoice: {}, recordSalary: {}, cover: { _ in })
+             openMenu: { _ in }, deleteBill: { _ in }, menuAction: { _, _ in },
+             recordSalary: {}, cover: { _ in })
         .safeAreaInset(edge: .bottom, spacing: .zero) { DSTabBar(selection: .constant(.home), onEntry: {}) }
 }
 #endif

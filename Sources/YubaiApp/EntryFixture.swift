@@ -4,7 +4,7 @@ import YubaiCore
 
 enum EntryFixture: String, CaseIterable {
     case expense, aa, income, transfer, move, deposit, large, foreign, fixed, time, cats
-    case subcategoryAdd = "flow-subcat-add"
+    case nocat, more, account, purpose, manage
     case calendarPopover = "flow-calendar-popover"
     case empty = "flow-empty-draft"
     case guess = "flow-guess-only"
@@ -59,11 +59,11 @@ enum EntryFixture: String, CaseIterable {
         var repeatDay: Int?
 
         switch self {
-        case .expense, .time, .calendarPopover, .guess:
+        case .expense, .time, .calendarPopover, .guess, .more, .account, .purpose:
             draft.expression = EntryAmountExpression(expression: EntrySpec.fixtureLunchAmount)
             draft.purpose = "午饭"
             if self != .guess { draft.category = "吃饭"; draft.subcategory = "午餐" }
-        case .cats, .subcategoryAdd:
+        case .cats, .manage:
             draft.expression = EntryAmountExpression(expression: EntrySpec.fixtureLunchAmount)
             draft.purpose = "午饭"
             draft.category = "购物"
@@ -123,6 +123,8 @@ enum EntryFixture: String, CaseIterable {
             draft.accountID = credit.id
             draft.exception = .reimbursement
         case .empty: break
+        case .nocat:
+            draft.expression = EntryAmountExpression(expression: EntrySpec.fixtureLunchAmount)
         }
 
         if self == .time || self == .calendarPopover { draft.date = EntrySpec.fixtureCalendarSelection }
@@ -134,12 +136,15 @@ enum EntryFixture: String, CaseIterable {
         if self == .aa { model.fixtureSplitNames = ["我", "林", "周"] }
         if self == .time || self == .calendarPopover { model.drawer = .calendar }
         if self == .guess { model.suggestion = CategoryGuesser.guess(draft.purpose, nature: .expense, date: today, in: ledger) }
-        if self == .cats || self == .subcategoryAdd {
-            model.categoryPanel = self == .cats
-            model.drawer = .subcategory
-            model.autoFocusSubcategory = false
-            model.inputText = self == .cats ? "运动鞋" : ""
+        if self == .cats || self == .manage {
+            model.categoryPanel = true
+            model.expandedCategory = "购物"
+            model.managingCategories = self == .manage
         }
+        if self == .nocat { model.needsCategory = true }
+        if self == .more { model.drawer = .more }
+        if self == .account { model.drawer = .source }
+        if self == .purpose { model.drawer = .purpose }
         return model
     }
 }

@@ -10,9 +10,20 @@ struct EntrySheetOverlay: View {
     let onClose: () -> Void
     let onReceipt: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduced
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var motion: EntrySheetMotion
     @State private var displayedMonth: Date
+    /// nil until a drag decides; true once the sheet took it over, false when it stays with the content.
+    @State private var dragOwned: Bool?
+    /// Goes false however the drag ends, including when the system cancels it without `onEnded`.
+    @GestureState private var dragging = false
     @FocusState private var calendarFocus: EntryCalendarFocus?
+    /// VoiceOver: the pill a list popped out of, so closing the list goes back to it.
+    @AccessibilityFocusState private var pillFocus: EntryDrawer?
+    /// VoiceOver: the first item of the open list.
+    @AccessibilityFocusState private var listFocus: Bool
+    /// Only the largest type sizes scroll the form; there a drag belongs to the scroll unless it is at the top.
+    @State private var formScroll = EntryFormScroll()
 
     init(model: EntrySheetViewModel, onClose: @escaping () -> Void, onReceipt: @escaping () -> Void = {}) {
         self.model = model
@@ -29,44 +40,69 @@ struct EntrySheetOverlay: View {
             ZStack(alignment: .bottom) {
                 EntryScrimView(motion: motion, color: DS.Color.scrim, close: cancel)
                     .ignoresSafeArea()
+                if model.drawer == .purpose {
+                    // Spec-Redlines 写用途: the sheet's color runs on behind the system keyboard, no seam at its corners.
+                    DS.Color.bg.frame(height: DS.Radius.sheet)
+                        .offset(y: DS.Radius.sheet)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
                 if model.categoryOnly {
                     EntryCategoryPanelView(model: model, safeBottom: bottom, maxHeight: maxHeight, confirm: save)
-                        .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
+                        .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose, fill: DS.Color.bg))
                 } else {
                     EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
-                                   calendarFocus: $calendarFocus, drag: drag, close: cancel, save: save, receipt: onReceipt)
+                                   calendarFocus: $calendarFocus, pillFocus: $pillFocus, formScroll: $formScroll,
+                                   save: save, receipt: onReceipt)
+                        // Once the sheet owns the drag, the key under the finger lets go and the form stops scrolling.
+                        // Applied outside the sheet's body, so only the controls see it; the drag below stays live.
+                        .disabled(dragOwned == true)
+                        // Spec-Gestures: alongside the keys and the scroll. The sheet decides by direction first.
+                        .simultaneousGesture(sheetDrag, including: model.drawer == nil ? .all : .subviews)
                         .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
-                        .accessibilityHidden(model.categoryPanel || model.drawer == .calendar)
+                        .accessibilityHidden(model.categoryPanel || model.drawer?.isPopover == true)
                 }
                 if model.categoryPanel && !model.categoryOnly {
                     DS.Color.scrim
                         .contentShape(Rectangle())
                         .onTapGesture { model.dismissCategoryPanel() }
+                        .gesture(closeDrag { model.dismissCategoryPanel() })
                         .accessibilityHidden(true)
                         .ignoresSafeArea()
                         .transition(.opacity)
                     EntryCategoryPanelView(model: model, safeBottom: bottom, maxHeight: maxHeight)
-                        .transition(reduced ? .opacity : .move(edge: .bottom).combined(with: .opacity))
+                        .transition(reduced ? .opacity : .move(edge: .bottom))
+                }
+                if model.managingCategories {
+                    EntryCategoryManagerView(model: model, close: { model.managingCategories = false })
+                        .transition(reduced ? .opacity : .move(edge: .trailing))
+                        .zIndex(1)
                 }
             }
-            .overlayPreferenceValue(EntryTimeAnchor.self) { anchor in
-                if let anchor, model.drawer == .calendar {
-                    calendarOverlay(anchor)
+            .overlayPreferenceValue(EntryPillAnchors.self) { frames in
+                if let drawer = model.drawer, drawer.isPopover, let anchor = frames.drawn[drawer] {
+                    popover(drawer, anchor: anchor, pills: frames.hit)
                         .transition(.opacity)
                 }
             }
             .ignoresSafeArea(.container, edges: .bottom)
-            .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.drawer == .calendar)
+            .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation, value: model.drawer?.isPopover == true ? model.drawer : nil)
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.categoryPanel)
+            .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.managingCategories)
         }
-        .accessibilityAction(.escape) {
-            if model.categoryOnly { cancel() }
-            else if model.drawer == .calendar { model.drawer = nil }
-            else if model.categoryPanel { model.dismissCategoryPanel() }
-            else { cancel() }
+        .accessibilityAction(.escape) { closeTopLayer() }
+        .onChange(of: dragging) { _, active in
+            guard !active else { return }
+            // Cleared here, after the touch is fully over, so the key under the finger stays disabled through its release.
+            dragOwned = nil
+            motion.settleIfDragging(reduced: reduced)
         }
         .onChange(of: model.drawer == .calendar) { wasOpen, isOpen in
             if wasOpen && !isOpen { calendarFocus = .timePill }
+        }
+        .onChange(of: model.drawer) { old, new in
+            guard let old, old.isPopover, new?.isPopover != true else { return }
+            pillFocus = old
         }
         .onAppear { model.schedulePreview() }
         .onChange(of: model.draft) { _, _ in model.schedulePreview() }
@@ -79,23 +115,75 @@ struct EntrySheetOverlay: View {
         }
     }
 
-    private func calendarOverlay(_ anchor: Anchor<CGRect>) -> some View {
+    /// Spec-Gestures: one layer closes at a time — the list, then the panel, then the sheet.
+    private func closeTopLayer() {
+        if model.managingCategories { model.managingCategories = false }
+        else if model.drawer?.isPopover == true { model.drawer = nil }
+        else if model.categoryPanel && !model.categoryOnly { model.dismissCategoryPanel() }
+        else { cancel() }
+    }
+
+    /// Spec-Gestures 记一笔 · 下拉收起: anywhere on the sheet, once it moves more down than across.
+    /// The first 6 pt decide: across stays with the content; up or down takes the sheet, except in the
+    /// scrolling form (largest type), where up, or down while not at the top, stays with the scroll.
+    private var sheetDrag: some Gesture {
+        DragGesture(minimumDistance: EntrySpec.dragMinimum, coordinateSpace: .global)
+            .updating($dragging) { _, state, _ in state = true }
+            .onChanged { value in
+                if dragOwned == nil {
+                    let vertical = abs(value.translation.height) > abs(value.translation.width)
+                    let down = value.translation.height > 0
+                    let scrollKeeps = formScroll.scrolls && (!down || !formScroll.atTop)
+                    dragOwned = vertical && !scrollKeeps && model.drawer == nil && !model.categoryPanel
+                }
+                if dragOwned == true { motion.drag(value) }
+            }
+            .onEnded { value in
+                guard dragOwned == true else { return }
+                if motion.willDismiss(value) { model.retainDraft() }
+                motion.release(value, reduced: reduced, onClose: onClose)
+            }
+    }
+
+    /// Spec-Gestures 一次关一层: pulling down on a list's or panel's backdrop closes that layer only.
+    private func closeDrag(_ close: @escaping () -> Void) -> some Gesture {
+        DragGesture(minimumDistance: EntrySpec.dragMinimum).onEnded { value in
+            if value.translation.height > abs(value.translation.width) { close() }
+        }
+    }
+
+    @ViewBuilder private func popover(_ drawer: EntryDrawer, anchor: Anchor<CGRect>,
+                                      pills: [EntryDrawer: Anchor<CGRect>]) -> some View {
         GeometryReader { geometry in
             let pill = geometry[anchor]
-            let available = max(0, pill.minY - EntrySpec.calendarGap)
-            let width = min(EntrySpec.calendarWidth, geometry.size.width)
-            let leading = min(max(0, pill.midX - width * EntrySpec.midpoint), geometry.size.width - width)
+            let targets = pills.mapValues { geometry[$0] }
+            // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
+            let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
+                : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
+            let available = max(0, pill.minY - EntrySpec.popoverGap)
+            let margin = typeSize.isAccessibilitySize ? DS.Space.s16 : DS.Space.s20
+            let leading = min(max(margin, pill.midX - width * EntrySpec.midpoint),
+                              geometry.size.width - margin - width)
             ZStack(alignment: .topLeading) {
+                // A tap on another pill switches straight to its list; anywhere else closes this one.
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture { model.drawer = nil }
+                    .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
+                        // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
+                        let hit = targets.first { $0.value.contains(location) }?.key
+                        model.drawer = hit == drawer ? nil : hit
+                    }
+                    .gesture(closeDrag { model.drawer = nil })
                     .accessibilityHidden(true)
                     .ignoresSafeArea()
                 ViewThatFits(in: .vertical) {
-                    calendarCard
-                    ScrollView { calendarCard }.scrollIndicators(.hidden)
+                    // Pulling down from a day or an account row closes the list too; the scrolling
+                    // version (largest type) keeps the drag for its scroll.
+                    popoverContent(drawer).simultaneousGesture(closeDrag { model.drawer = nil })
+                    ScrollView { popoverContent(drawer) }.scrollIndicators(.hidden)
                 }
                 .frame(width: width, height: available, alignment: .bottom)
                 .offset(x: leading)
+                .transition(reduced ? .opacity : .scale(scale: EntrySpec.popoverScale, anchor: .bottom).combined(with: .opacity))
                 .focusable()
                 .focusEffectDisabled()
                 .focused($calendarFocus, equals: .calendar)
@@ -107,24 +195,37 @@ struct EntrySheetOverlay: View {
                 .accessibilityAction(.escape) { model.drawer = nil }
             }
         }
-        .onAppear {
-            displayedMonth = DSCalendarPopover.initialMonth(for: model.draft.date, now: model.now)
+        .coordinateSpace(.named(EntrySpec.popoverSpace))
+        // Per list, not per appearance: switching straight from one pill to another reuses this view.
+        .task(id: drawer) {
+            if drawer == .calendar { displayedMonth = DSCalendarPopover.initialMonth(for: model.draft.date, now: model.now) }
             calendarFocus = .calendar
+            listFocus = true
         }
     }
 
-    private var calendarCard: some View {
-        DSCalendarPopover(date: model.draft.date, now: model.now, displayedMonth: $displayedMonth,
-                          repeats: model.draft.repeatMonthly,
-                          canRepeat: model.canRepeat && model.draft.exception == nil,
-                          onSelect: model.setDate, onRepeat: model.toggleRepeat)
+    private func popoverWidth(_ drawer: EntryDrawer) -> CGFloat {
+        switch drawer {
+        case .calendar: EntrySpec.calendarWidth
+        case .more: DS.Size.menuW
+        default: EntrySpec.accountListWidth
+        }
     }
 
-    private var drag: EntryHeaderDrag {
-        EntryHeaderDrag(move: { motion.drag($0) }, end: { value in
-            if motion.willDismiss(value) { model.retainDraft() }
-            motion.release(value, reduced: reduced, onClose: onClose)
-        })
+    @ViewBuilder private func popoverContent(_ drawer: EntryDrawer) -> some View {
+        switch drawer {
+        case .calendar:
+            DSCalendarPopover(date: model.draft.date, now: model.now, displayedMonth: $displayedMonth,
+                              repeats: model.draft.repeatMonthly,
+                              canRepeat: model.canRepeat && model.draft.exception == nil,
+                              onSelect: model.setDate, onRepeat: model.toggleRepeat, titleFocus: $listFocus)
+        case .source, .destination:
+            EntryAccountList(model: model, destination: drawer == .destination, firstFocus: $listFocus)
+        case .more:
+            EntryMoreList(model: model, firstFocus: $listFocus)
+        default:
+            EmptyView()
+        }
     }
 
     private func cancel() {
@@ -139,16 +240,73 @@ struct EntrySheetOverlay: View {
     }
 }
 
-private struct EntryTimeAnchor: PreferenceKey {
-    static var defaultValue: Anchor<CGRect>? { nil }
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        value = nextValue() ?? value
+/// Whether the form is in its scrolling fallback (largest type) and scrolled to the top.
+struct EntryFormScroll: Equatable {
+    var scrolls = false
+    var atTop = true
+}
+
+private struct EntryFormScrollTop: ViewModifier {
+    @Binding var formScroll: EntryFormScroll
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15, *) {
+            content.onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top <= 1 } action: { _, top in
+                formScroll.atTop = top
+            }
+        } else {
+            // macOS 14 cannot read the offset: never claim the top, so a drag always stays with the scroll.
+            content.onAppear { formScroll.atTop = false }
+        }
     }
 }
 
-struct EntryHeaderDrag {
-    let move: (DragGesture.Value) -> Void
-    let end: (DragGesture.Value) -> Void
+/// Where each pill is drawn (its list pops out right above it) and where it takes a tap
+/// (the 44 pt target, so a tap on the backdrop can switch straight to it).
+struct EntryPillFrames {
+    var drawn: [EntryDrawer: Anchor<CGRect>] = [:]
+    var hit: [EntryDrawer: Anchor<CGRect>] = [:]
+}
+
+private struct EntryPillAnchors: PreferenceKey {
+    static var defaultValue: EntryPillFrames { EntryPillFrames() }
+    static func reduce(value: inout EntryPillFrames, nextValue: () -> EntryPillFrames) {
+        let next = nextValue()
+        value.drawn.merge(next.drawn) { $1 }
+        value.hit.merge(next.hit) { $1 }
+    }
+}
+
+private extension View {
+    func entryAnchor(_ drawer: EntryDrawer) -> some View {
+        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(drawn: [drawer: $0]) }
+    }
+
+    /// After the 44 pt frame: the whole target counts as the pill for the backdrop's switch.
+    func entryHit(_ drawer: EntryDrawer) -> some View {
+        anchorPreference(key: EntryPillAnchors.self, value: .bounds) { EntryPillFrames(hit: [drawer: $0]) }
+    }
+}
+
+/// Spec-Motion 没分类按记下 / 金额 0 按记下: the row says where the problem is.
+private struct EntryShake: ViewModifier {
+    let trigger: Int
+    @Environment(\.accessibilityReduceMotion) private var reduced
+
+    func body(content: Content) -> some View {
+        content
+            .keyframeAnimator(initialValue: CGFloat.zero, trigger: trigger) { view, x in
+                view.offset(x: reduced ? .zero : x)
+            } keyframes: { _ in
+                SpringKeyframe(EntrySpec.shakeOffsets[0], duration: EntrySpec.shakeTimes[0], spring: DSMotion.standard)
+                SpringKeyframe(EntrySpec.shakeOffsets[1], duration: EntrySpec.shakeTimes[1], spring: DSMotion.standard)
+                SpringKeyframe(EntrySpec.shakeOffsets[2], duration: EntrySpec.shakeTimes[2], spring: DSMotion.standard)
+                SpringKeyframe(EntrySpec.shakeOffsets[3], duration: EntrySpec.shakeTimes[3], spring: DSMotion.standard)
+                SpringKeyframe(EntrySpec.shakeOffsets[4], duration: EntrySpec.shakeTimes[4], spring: DSMotion.standard)
+                SpringKeyframe(EntrySpec.shakeOffsets[5], duration: EntrySpec.shakeTimes[5], spring: DSMotion.standard)
+            }
+            .sensoryFeedback(.warning, trigger: trigger)
+    }
 }
 
 struct EntrySheetView: View {
@@ -156,8 +314,8 @@ struct EntrySheetView: View {
     let safeBottom: CGFloat
     let maxHeight: CGFloat
     let calendarFocus: FocusState<EntryCalendarFocus?>.Binding
-    let drag: EntryHeaderDrag
-    let close: () -> Void
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
+    @Binding var formScroll: EntryFormScroll
     let save: () -> Void
     let receipt: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduced
@@ -174,6 +332,9 @@ struct EntrySheetView: View {
                     .scrollBounceBehavior(.basedOnSize)
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
+                    .modifier(EntryFormScrollTop(formScroll: $formScroll))
+                    .onAppear { formScroll.scrolls = true }
+                    .onDisappear { formScroll = EntryFormScroll() }
                 footer
             }
             .frame(maxHeight: maxHeight)
@@ -182,36 +343,45 @@ struct EntrySheetView: View {
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
-        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.type)
-        .animation(reduced ? nil : DSMotion.smoothAnimation, value: model.drawer)
-        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.category != nil)
+        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.tab)
+        .animation(reduced ? nil : DSMotion.smoothAnimation, value: model.drawer == .purpose)
         .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.exception == .split)
+        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.draft.expression.isExpression)
     }
 
     private var form: some View {
         VStack(spacing: .zero) {
-            EntryTopHeaderView(model: model, drag: drag)
-            VStack(spacing: .zero) {
-                EntryAmountBlockView(model: model)
-                    .padding(.bottom, EntrySpec.amountBottom)
-                typeBody
-                    .transition(.opacity)
-                EntryPillsRowView(model: model, calendarFocus: calendarFocus)
-                EntryEffectLineView(model: model)
-                if model.drawer != nil, model.drawer != .calendar { EntryExpandedPanelView(model: model) }
-                if model.hasReceipt {
-                    EntryPill(title: "截图", icon: .screenshot, hint: "查看原始截图", action: receipt)
-                }
+            EntryTopHeaderView(model: model)
+            EntryAmountBlockView(model: model)
+                .padding(.top, EntrySpec.amountTop)
+                .padding(.horizontal, DS.Space.s20)
+            typeBody
+            EntryPillsRowView(model: model, calendarFocus: calendarFocus, pillFocus: pillFocus)
+                .padding(.top, EntrySpec.pillsTop)
+                .padding(.horizontal, DS.Space.s20)
+            EntryEffectLineView(model: model)
+                .padding(.horizontal, DS.Space.s20)
+            if model.draft.exception == .split {
+                EntryAACardView(model: model)
+                    .padding(.horizontal, DS.Space.s20)
+                    .padding(.bottom, DS.Space.s8)
             }
-            .padding(.top, DS.Space.s20)
-            .padding(.horizontal, DS.Space.s20)
-            .padding(.bottom, EntrySpec.aboveTray)
+            if model.drawer == .currency || model.drawer == .split {
+                EntryExpandedPanelView(model: model)
+                    .padding(.horizontal, DS.Space.s20)
+                    .padding(.bottom, DS.Space.s8)
+            }
+            if model.hasReceipt {
+                EntryPill(title: "截图", icon: .screenshot, hint: "查看原始截图", action: receipt)
+            }
         }
+        .padding(.bottom, EntrySpec.aboveTray)
     }
 
     @ViewBuilder private var footer: some View {
         if model.hidesKeypad {
-            DS.Color.tray.frame(height: safeBottom)
+            // The keyboard is the bottom edge now; `safeBottom` already counts it.
+            EmptyView()
         } else {
             EntryKeypadTrayView(model: model, safeBottom: safeBottom, save: save)
         }
@@ -219,19 +389,13 @@ struct EntrySheetView: View {
 
     @ViewBuilder private var typeBody: some View {
         if model.draft.isRoute {
-            EntryTransferRouteView(model: model)
-                .padding(.bottom, DS.Space.s20)
+            EntryTransferRouteView(model: model, pillFocus: pillFocus)
+                .padding(.top, EntrySpec.routeTop)
+                .padding(.horizontal, DS.Space.s20)
         } else {
             EntryCategoryRowView(model: model)
-                .padding(.bottom, DS.Space.s12)
-            if model.draft.category != nil {
-                EntrySubcategoryRowView(model: model)
-                    .padding(.bottom, EntrySpec.bodyBottom)
-            }
-            if model.draft.exception == .split {
-                EntryAACardView(model: model)
-                    .padding(.bottom, DS.Space.s12)
-            }
+                .padding(.top, EntrySpec.categoryTop)
+                .padding(.horizontal, EntrySpec.categoryInset)
         }
     }
 }
@@ -246,55 +410,23 @@ struct EntryGrabber: View {
     }
 }
 
+/// Spec-Redlines 类型标签: 支出 / 收入 / 转账, three 64 pt columns and a 16 × 3 underline.
 struct EntryTopHeaderView: View {
+    static let tabs: [EntryType] = [.expense, .income, .transfer]
     let model: EntrySheetViewModel
-    let drag: EntryHeaderDrag
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
         VStack(spacing: .zero) {
             EntryGrabber()
-                .contentShape(Rectangle())
-                .gesture(dragGesture)
-            HStack(spacing: .zero) {
-                Color.clear
-                    .frame(width: EntrySpec.headerSide, height: DS.Size.tapMin)
-                    .contentShape(Rectangle())
-                    .gesture(dragGesture)
-                    .accessibilityHidden(true)
-                Spacer(minLength: .zero)
-                tabs
-                Spacer(minLength: .zero)
-                Color.clear
-                    .frame(width: EntrySpec.headerSide, height: DS.Size.tapMin)
-                    .contentShape(Rectangle())
-                    .gesture(dragGesture)
-                    .accessibilityHidden(true)
-            }
-            .frame(height: DS.Size.tapMin)
-            .padding(.horizontal, DS.Space.s4)
+            tabs.frame(minHeight: DS.Size.tapMin)
         }
-    }
-
-    private var dragGesture: some Gesture {
-        DragGesture(minimumDistance: EntrySpec.dragMinimum, coordinateSpace: .global)
-            .onChanged(drag.move)
-            .onEnded(drag.end)
     }
 
     private var tabs: some View {
-        ViewThatFits(in: .horizontal) {
-            tabGroup(fixed: true)
-            tabGroup(fixed: false)
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("记账类型")
-    }
-
-    private func tabGroup(fixed: Bool) -> some View {
         HStack(spacing: .zero) {
-            ForEach(EntryType.allCases) { type in
-                let selected = model.draft.type == type
+            ForEach(Self.tabs) { type in
+                let selected = model.draft.tab == type
                 Button {
                     withAnimation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.standardAnimation) { model.select(type) }
                 } label: {
@@ -303,8 +435,7 @@ struct EntryTopHeaderView: View {
                         .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink3)
                         .lineLimit(1)
                         .minimumScaleFactor(EntrySpec.amountMinimumScale)
-                        .frame(width: fixed ? EntrySpec.tabWidth : nil)
-                        .frame(minWidth: DS.Size.tapMin, maxWidth: .infinity, minHeight: DS.Size.tapMin)
+                        .frame(minWidth: EntrySpec.tabColumn, minHeight: DS.Size.tapMin)
                 }
                 .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
                 .accessibilityHint("切换到\(type.title)")
@@ -312,32 +443,35 @@ struct EntryTopHeaderView: View {
                 .accessibilityIdentifier("entryNature_" + type.rawValue)
             }
         }
-        .fixedSize(horizontal: fixed, vertical: false)
+        .fixedSize(horizontal: true, vertical: false)
         .overlay(alignment: .bottomLeading) {
             GeometryReader { geo in
-                let width = geo.size.width / CGFloat(EntryType.allCases.count)
-                let index = EntryType.allCases.firstIndex(of: model.draft.type) ?? 0
+                let width = geo.size.width / CGFloat(Self.tabs.count)
+                let index = Self.tabs.firstIndex(of: model.draft.tab) ?? 0
                 Capsule(style: .continuous).fill(DS.Color.ink)
                     .frame(width: EntrySpec.thumbWidth, height: EntrySpec.thumbHeight)
                     .offset(x: width * (CGFloat(index) + EntrySpec.midpoint) - EntrySpec.thumbWidth * EntrySpec.midpoint)
                     .animation(reduced ? nil : DSMotion.smoothAnimation, value: index)
             }
             .frame(height: EntrySpec.thumbHeight)
-            .padding(.bottom, EntrySpec.thumbBottom)
+            .padding(.bottom, EntrySpec.thumbInset)
             .allowsHitTesting(false)
             .accessibilityHidden(true)
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("记账类型")
     }
 }
 
+/// Spec-Redlines 金额行 + ≈ 行 + 用途.
 private struct EntryAmountBlockView: View {
     @Bindable var model: EntrySheetViewModel
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.amountBlock)
-        VStack(spacing: EntrySpec.gap) {
-            HStack(spacing: EntrySpec.gap) {
+        VStack(spacing: .zero) {
+            HStack(spacing: DS.Space.s8) {
                 Button { model.toggleDrawer(.currency) } label: {
                     HStack(spacing: EntrySpec.currencyGap) {
                         Text(model.draft.currency == .cny ? "¥" : model.draft.currency.rawValue)
@@ -345,7 +479,7 @@ private struct EntryAmountBlockView: View {
                         DS.Icon.chevronDown.view(size: EntrySpec.currencyChevron, color: DS.Color.ink3)
                     }
                     .foregroundStyle(DS.Color.ink2)
-                    .padding(.leading, EntrySpec.compactPadding)
+                    .padding(.leading, EntrySpec.currencyInset)
                     .padding(.trailing, DS.Space.s8)
                     .frame(minHeight: EntrySpec.currencyHeight)
                     .dsPill()
@@ -353,58 +487,66 @@ private struct EntryAmountBlockView: View {
                 }
                 .buttonStyle(EntryTactileButtonStyle())
                 .fixedSize()
+                .entryHit(.currency)
                 .accessibilityLabel("币种，" + model.draft.currency.unit)
                 .accessibilityHint("选择外币和汇率")
                 Text(amountText)
                     .dsText(DS.Font.nEntry)
-                    .foregroundStyle(model.draft.type == .income ? DS.Color.accentInk : DS.Color.ink)
+                    .foregroundStyle(amountColor)
                     .lineLimit(1)
                     .minimumScaleFactor(EntrySpec.amountMinimumScale)
                     .contentTransition(reduced ? .identity : .numericText())
-                    .animation(reduced ? nil : DSMotion.snappyAnimation, value: model.money)
+                    .animation(reduced ? nil : DSMotion.standardAnimation, value: model.money)
                     .accessibilityLabel("金额")
                     .accessibilityValue(model.hidesAmounts ? "金额已隐藏" : model.draft.expression.formattedDisplay)
                     .accessibilityHint("用下方键盘输入")
                     .accessibilityIdentifier("entryKeypadAmount")
-                EntryAmountCaretView(steady: model.settled)
+                EntryAmountCaretView(steady: model.settled || model.drawer == .purpose)
             }
-            .frame(minHeight: EntrySpec.amountHeight)
+            .frame(minHeight: EntrySpec.amountRow)
+            .modifier(EntryShake(trigger: model.amountPulse))
             if model.draft.expression.isExpression {
                 Text(model.hidesAmounts ? "••••" : model.draft.expression.formattedDisplay + " = " + Money.text(model.money, currency: false))
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
+                    .frame(height: DS.Space.s20)
+                    .transition(.opacity)
             }
             if model.draft.currency != .cny, let rate = model.signedRate, let local = model.localMoney {
                 Text(model.hidesAmounts ? "••••" : "≈ \(Money.text(local)) · 1 \(model.draft.currency.rawValue) = \(NSDecimalNumber(decimal: rate).stringValue)")
                     .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
                     .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
+                    .frame(height: DS.Space.s20)
             }
-            if model.drawer == .purpose {
-                HStack(spacing: DS.Space.s8) {
-                    DSInlineTextField(title: "用途", text: $model.draft.purpose) { model.drawer = nil }
-                        .accessibilityIdentifier("entryPurpose")
-                    EntryPill(title: nil, icon: .done, label: "完成用途", hint: "收起键盘") { model.drawer = nil }
-                }
-            } else {
-                Button { model.toggleDrawer(.purpose) } label: {
-                    HStack(spacing: EntrySpec.gap) {
-                        DS.Icon.edit.view(size: DS.Font.tLabel.size, color: DS.Color.ink3)
-                        Text(model.draft.purpose.isEmpty ? "用途" : model.draft.purpose)
-                            .dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink2).lineLimit(1)
-                    }
-                    .frame(minHeight: EntrySpec.currencyHeight)
-                    .padding(.horizontal, DS.Space.s8)
-                    .padding(.vertical, DS.Space.s4)
-                    .frame(minHeight: DS.Size.tapMin)
-                }
-                .buttonStyle(EntryTactileButtonStyle())
-                .accessibilityLabel("用途")
-                .accessibilityValue(model.draft.purpose)
-                .accessibilityHint("填写这笔账的用途")
-                .accessibilityIdentifier("entryPurpose")
-            }
+            purpose
         }
         .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder private var purpose: some View {
+        if model.drawer == .purpose {
+            DSInlineTextField(title: "用途", text: $model.draft.purpose, icon: .edit) { model.drawer = nil }
+                .submitLabel(.done)
+                .accessibilityIdentifier("entryPurpose")
+        } else {
+            Button { model.toggleDrawer(.purpose) } label: {
+                HStack(spacing: EntrySpec.gap) {
+                    DS.Icon.edit.view(size: EntrySpec.purposeIcon, color: DS.Color.ink3)
+                    Text(model.draft.purpose.isEmpty ? "用途" : model.draft.purpose)
+                        .dsText(DS.Font.tBody)
+                        .foregroundStyle(model.draft.purpose.isEmpty ? DS.Color.ink3 : DS.Color.ink2)
+                        .lineLimit(1)
+                }
+                .frame(minHeight: EntrySpec.purposeHeight)
+                .padding(.horizontal, DS.Space.s8)
+            }
+            .buttonStyle(EntryTactileButtonStyle())
+            .frame(minHeight: EntrySpec.purposeHeight)
+            .accessibilityLabel("用途")
+            .accessibilityValue(model.draft.purpose)
+            .accessibilityHint("填写这笔账的用途")
+            .accessibilityIdentifier("entryPurpose")
+        }
     }
 
     private var amountText: String {
@@ -412,6 +554,11 @@ private struct EntryAmountBlockView: View {
         let expression = model.draft.expression
         if expression.isExpression { return Money.text(model.money, currency: false) }
         return expression.isEmpty ? "0.00" : expression.formattedDisplay
+    }
+
+    private var amountColor: Color {
+        if model.draft.expression.isEmpty { return DS.Color.chevron }
+        return model.draft.type == .income ? DS.Color.accentInk : DS.Color.ink
     }
 }
 
@@ -435,41 +582,38 @@ private struct EntryAmountCaretView: View {
     }
 
     private var bar: some View {
-        Capsule(style: .continuous).fill(DS.Color.ink3)
+        Capsule(style: .continuous).fill(DS.Color.accent)
             .frame(width: EntrySpec.caretWidth, height: EntrySpec.caretHeight)
-            .opacity(EntrySpec.caretOpacity)
     }
 }
 
+/// Spec-Redlines 分类行: five equal columns — four recent categories and 全部.
 private struct EntryCategoryRowView: View {
     let model: EntrySheetViewModel
     @Environment(\.accessibilityReduceMotion) private var reduced
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.categoryRow)
+        let ring = model.needsCategory && model.draft.category == nil
         HStack(alignment: .top, spacing: .zero) {
             ForEach(model.topCategories) { category in
-                EntryCategoryCircle(name: category.name, icon: category.entryIcon,
-                   selected: category.name == model.draft.category,
-                   suggested: model.draft.category == nil && model.suggestion?.category == category.name) {
-                    withAnimation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.snappyAnimation) {
-                        model.select(category: category.name)
+                let selected = category.name == model.draft.category
+                EntryCategoryCircle(name: selected ? model.draft.subcategory ?? category.name : category.name,
+                                    icon: category.entryIcon, selected: selected, ring: ring,
+                                    suggested: model.draft.category == nil && model.shownSuggestion?.category == category.name) {
+                    withAnimation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.standardAnimation) {
+                        model.toggle(category: category.name)
                     }
                 }
-                .frame(width: EntrySpec.categoryWidth)
                 .accessibilityIdentifier("entryCategory_" + category.name)
-                Spacer(minLength: .zero)
             }
-            EntryCategoryCircle(name: "全部", icon: .catAll, hint: "展开全部分类") { model.categoryPanel = true }
-                .frame(width: EntrySpec.categoryWidth)
+            EntryCategoryCircle(name: "全部", icon: .catAll, ring: ring, hint: "展开全部分类") { model.categoryPanel = true }
                 .accessibilityIdentifier("entryCategoryMore")
         }
-        .keyframeAnimator(initialValue: CGFloat(1), trigger: model.categoryPulse) { content, scale in
-            content.scaleEffect(reduced ? 1 : scale)
-        } keyframes: { _ in
-            SpringKeyframe(DSMotion.Press.scale, spring: DSMotion.snappy)
-            SpringKeyframe(1, spring: DSMotion.snappy)
-        }
+        .modifier(EntryShake(trigger: model.categoryPulse))
+        .animation(reduced ? nil : DSMotion.standardAnimation, value: ring)
+        .accessibilityElement(children: .contain)
+        .accessibilityValue(ring ? "先选分类" : "")
     }
 }
 
@@ -477,6 +621,7 @@ private struct EntryCategoryCircle: View {
     let name: String
     let icon: DS.Icon
     var selected = false
+    var ring = false
     var suggested = false
     var hint = "选择分类"
     let action: () -> Void
@@ -487,6 +632,9 @@ private struct EntryCategoryCircle: View {
                 icon.view(size: EntrySpec.categoryIcon, color: selected ? DS.Color.accentInk : DS.Color.ink2)
                     .frame(width: DS.Size.catCircle, height: DS.Size.catCircle)
                     .dsPill(selected ? DS.Color.accentSoft : DS.Color.surface)
+                    .overlay {
+                        if ring { Circle().strokeBorder(DS.Color.warn, lineWidth: DS.Stroke.focus) }
+                    }
                     .overlay(alignment: .topTrailing) {
                         if suggested && !selected {
                             Circle().fill(DS.Color.accent)
@@ -497,16 +645,16 @@ private struct EntryCategoryCircle: View {
                         }
                     }
                 Text(name).dsText(DS.Font.tCaption)
-                    .foregroundStyle(selected ? DS.Color.ink : DS.Color.ink2)
+                    .foregroundStyle(selected ? DS.Color.accentInk : DS.Color.ink2)
                     .fontWeight(selected ? .semibold : .regular)
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
                     .minimumScaleFactor(EntrySpec.amountMinimumScale)
             }
-            .frame(maxWidth: EntrySpec.categoryWidth)
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+        .frame(maxWidth: .infinity)
         .accessibilityLabel(name)
         .accessibilityValue(suggested && !selected ? "建议" : "")
         .accessibilityHint(hint)
@@ -514,101 +662,45 @@ private struct EntryCategoryCircle: View {
     }
 }
 
-private struct EntrySubcategoryRowView: View {
-    let model: EntrySheetViewModel
-
-    var body: some View {
-        let _ = EntryRenderDiagnostics.hit(.subRow)
-        HStack(spacing: EntrySpec.gap) {
-            Text("小类").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-                .frame(width: EntrySpec.subcategoryLabelWidth, alignment: .leading)
-            ScrollView(.horizontal) {
-                HStack(spacing: EntrySpec.gap) {
-                    ForEach(model.subcategories, id: \.self) { name in
-                        EntrySubcategoryChip(name: name, selected: name == model.draft.subcategory) {
-                            model.draft.subcategory = model.draft.subcategory == name ? nil : name
-                        }
-                    }
-                    Button { model.toggleDrawer(.subcategory) } label: {
-                        DS.Icon.add.view(size: DS.Font.tCaption.size, color: DS.Color.ink3)
-                            .frame(width: DS.Size.chipH, height: DS.Size.chipH)
-                            .dsPill()
-                            .frame(minHeight: DS.Size.tapMin)
-                    }
-                    .buttonStyle(EntryTactileButtonStyle())
-                    .accessibilityLabel("小类")
-                    .accessibilityHint("在当前分类内添加小类")
-                }
-            }
-            .scrollIndicators(.hidden)
-        }
-    }
-}
-
-private struct EntrySubcategoryChip: View {
-    let name: String
-    let selected: Bool
-    var raised = false
-    var neutral = false
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Text(name)
-                .dsText(raised ? DS.Font.tPill : DS.Font.tSub)
-                .fontWeight(selected ? .semibold : .regular)
-                .foregroundStyle(selected ? DS.Color.accentInk : neutral ? DS.Color.ink3 : DS.Color.ink2)
-                .fixedSize()
-                .padding(.horizontal, DS.Space.s12)
-                .frame(minHeight: raised ? DS.Size.pillH : DS.Size.chipH)
-                .dsPill(selected ? DS.Color.accentSoft : raised ? DS.Color.raised : DS.Color.surface)
-                .frame(minHeight: DS.Size.tapMin)
-        }
-        .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
-        .accessibilityLabel(name)
-        .accessibilityHint("选择小类")
-        .accessibilityAddTraits(selected ? .isSelected : [])
-    }
-}
-
+/// Main.dc.html 从 / 到: two cards; 到 a savings account makes it 存入.
 private struct EntryTransferRouteView: View {
     let model: EntrySheetViewModel
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
 
     var body: some View {
-        HStack(alignment: .top, spacing: EntrySpec.compactPadding) {
-            accountPill(destination: false)
-            DS.Icon.chevron.view(size: EntrySpec.routeIcon, color: DS.Color.ink3)
-                .padding(.top, EntrySpec.pillLeading)
-            accountPill(destination: true)
+        HStack(spacing: DS.Space.s8) {
+            card(destination: false)
+            DS.Icon.arrowRight.view(size: EntrySpec.routeArrow, color: DS.Color.ink3)
+                .frame(width: EntrySpec.routeArrowColumn)
+                .accessibilityHidden(true)
+            card(destination: true)
         }
     }
 
-    private func accountPill(destination: Bool) -> some View {
+    private func card(destination: Bool) -> some View {
+        let drawer: EntryDrawer = destination ? .destination : .source
         let account = model.account(destination ? model.draft.destinationID : model.draft.accountID)
         let title = account?.name ?? (destination ? "转入账户" : "转出账户")
-        let ink = destination ? DS.Color.accentInk : DS.Color.ink2
-        return VStack(spacing: DS.Space.s4) {
-            Button { model.toggleDrawer(destination ? .destination : .source) } label: {
-                HStack(spacing: DS.Space.s8) {
-                    (account?.kind.icon ?? .acctWallet).view(size: EntrySpec.routeIcon, color: ink)
-                    Text(title).dsText(DS.Font.tLabelStrong)
+        return Button { model.toggleDrawer(drawer) } label: {
+            VStack(alignment: .leading, spacing: .zero) {
+                Text(destination ? "到" : "从").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
+                HStack(spacing: EntrySpec.gap) {
+                    (account?.kind.icon ?? .acctWallet).view(size: EntrySpec.pillIcon, color: DS.Color.ink2)
+                    Text(title).dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.ink)
                         .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
                 }
-                .foregroundStyle(ink)
-                .padding(.leading, DS.Space.s12)
-                .padding(.trailing, DS.Space.s16)
-                .frame(minHeight: EntrySpec.routeHeight)
-                .dsPill(destination ? DS.Color.accentSoft : DS.Color.surface)
-                .frame(minHeight: DS.Size.tapMin)
             }
-            .buttonStyle(EntryTactileButtonStyle())
-            .accessibilityLabel((destination ? "转入，" : "转出，") + title)
-            .accessibilityHint(destination ? "选择目标账户" : "选择来源账户")
-            if model.routeShowsBalance, let account {
-                Text(model.hidesAmounts ? "••••" : "余 " + Money.text(Finance.balance(account, in: model.ledger, at: model.now), currency: false))
-                    .dsText(DS.Font.tCaption).monospacedDigit().foregroundStyle(DS.Color.ink3)
-            }
+            .padding(.horizontal, EntrySpec.pillInset)
+            .frame(maxWidth: .infinity, minHeight: EntrySpec.routeCard, alignment: .leading)
+            .background(model.drawer == drawer ? DS.Color.selected : DS.Color.surface,
+                        in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+            .entryAnchor(drawer)
         }
+        .buttonStyle(EntryTactileButtonStyle())
+        .entryHit(drawer)
+        .accessibilityFocused(pillFocus, equals: drawer)
+        .accessibilityLabel((destination ? "到，" : "从，") + title)
+        .accessibilityHint(destination ? "选择转入账户" : "选择转出账户")
     }
 }
 
@@ -650,35 +742,38 @@ private struct EntryAACardView: View {
     }
 }
 
+/// Spec-Redlines 胶囊: 34 high, 14 each side, surface; the open one turns `selected`.
 private struct EntryPill: View {
     let title: String?
     var icon: DS.Icon? = nil
+    var suffix: String? = nil
     var selected = false
-    var strong = false
+    var chevron = false
     var label: String? = nil
-    var anchorsCalendar = false
+    var anchor: EntryDrawer? = nil
     let hint: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: EntrySpec.gap) {
-                if let icon { icon.view(size: DS.Font.tLabel.size, color: DS.Color.ink3) }
+                if let icon { icon.view(size: title == nil ? EntrySpec.moreIcon : EntrySpec.pillIcon, color: DS.Color.ink2) }
                 if let title {
-                    Text(title).dsText(DS.Font.tPill).monospacedDigit()
-                        .fontWeight(selected || strong ? .semibold : .regular)
-                        .foregroundStyle(selected || strong ? DS.Color.ink : DS.Color.ink2)
+                    (Text(title) + Text(suffix ?? "").foregroundStyle(DS.Color.ink3))
+                        .dsText(DS.Font.tPill).monospacedDigit()
+                        .foregroundStyle(DS.Color.ink2)
                         .lineLimit(1)
                         .minimumScaleFactor(EntrySpec.amountMinimumScale)
                 }
+                if chevron { DS.Icon.chevronDown.view(size: EntrySpec.currencyChevron, color: DS.Color.ink3) }
             }
-            .padding(.leading, title == nil ? EntrySpec.iconOnlyPadding : EntrySpec.pillLeading)
-            .padding(.trailing, title == nil ? EntrySpec.iconOnlyPadding : EntrySpec.trailingPadding)
-            .frame(minWidth: DS.Size.pillH, minHeight: DS.Size.pillH)
+            .padding(.horizontal, title == nil ? .zero : EntrySpec.pillInset)
+            .frame(minWidth: title == nil ? EntrySpec.moreWidth : nil, minHeight: DS.Size.pillH)
             .dsPill(selected ? DS.Color.selected : DS.Color.surface)
-            .anchorPreference(key: EntryTimeAnchor.self, value: .bounds) { anchorsCalendar ? $0 : nil }
+            .modifier(EntryOptionalAnchor(drawer: anchor))
             .padding(.vertical, EntrySpec.pillHitInset)
             .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
+            .modifier(EntryOptionalAnchor(drawer: anchor, hit: true))
         }
         .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
         .accessibilityLabel(label ?? title ?? "")
@@ -687,41 +782,199 @@ private struct EntryPill: View {
     }
 }
 
+private struct EntryOptionalAnchor: ViewModifier {
+    let drawer: EntryDrawer?
+    var hit = false
+    func body(content: Content) -> some View {
+        if let drawer { if hit { content.entryHit(drawer) } else { content.entryAnchor(drawer) } } else { content }
+    }
+}
+
+/// Main.dc.html 例外胶囊: 「待报销 ×」 — the label reopens the list, × clears it.
+private struct EntryFlagPill: View {
+    let title: String
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
+    let open: () -> Void
+    let clear: () -> Void
+
+    var body: some View {
+        HStack(spacing: .zero) {
+            Button(action: open) {
+                Text(title).dsText(DS.Font.tPill).fontWeight(.semibold).foregroundStyle(DS.Color.warnInk)
+                    .lineLimit(1)
+                    .padding(.leading, EntrySpec.flagLeading).padding(.trailing, EntrySpec.flagGap)
+                    .frame(minHeight: DS.Size.tapMin)
+            }
+            .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+            .accessibilityFocused(pillFocus, equals: .more)
+            .accessibilityHint("换一个选项")
+            Button(action: clear) {
+                DS.Icon.close.view(size: EntrySpec.flagClearIcon, color: DS.Color.warnInk)
+                    .frame(width: EntrySpec.flagClear, height: DS.Size.tapMin)
+            }
+            .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+            .accessibilityLabel("去掉" + title)
+        }
+        .frame(height: DS.Size.pillH)
+        .background(DS.Color.warnSoft, in: DS.Shape.pill)
+        .entryAnchor(.more)
+        .frame(minHeight: DS.Size.tapMin)
+        .entryHit(.more)
+    }
+}
+
 private struct EntryPillsRowView: View {
     let model: EntrySheetViewModel
     let calendarFocus: FocusState<EntryCalendarFocus?>.Binding
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.pillsRow)
-        let calendarOpen = model.drawer == .calendar
         FlowLayout {
             if !model.draft.isRoute {
                 let account = model.account(model.draft.accountID)
                 EntryPill(title: account?.name ?? "账户", icon: account?.kind.icon ?? .acctWallet,
+                          selected: model.drawer == .source, chevron: true, anchor: .source,
                           hint: "选择这笔账的账户") { model.toggleDrawer(.source) }
+                    .accessibilityFocused(pillFocus, equals: .source)
+                    .accessibilityIdentifier("entryAccountPill")
             }
-            EntryPill(title: time, icon: model.draft.repeatMonthly ? .subscription : .time,
-                      selected: calendarOpen, strong: model.draft.repeatMonthly, anchorsCalendar: true,
-                      hint: calendarOpen ? "收起日历" : "选择日期和重复选项") { model.toggleDrawer(.calendar) }
+            EntryPill(title: model.dayLabel, icon: .time, suffix: model.draft.repeatMonthly ? " · 每月" : nil,
+                      selected: model.drawer == .calendar, chevron: true, anchor: .calendar,
+                      hint: model.drawer == .calendar ? "收起日历" : "选择日期和重复选项") { model.toggleDrawer(.calendar) }
                 .focused(calendarFocus, equals: .timePill)
+                .accessibilityFocused(pillFocus, equals: .calendar)
                 .accessibilityIdentifier("entryTimePill")
-            if model.draft.type == .expense {
-                EntryPill(title: model.draft.exception?.title, icon: .more, strong: model.draft.exception != nil,
-                          label: model.draft.exception?.title ?? "更多选项", hint: "切换机动余钱、待报销和待 AA") {
-                    model.cycleException()
-                }
-            }
-            if model.draft.type == .income && model.draft.originalNature == nil {
-                EntryPill(title: model.draft.incomeNextCycle ? "算进 下周期" : "算进 本期", icon: .cycle,
-                          strong: true, hint: "切换收入计入的周期") { model.draft.incomeNextCycle.toggle() }
+            if let flag = flagTitle {
+                EntryFlagPill(title: flag, pillFocus: pillFocus, open: { model.toggleDrawer(.more) }, clear: clearFlag)
+            } else if hasMore {
+                EntryPill(title: nil, icon: .more, selected: model.drawer == .more, label: "更多选项", anchor: .more,
+                          hint: "列出全部选项") { model.toggleDrawer(.more) }
+                    .accessibilityFocused(pillFocus, equals: .more)
+                    .accessibilityIdentifier("entryMorePill")
             }
         }
     }
 
-    private var time: String {
-        guard model.draft.repeatMonthly else { return model.dayLabel }
-        let day = model.fixtureRepeatDay ?? Dates.calendar.component(.day, from: model.draft.date)
-        return "\(model.dayLabel) · 每月 \(day) 日"
+    private var hasMore: Bool {
+        model.draft.type == .expense || (model.draft.type == .income && model.draft.originalNature == nil)
+    }
+
+    private var flagTitle: String? {
+        if model.draft.type == .expense { return model.draft.exception?.title }
+        if model.draft.type == .income && model.draft.incomeNextCycle { return EntryMoreList.nextCycle }
+        return nil
+    }
+
+    private func clearFlag() {
+        if model.draft.type == .income { model.draft.incomeNextCycle = false } else { model.clearException() }
+    }
+}
+
+/// Spec-Redlines 弹出列表 · 账户: name, balance, a check on the current one. Picking closes it.
+private struct EntryAccountList: View {
+    let model: EntrySheetViewModel
+    let destination: Bool
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
+
+    var body: some View {
+        let accounts = model.accounts(destination: destination)
+        let selectedID = destination ? model.draft.destinationID : model.draft.accountID
+        VStack(spacing: .zero) {
+            ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
+                Button { model.selectAccount(account.id, destination: destination) } label: {
+                    HStack(spacing: DS.Space.s12) {
+                        account.kind.icon.view(size: DS.Size.icon, color: DS.Color.iconQuiet)
+                        Text(account.name).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink)
+                            .lineLimit(1).dsFillWidth()
+                        Text(model.hidesAmounts ? "••••" : Money.text(Finance.balance(account, in: model.ledger, at: model.now), currency: false))
+                            .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3).fixedSize()
+                        DS.Icon.done.view(size: EntrySpec.checkIcon, color: DS.Color.accentInk)
+                            .opacity(account.id == selectedID ? 1 : 0)
+                    }
+                    .padding(.horizontal, DS.Space.s16)
+                    .frame(minHeight: EntrySpec.accountRow)
+                    .overlay(alignment: .bottom) {
+                        if index < accounts.count - 1 {
+                            DS.Color.separator.frame(height: DS.Stroke.hairline)
+                                .padding(.leading, DS.Size.icon + DS.Space.s12)
+                                .padding(.leading, DS.Space.s16)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+                .accessibilityAddTraits(account.id == selectedID ? .isSelected : [])
+                .dsAccessibilityFocus(index == 0 ? firstFocus : nil)
+            }
+        }
+        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(destination ? "转入账户" : "账户")
+    }
+}
+
+/// Spec-Redlines 弹出列表 · ···: every option at once, the current one checked.
+private struct EntryMoreList: View {
+    static let nextCycle = "计入下周期"
+    let model: EntrySheetViewModel
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
+
+    private struct Option: Identifiable {
+        let id: String
+        let icon: DS.Icon
+        let selected: Bool
+        let pick: () -> Void
+    }
+
+    private var options: [Option] {
+        if model.draft.type == .income {
+            return [Option(id: Self.nextCycle, icon: .cycle, selected: model.draft.incomeNextCycle) {
+                model.draft.incomeNextCycle.toggle()
+                model.drawer = nil
+            }]
+        }
+        let icons: [EntryException: DS.Icon] = [.reserve: .saveFirst, .reimbursement: .reimburse, .split: .split]
+        return EntryException.allCases.map { exception in
+            Option(id: exception.title, icon: icons[exception] ?? .more, selected: model.draft.exception == exception) {
+                model.choose(exception)
+            }
+        }
+    }
+
+    var body: some View {
+        let options = options
+        VStack(spacing: .zero) {
+            ForEach(Array(options.enumerated()), id: \.element.id) { index, option in
+                Button(action: option.pick) {
+                    HStack(spacing: DS.Space.s12) {
+                        option.icon.view(size: EntrySpec.checkIcon, color: DS.Color.ink2)
+                        Text(option.id).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink).dsFillWidth()
+                        DS.Icon.done.view(size: EntrySpec.checkIcon, color: DS.Color.accentInk)
+                            .opacity(option.selected ? 1 : 0)
+                    }
+                    .padding(.horizontal, DS.Space.s16)
+                    .frame(minHeight: EntrySpec.listRow)
+                    .overlay(alignment: .bottom) {
+                        if index < options.count - 1 {
+                            DS.Color.separator.frame(height: DS.Stroke.hairline)
+                                .padding(.leading, DS.Size.icon + DS.Space.s12)
+                                .padding(.leading, DS.Space.s16)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+                .accessibilityAddTraits(option.selected ? .isSelected : [])
+                .accessibilityIdentifier("entryMore_" + option.id)
+                .dsAccessibilityFocus(index == 0 ? firstFocus : nil)
+            }
+        }
+        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .dsShadow(DS.Shadow.float)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("更多选项")
     }
 }
 
@@ -756,23 +1009,6 @@ private struct EntryExpandedPanelView: View {
                         }
                     }
                 }
-            case .source, .destination:
-                let destination = model.drawer == .destination
-                FlowLayout {
-                    ForEach(model.accounts(destination: destination)) { account in
-                        EntryPill(title: account.name, icon: account.kind.icon,
-                                  selected: account.id == (destination ? model.draft.destinationID : model.draft.accountID),
-                                  hint: "选择账户") { model.selectAccount(account.id, destination: destination) }
-                    }
-                }
-            case .subcategory where !model.categoryPanel:
-                HStack(spacing: DS.Space.s8) {
-                    EntryInlineAddView(title: "小类", text: $model.inputText,
-                                       autoFocus: model.autoFocusSubcategory, action: model.addSubcategory)
-                    EntryPill(title: nil, icon: .close, label: "关闭小类输入", hint: "收起小类输入") {
-                        model.toggleDrawer(.subcategory)
-                    }
-                }
             case .split:
                 VStack(alignment: .leading, spacing: DS.Space.s8) {
                     HStack {
@@ -798,40 +1034,7 @@ private struct EntryExpandedPanelView: View {
     }
 }
 
-private struct EntryInlineAddView: View {
-    let title: String
-    @Binding var text: String
-    var button = "添加"
-    var autoFocus = true
-    let action: () -> Void
-
-    var body: some View {
-        let previewCaret = autoFocus ? nil : CGSize(width: EntrySpec.caretWidth, height: EntrySpec.panelAddCaretHeight)
-        HStack(spacing: EntrySpec.gap) {
-            DSInlineTextField(title: title, text: $text, autoFocus: autoFocus, embedded: true,
-                              previewCaretSize: previewCaret, onSubmit: action)
-                .frame(minWidth: EntrySpec.panelAddFieldWidth, minHeight: DS.Size.pillH)
-            Button(action: action) {
-                Text(button).dsText(DS.Font.tCaption).fontWeight(.semibold)
-                    .foregroundStyle(DS.Color.onAccent)
-                    .padding(.horizontal, DS.Space.s8)
-                    .frame(minHeight: EntrySpec.panelAddHeight)
-                    .dsPill(DS.Color.accent)
-                    .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin)
-            }
-            .buttonStyle(EntryTactileButtonStyle())
-            .accessibilityHint(title)
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-        }
-        .padding(.leading, DS.Space.s12)
-        .padding(.trailing, EntrySpec.gap)
-        .frame(minHeight: DS.Size.pillH)
-        .background(DS.Color.raised, in: DS.Shape.pill)
-        .overlay { DS.Shape.pill.strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus).allowsHitTesting(false) }
-        .frame(minHeight: DS.Size.tapMin)
-    }
-}
-
+/// Spec-Redlines 副作用行: 30 high when there is one, otherwise nothing.
 private struct EntryEffectLineView: View {
     let model: EntrySheetViewModel
     @Environment(\.accessibilityReduceMotion) private var reduced
@@ -839,13 +1042,19 @@ private struct EntryEffectLineView: View {
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.effectLine)
         Group {
-            if let effect = model.effect {
+            if let deposited = model.depositedThisCycle {
+                Text(model.hidesAmounts ? "算作存入" : "算作存入 · 本期已存 " + Money.text(deposited, currency: false))
+                    .dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, minHeight: EntrySpec.effectHeight)
+                    .transition(.opacity)
+            } else if let effect = model.effect {
                 DSEffectLine(effect: effect, hidesAmount: model.hidesAmounts)
-                    .padding(.top, EntrySpec.effectLineTopPadding)
+                    .frame(minHeight: EntrySpec.effectHeight)
                     .transition(.opacity)
             }
         }
-        .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.effect != nil)
+        .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.standardAnimation, value: model.effect != nil || model.depositedThisCycle != nil)
     }
 }
 
@@ -855,9 +1064,8 @@ private struct EntryKeypadTrayView: View {
     let save: () -> Void
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.keypad)
-        DSKeypad(canSave: model.draft.expression.canSave, onKey: model.pressAmountKey, onSave: save)
+        DSKeypad(saveReady: model.canSave, onKey: model.pressAmountKey, onSave: save)
             .padding(.bottom, safeBottom)
-            .frame(minHeight: max(EntrySpec.trayHeight, EntrySpec.keypadGridHeight + DS.Space.s12 + safeBottom), alignment: .top)
             .background(DS.Color.tray)
     }
 }
@@ -866,6 +1074,8 @@ struct DSKeypad: View {
     enum Variant { case entry, digits }
     var pressedKey: String?
     var canSave = true
+    /// When set, 记下 always answers: ready shows accent, not ready shows the quiet key and the press explains why.
+    var saveReady: Bool? = nil
     var onKey: (String) -> Void = { _ in }
     var variant: Variant = .entry
     var onSave: () -> Void = {}
@@ -885,13 +1095,13 @@ struct DSKeypad: View {
                     Button {
                         if key == "记下" { onSave() } else { onKey(key) }
                     } label: {
-                        EntryKeyLabel(key: key).scaleEffect(key == pressedKey ? DSMotion.Press.scale : 1)
+                        EntryKeyLabel(key: key, ready: saveReady ?? true).scaleEffect(key == pressedKey ? DSMotion.Press.scale : 1)
                     }
                     .buttonStyle(EntryTactileButtonStyle())
                     .accessibilityLabel(spoken(key))
                     .accessibilityHint(key == "记下" ? "保存并关闭录入面板" : "输入" + spoken(key))
                     .accessibilityIdentifier(key == "记下" ? "saveQuickEntry" : "keypad_" + (key == "−" ? "-" : key))
-                    .disabled(key == "记下" && !canSave)
+                    .disabled(key == "记下" && saveReady == nil && !canSave)
                 }
             }
         }
@@ -931,6 +1141,8 @@ private struct EntryBackspaceStyle: PrimitiveButtonStyle {
 
 private struct EntryBackspacePress: View {
     let configuration: PrimitiveButtonStyle.Configuration
+    /// False once the sheet takes the drag: this press is void, no repeat and no release delete.
+    @Environment(\.isEnabled) private var isEnabled
     @GestureState private var fingerDown = false
     @State private var withinKey = true
     @State private var didRepeat = false
@@ -945,19 +1157,20 @@ private struct EntryBackspacePress: View {
                     if travel > EntrySpec.keyHoldTravel { withinKey = false }
                 }
                 .onEnded { _ in
-                    if withinKey && !didRepeat { configuration.trigger() }
+                    if withinKey && !didRepeat && isEnabled { configuration.trigger() }
                     withinKey = true
                     didRepeat = false
                 })
+            .onChange(of: isEnabled) { _, enabled in if !enabled { withinKey = false } }
             .onChange(of: fingerDown) { _, pressed in
                 if pressed { didRepeat = false }
                 else { withinKey = true }
             }
             .task(id: fingerDown && withinKey) {
-                guard fingerDown, withinKey else { return }
+                guard fingerDown, withinKey, isEnabled else { return }
                 do {
                     try await Task.sleep(for: EntrySpec.backspaceDelay)
-                    while !Task.isCancelled {
+                    while !Task.isCancelled && isEnabled {
                         didRepeat = true
                         configuration.trigger()
                         try await Task.sleep(for: EntrySpec.backspaceInterval)
@@ -970,9 +1183,10 @@ private struct EntryBackspacePress: View {
 
 private struct EntryKeyLabel: View {
     let key: String
+    var ready = true
     private var isSave: Bool { key == "记下" }
     private var fill: Color {
-        if isSave { return DS.Color.accent }
+        if isSave { return ready ? DS.Color.accent : DS.Color.keyFn }
         return ["⌫", "+", "−"].contains(key) ? DS.Color.keyFn : DS.Color.key
     }
 
@@ -982,78 +1196,94 @@ private struct EntryKeyLabel: View {
                 DS.Icon.backspace.view(size: EntrySpec.backspaceIcon, color: DS.Color.ink)
             } else {
                 Text(key).dsText(isSave ? DS.Font.tTitle : DS.Font.nKey)
-                    .foregroundStyle(isSave ? DS.Color.onAccent : DS.Color.ink)
+                    .foregroundStyle(isSave ? (ready ? DS.Color.onAccent : DS.Color.ink3) : DS.Color.ink)
                     .lineLimit(1).minimumScaleFactor(EntrySpec.amountMinimumScale)
             }
         }
         .frame(maxWidth: .infinity, minHeight: DS.Size.keyH)
         .dsSurface(fill, radius: DS.Radius.s)
         .dsShadow(DS.Shadow.key)
+        .animation(DSMotion.standardAnimation, value: ready)
     }
 }
 
+/// Main.dc.html 全部分类: only for picking. A category with subcategories opens them in place;
+/// 编辑 › pushes 分类管理.
 struct EntryCategoryPanelView: View {
     @Bindable var model: EntrySheetViewModel
     let safeBottom: CGFloat
     let maxHeight: CGFloat
     var confirm: (() -> Void)? = nil
+    @Environment(\.accessibilityReduceMotion) private var reduced
+    /// The circles are scrolled to the top: a pull down there closes the panel rather than scrolling.
+    @State private var scroll = EntryFormScroll()
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.categoryPanel)
+        let rows = stride(from: 0, to: model.categories.count, by: EntrySpec.categoryColumns).map {
+            Array(model.categories[$0..<min($0 + EntrySpec.categoryColumns, model.categories.count)])
+        }
         VStack(spacing: .zero) {
             EntryGrabber()
             HStack {
                 Text("分类").dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink)
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
-                Button {
-                    if let confirm { confirm() }
-                    else {
-                        model.categoryEditing.toggle()
-                        model.drawer = nil
+                Button { model.managingCategories = true } label: {
+                    HStack(spacing: DS.Space.s4) {
+                        Text("编辑").dsText(DS.Font.tLabelStrong)
+                        DS.Icon.chevron.view(size: EntrySpec.flagClearIcon, color: DS.Color.accentInk)
                     }
-                } label: {
-                    Text(confirm != nil || model.categoryEditing ? "完成" : "编辑").dsText(DS.Font.tLabel)
-                        .foregroundStyle(DS.Color.accentInk)
-                        .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin, alignment: .trailing)
+                    .foregroundStyle(DS.Color.accentInk)
+                    .frame(minWidth: DS.Size.tapMin, minHeight: DS.Size.tapMin, alignment: .trailing)
                 }
                 .buttonStyle(EntryTactileButtonStyle())
-                .accessibilityHint(model.categoryEditing ? "结束编辑分类" : "编辑现有分类")
+                .accessibilityIdentifier("entryCategoryManage")
             }
-            .frame(minHeight: DS.Size.ctaH)
-            .padding(.horizontal, DS.Space.s4)
+            .frame(height: EntrySpec.panelHeader)
+            .padding(.horizontal, DS.Space.s20)
+            .contentShape(Rectangle())
+            // Pulling the panel's top down closes the panel only; the sheet under it stays.
+            .gesture(DragGesture(minimumDistance: EntrySpec.dragMinimum).onEnded { value in
+                if confirm == nil, value.translation.height > abs(value.translation.width) { model.dismissCategoryPanel() }
+            })
             ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: EntrySpec.gap), count: EntrySpec.categoryColumns), spacing: EntrySpec.categorySecondaryGap) {
-                    ForEach(model.categories) { category in
-                        EntryCategoryCircle(name: category.name, icon: category.entryIcon, selected: model.draft.category == category.name) {
-                            model.select(category: category.name)
-                            if model.categoryEditing {
-                                model.inputText = category.name
-                                model.drawer = .renameCategory
+                VStack(spacing: .zero) {
+                    ForEach(rows.indices, id: \.self) { index in
+                        let row = rows[index]
+                        HStack(alignment: .top, spacing: .zero) {
+                            ForEach(row) { category in
+                                EntryCategoryCircle(name: category.name, icon: category.entryIcon,
+                                                    selected: model.draft.category == category.name) { pick(category) }
+                            }
+                            ForEach(row.count..<EntrySpec.categoryColumns, id: \.self) { _ in
+                                Color.clear.frame(maxWidth: .infinity, maxHeight: DS.Stroke.hairline).accessibilityHidden(true)
                             }
                         }
+                        .padding(.vertical, EntrySpec.panelRowInset)
+                        .padding(.horizontal, EntrySpec.categoryInset)
+                        if let open = row.first(where: { $0.name == model.expandedCategory }) {
+                            chips(open)
+                                .transition(.opacity)
+                        }
                     }
-                    EntryCategoryCircle(name: "新建", icon: .add, hint: "新建分类") { model.toggleDrawer(.newCategory) }
                 }
-                .padding(.top, EntrySpec.gap)
-                if model.drawer == .newCategory {
-                    EntryInlineAddView(title: "新建分类", text: $model.inputText, action: model.addCategory)
-                        .padding(.top, DS.Space.s12)
-                } else if model.drawer == .renameCategory {
-                    EntryInlineAddView(title: "分类名称", text: $model.inputText, button: "完成", action: model.renameCategory)
-                        .padding(.top, DS.Space.s12)
-                }
-                if let category = model.draft.category { chips(category: category).padding(.top, EntrySpec.amountBottom) }
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .padding(.bottom, safeBottom)
+            .modifier(EntryFormScrollTop(formScroll: $scroll))
+            .simultaneousGesture(DragGesture(minimumDistance: EntrySpec.dragMinimum).onEnded { value in
+                if confirm == nil, scroll.atTop, value.translation.height > abs(value.translation.width) {
+                    model.dismissCategoryPanel()
+                }
+            })
+            .padding(.bottom, safeBottom + DS.Space.s8)
         }
-        .padding(.horizontal, DS.Space.s16)
-        .frame(height: min(maxHeight, EntrySpec.categoryPanelHeight))
+        .frame(maxHeight: min(maxHeight, EntrySpec.categoryPanelHeight), alignment: .top)
+        .fixedSize(horizontal: false, vertical: true)
         .background(DS.Color.bg)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
+        .animation(reduced ? nil : DSMotion.standardAnimation, value: model.expandedCategory)
         .accessibilityElement(children: .contain)
         .accessibilityAddTraits(.isModal)
         .accessibilityIdentifier("entryCategoryPicker")
@@ -1067,41 +1297,45 @@ struct EntryCategoryPanelView: View {
         }
     }
 
-    private func chips(category: String) -> some View {
-        VStack(alignment: .leading, spacing: EntrySpec.compactPadding) {
-            Text(category + " · 小类").dsText(DS.Font.tCaption).foregroundStyle(DS.Color.ink3)
-            FlowLayout(centered: false) {
-                ForEach(model.subcategories, id: \.self) { name in
-                    EntrySubcategoryChip(name: name, selected: name == model.draft.subcategory, raised: true) {
-                        model.draft.subcategory = name
-                    }
+    private func pick(_ category: YubaiCore.Category) {
+        model.pickInPanel(category)
+        if category.subcategories.isEmpty { confirm?() }
+    }
+
+    private func chips(_ category: YubaiCore.Category) -> some View {
+        FlowLayout(centered: false) {
+            chip("不分小类", selected: model.draft.category == category.name && model.draft.subcategory == nil) {
+                model.pickInPanel(category.name, subcategory: nil)
+                confirm?()
+            }
+            ForEach(category.subcategories, id: \.self) { name in
+                chip(name, selected: model.draft.category == category.name && model.draft.subcategory == name) {
+                    model.pickInPanel(category.name, subcategory: name)
+                    confirm?()
                 }
-                EntrySubcategoryChip(name: "不分小类", selected: false, raised: true, neutral: true) {
-                    model.draft.subcategory = nil
-                }
-                if model.drawer == .subcategory {
-                    EntryInlineAddView(title: "小类", text: $model.inputText, autoFocus: model.autoFocusSubcategory,
-                                       action: model.addSubcategory)
-                }
-                Button { model.toggleDrawer(.subcategory) } label: {
-                    HStack(spacing: DS.Space.s4) {
-                        DS.Icon.add.view(size: DS.Font.tCaption.size, color: DS.Color.accentInk)
-                        Text("小类").dsText(DS.Font.tPill).foregroundStyle(DS.Color.accentInk)
-                    }
-                    .padding(.horizontal, DS.Space.s12)
-                    .frame(minHeight: DS.Size.pillH)
-                    .dsPill(DS.Color.raised)
-                    .frame(minHeight: DS.Size.tapMin)
-                }
-                .buttonStyle(EntryTactileButtonStyle())
-                .accessibilityLabel("小类")
-                .accessibilityHint("在当前分类内添加小类")
             }
         }
-        .padding(.horizontal, EntrySpec.trailingPadding)
-        .padding(.top, EntrySpec.trailingPadding)
-        .padding(.bottom, DS.Space.s16)
-        .dsSurface(DS.Color.surface, radius: DS.Radius.m)
+        .padding(DS.Space.s12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
+        .padding(.horizontal, EntrySpec.panelChipsMargin)
+        .padding(.top, EntrySpec.panelChipsTop)
+        .padding(.bottom, EntrySpec.panelBottom)
+    }
+
+    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).dsText(DS.Font.tPill)
+                .fontWeight(selected ? .semibold : .regular)
+                .foregroundStyle(selected ? DS.Color.accentInk : DS.Color.ink2)
+                .fixedSize()
+                .padding(.horizontal, EntrySpec.panelChipInset)
+                .frame(height: DS.Size.chipH)
+                .dsPill(selected ? DS.Color.accentSoft : DS.Color.surface)
+                .frame(minHeight: DS.Size.tapMin)
+        }
+        .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 }
 
@@ -1154,6 +1388,6 @@ struct FlowLayout: Layout {
     }
 }
 
-private extension YubaiCore.Category {
+extension YubaiCore.Category {
     var entryIcon: DS.Icon { DS.Icon(category: name, symbol: symbol, income: income) }
 }

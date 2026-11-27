@@ -17,15 +17,7 @@ enum AskSpec {
     static let bubbleHorizontal: CGFloat = 14 // canvas Ask.dc.html: user bubble padding
     static let bubbleRadius: CGFloat = 18 // canvas Ask.dc.html: bubble and answer card radius
     static let bubbleTail: CGFloat = 6 // canvas Ask.dc.html: bubble bottom-right corner
-    static let thumbWidth: CGFloat = 96 // canvas Ask.dc.html: screenshot thumbnail
-    static let thumbHeight: CGFloat = 128 // canvas Ask.dc.html: screenshot thumbnail
     static let thumbRadius: CGFloat = 14 // canvas Ask.dc.html: thumbnail and offline inset row radius
-    static let thumbGap: CGFloat = 6 // canvas Ask.dc.html: thumbnail to bubble
-    static let thumbLineGap: CGFloat = 7 // canvas Ask.dc.html: placeholder lines in the fixture thumbnail
-    static let thumbLine: CGFloat = 5 // canvas Ask.dc.html: placeholder line height
-    static let thumbAmount: CGFloat = 16 // canvas Ask.dc.html: placeholder amount width
-    static let thumbInsetV: CGFloat = 10 // canvas Ask.dc.html: thumbnail padding
-    static let thumbInsetH: CGFloat = 8 // canvas Ask.dc.html: thumbnail padding
 
     // Cards
     static let chevron: CGFloat = 14 // canvas Ask.dc.html: expander chevron
@@ -50,10 +42,7 @@ enum AskSpec {
 
     // Composer
     static let composerHeight: CGFloat = 92 // canvas Ask.dc.html: composer incl. home indicator
-    static let composerTop: CGFloat = 10 // canvas Ask.dc.html: composer padding top
     static let composerKeyboardGap: CGFloat = 8 // above the keyboard; the canvas has no keyboard board
-    static let fieldTrailing: CGFloat = 6 // canvas Ask.dc.html: field padding right
-    static let micBox: CGFloat = 32 // canvas Ask.dc.html: mic button
 
     // canvas Ask.dc.html: user bubble, reason and answer text
     static let body = DS.TextStyle(size: 15, lineHeight: 22, weight: .regular, tracking: 0, family: .text, relativeTo: .body, monospacedDigit: false)

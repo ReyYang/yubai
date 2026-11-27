@@ -31,7 +31,7 @@ final class SVGPathParserTests: XCTestCase {
     func testAllDesignSystemGlyphsParseInside24Grid() throws {
         let tokens = try loadDesignTokens()
         XCTAssertEqual(tokens.icon.grid, 24)
-        XCTAssertEqual(tokens.icon.glyphs.count, 89)
+        XCTAssertEqual(tokens.icon.glyphs.count, 90)
 
         for (name, glyph) in tokens.icon.glyphs {
             // Remix glyphs fill the 24 grid; custom 余白 glyphs share it and may add one stroked line.

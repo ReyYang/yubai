@@ -25,7 +25,7 @@ struct SettingsView: View {
                             link(.floor, "底线存款", store.profile.floorAmount.map { SettingsDisplay.money($0, hidden: hidden) } ?? "未设", brand: true, id: "settingsFloor") { store.settingsSheet = .floor }
                         }
                         DSSettingsCard {
-                            link(.subscription, "固定订阅", "每月 " + SettingsDisplay.money(SettingsSummary.monthlyFixed(in: ledger, now: now).total, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
+                            link(.subscription, "固定收支", "每月 " + SettingsDisplay.money(SettingsSummary.monthlyFixed(in: ledger, now: now).total, hidden: hidden), first: true, id: "settingsRecurring") { store.tabRouteRequest = .recurring }
                             link(.catAll, "分类", "\(ledger.orderedCategories(income: false).count) 个", id: "openCategories") { store.tabRouteRequest = .categorySettings }
                             link(.acctBalance, "币种", SettingsDisplay.currencies(store.preferences), id: "settingsCurrency") { store.tabRouteRequest = .currency }
                             link(.bolt, "快速记账", "Apple Pay", id: "openQuickCapture") { store.tabRouteRequest = .quickCapture }

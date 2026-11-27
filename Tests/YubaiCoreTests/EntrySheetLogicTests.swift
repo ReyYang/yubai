@@ -440,7 +440,7 @@ final class EntrySheetLogicTests: XCTestCase {
         input.currency = .jpy
         input.exchangeRate = Decimal(string: "0.0475")
         input.amountCents = 328_000
-        XCTAssertEqual(effect(input)?.text, "暂扣 155.80")
+        XCTAssertEqual(effect(input)?.text, "待收回 155.80")
         XCTAssertTrue(effect(input)?.warning == true)
 
         input = EntrySaveInput(type: .income, amountCents: 5_800, accountID: bank.id,

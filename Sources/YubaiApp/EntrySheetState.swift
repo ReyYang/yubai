@@ -2,10 +2,25 @@ import SwiftUI
 import YubaiCore
 
 enum EntryDrawer: Equatable {
-    case purpose, currency, calendar, source, destination, subcategory, newCategory, renameCategory, split
+    case purpose, currency, calendar, source, destination, more, split
+
+    /// Lists that pop out of a pill above the sheet; only one is open at a time.
+    var isPopover: Bool { [.calendar, .source, .destination, .more].contains(self) }
+}
+
+/// The two accounts of a 转账 read back, its nature and whether it was 存入. While the draft keeps
+/// both accounts an edited bill saves exactly as it was; picking another account decides afresh.
+struct EntryKeptRoute: Equatable {
+    let accountID: UUID?
+    let destinationID: UUID?
+    let nature: Nature
+    let intoFixedSavings: Bool
+    /// nil: a copy (再记一笔), which decides 存入 by its accounts like any new bill.
+    let deposit: Bool?
 }
 
 struct EntrySheetDraft: Equatable {
+    /// 支出, 收入 or 转账. A draft never holds `.deposit`: 存入 is a 转账 the route decides (`keptRoute` or the accounts).
     var type: EntryType = .expense
     var expression = EntryAmountExpression()
     var purpose = ""
@@ -25,6 +40,9 @@ struct EntrySheetDraft: Equatable {
     var recoveryParticipants: [RecoveryParticipant]?
     var relatedEntryID: UUID?
     var intoFixedSavings = false
+    var keptRoute: EntryKeptRoute?
+    /// The person picked a 从 or 到 account in this sheet; until then an edited 转账 replays its own route.
+    var routeTouched = false
 
     var nature: Nature {
         if let originalNature { return originalNature }
@@ -36,6 +54,16 @@ struct EntrySheetDraft: Equatable {
         }
     }
     var isRoute: Bool { type == .transfer || type == .deposit }
+    /// The tab that shows this draft: 存入 is a 转账 into a savings account.
+    var tab: EntryType { type == .deposit ? .transfer : type }
+
+    /// Reads any `.deposit` in as a 转账 that stays 存入 while its two accounts stay.
+    mutating func adoptDepositType() {
+        guard type == .deposit else { return }
+        type = .transfer
+        keptRoute = EntryKeptRoute(accountID: accountID, destinationID: destinationID, nature: .investBuy,
+                                   intoFixedSavings: intoFixedSavings, deposit: true)
+    }
     var hasContent: Bool { !expression.isEmpty || !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     init() {}
@@ -51,11 +79,8 @@ struct EntrySheetDraft: Equatable {
 
     init(prefill: QuickEntryPrefill, ledger: Ledger) {
         let nature = prefill.nature ?? .expense
-        switch nature {
-        case .investBuy: type = .deposit
-        case .transfer where prefill.intoFixedSavings: type = .deposit
-        default: type = nature.paired ? .transfer : nature.inflow ? .income : .expense
-        }
+        let deposit = nature == .investBuy || (nature == .transfer && prefill.intoFixedSavings)
+        type = nature.paired ? .transfer : nature.inflow ? .income : .expense
         switch nature {
         case .expense, .income, .investBuy, .transfer: break
         default: originalNature = nature
@@ -68,6 +93,12 @@ struct EntrySheetDraft: Equatable {
         accountID = prefill.accountID
         destinationID = prefill.otherAccountID
         intoFixedSavings = prefill.intoFixedSavings
+        // A 转账 read back keeps how it was saved while its accounts stay; a fresh 存入 prefill stays 存入.
+        if nature.paired || deposit {
+            keptRoute = EntryKeptRoute(accountID: accountID, destinationID: destinationID, nature: nature,
+                                       intoFixedSavings: prefill.intoFixedSavings,
+                                       deposit: deposit || prefill.copiedEntry != nil ? deposit : nil)
+        }
         exception = prefill.fromReserve ? .reserve : nil
         date = prefill.date ?? Dates.now
         relatedEntryID = prefill.relatedEntryID
@@ -89,6 +120,19 @@ struct EntrySheetDraft: Equatable {
     }
 }
 
+/// Which way the money goes and which category is picked: what decides whether 记下 needs a category.
+struct EntryCategoryState: Equatable {
+    let route: Bool
+    let nature: Nature
+    let category: String?
+
+    init(_ draft: EntrySheetDraft) {
+        route = draft.isRoute
+        nature = draft.nature
+        category = draft.category
+    }
+}
+
 @MainActor @Observable final class EntrySheetViewModel: Identifiable {
     let id = UUID()
     @ObservationIgnored private weak var store: AppStore?
@@ -101,22 +145,34 @@ struct EntrySheetDraft: Equatable {
     var draft: EntrySheetDraft
     var drawer: EntryDrawer?
     var categoryPanel = false
-    var categoryEditing = false
-    var inputText = ""
+    /// 分类管理 pushed over the panel; the draft stays.
+    var managingCategories = false
+    /// The category row whose subcategories are open in the panel.
+    var expandedCategory: String?
+    /// 记下 was pressed without a category: the row keeps its amber ring until one is picked.
+    var needsCategory = false
+    var amountPulse = 0
     var suggestion: CategoryAssignment?
     var effect: EntryEffect?
+    /// 算作存入: what this cycle will have saved once this transfer lands.
+    var depositedThisCycle: Int64?
     var categoryPulse = 0
     var failure: String?
     @ObservationIgnored private var previewTask: Task<Void, Never>?
     private var fixtureBaseline: EntrySheetDraft?
     var fixtureTopCategories: [String] = []
     var routeShowsBalance = false
-    var autoFocusSubcategory = true
     var fixtureDayLabel: String?
     var fixtureRepeatDay: Int?
     var fixtureSplitNames: [String] = []
     private(set) var didSave = false
     @ObservationIgnored private var shouldReplacePrefill = false
+    /// An edited bill's direction and category as it opened: untouched 待整理 may be saved as it was.
+    @ObservationIgnored private var initialCategory: EntryCategoryState?
+    /// What `suggestion` was guessed from; a suggestion for other words is never saved.
+    @ObservationIgnored private var suggestionSource: String?
+    /// This edit changed the direction or the category at least once; 待整理 then has to be picked again.
+    private(set) var categoryTouched = false
 
     init(store: AppStore, prefill: QuickEntryPrefill?, editingID: UUID? = nil, categoryOnly: Bool = false) {
         self.store = store
@@ -138,24 +194,33 @@ struct EntrySheetDraft: Equatable {
         } else {
             draft = EntrySheetDraft()
             draft.date = HomeFixture.current?.now ?? Dates.now
-            draft.type = store.lastEntryType
+            draft.type = store.lastEntryType == .deposit ? .transfer : store.lastEntryType
             if store.accounts.contains(where: { $0.id == store.lastEntryAccountID && !$0.archived }) {
                 draft.accountID = store.lastEntryAccountID
             }
         }
+        draft.adoptDepositType()
+        if editingID == nil, prefill?.copiedEntry != nil, let kept = draft.keptRoute {
+            // 再记一笔 is a new bill: 存入 or not follows its accounts.
+            draft.keptRoute = EntryKeptRoute(accountID: kept.accountID, destinationID: kept.destinationID, nature: kept.nature,
+                                             intoFixedSavings: kept.intoFixedSavings, deposit: nil)
+        }
+        initialCategory = editingID == nil ? nil : EntryCategoryState(draft)
         normalizeAccounts()
     }
 
-    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date) {
+    init(fixtureLedger: Ledger, draft: EntrySheetDraft, now: Date, editingID: UUID? = nil) {
         store = nil
         self.fixtureLedger = fixtureLedger
         self.draft = draft
         settled = true
         isPrefilled = false
         fixtureNow = now
-        editingID = nil
+        self.editingID = editingID
         categoryOnly = false
-        fixtureBaseline = draft
+        self.draft.adoptDepositType()
+        initialCategory = editingID == nil ? nil : EntryCategoryState(self.draft)
+        fixtureBaseline = self.draft
         normalizeAccounts()
         effect = input(category: selectedCategory).flatMap { EntrySaveMapper.effect(for: $0, in: fixtureLedger, now: now) }
     }
@@ -163,7 +228,7 @@ struct EntrySheetDraft: Equatable {
     var ledger: Ledger { store?.current ?? fixtureLedger }
     var now: Date { fixtureNow ?? Dates.now }
     var hasReceipt: Bool { draft.screenshot != nil }
-    var hidesKeypad: Bool { drawer == .purpose || (drawer == .subcategory && !categoryPanel) }
+    var hidesKeypad: Bool { drawer == .purpose }
     var hidesAmounts: Bool { store?.preferences.hideAmounts == true }
     /// The rate shown and used for the preview: typed, else frozen (editing), else Settings or synced.
     var signedRate: Decimal? {
@@ -188,9 +253,37 @@ struct EntrySheetDraft: Equatable {
     var canRepeat: Bool {
         guard editingID == nil else { return false }
         return draft.originalNature == nil && (draft.type == .income || draft.type == .expense ||
-            (draft.type == .deposit && account(draft.destinationID)?.kind == .investment))
+            (savesAsDeposit && account(draft.destinationID)?.kind == .investment))
     }
     var money: Int64 { draft.expression.evaluatedCents ?? 0 }
+    /// 存入: cash or a bank account into an investment (savings) account. A bill read back keeps
+    /// how it was saved until one of its two accounts changes. Credit, 借出待收 or investment to
+    /// investment stay a plain 转账.
+    var savesAsDeposit: Bool {
+        guard draft.isRoute else { return false }
+        if let deposit = keptRouteHit?.deposit { return deposit }
+        guard draft.originalNature == nil else { return false }
+        guard let source = account(draft.accountID), let destination = account(draft.destinationID) else { return false }
+        return (source.kind == .cash || source.kind == .bank) && destination.kind == .investment
+    }
+    /// The kept route, until the person picks another 从 or 到 account.
+    var keptRouteHit: EntryKeptRoute? {
+        guard draft.isRoute, !draft.routeTouched, let kept = draft.keptRoute else { return nil }
+        return kept
+    }
+
+    /// An edited 转账 whose accounts were left alone saves its own nature, second account (even none)
+    /// and 存入 mark exactly as they were, so its plan and refund links stay.
+    var replaysRoute: Bool { editingID != nil && keptRouteHit != nil }
+
+    /// What 记下 needs: an amount, and a category unless the money only moves between accounts.
+    /// Editing keeps an untouched 待整理 bill as it was; a changed direction or a cleared category asks again.
+    var categoryReady: Bool {
+        draft.isRoute || draft.relatedEntryID != nil || selectedCategory != nil || (editingID == nil && shownSuggestion != nil)
+            || (!categoryTouched && initialCategory?.route == false && initialCategory?.category == nil
+                && initialCategory == EntryCategoryState(draft))
+    }
+    var canSave: Bool { draft.expression.canSave && money > 0 && categoryReady }
     var localMoney: Int64? {
         guard draft.currency != .cny else { return money }
         guard let rate = signedRate else { return nil }
@@ -221,7 +314,7 @@ struct EntrySheetDraft: Equatable {
             let left = counts[$0.element.name, default: 0], right = counts[$1.element.name, default: 0]
             return left == right ? $0.offset < $1.offset : left > right
         }.map(\.element)
-        if let name = draft.category ?? suggestion?.category,
+        if let name = draft.category ?? shownSuggestion?.category,
            let selected = ranked.firstIndex(where: { $0.name == name }), selected >= DSLayout.categoryRow - 1 {
             let category = ranked.remove(at: selected)
             ranked.insert(category, at: DSLayout.categoryRow - 2)
@@ -239,11 +332,8 @@ struct EntrySheetDraft: Equatable {
         let selectedID = destination ? draft.destinationID : draft.accountID
         return EntrySaveMapper.selectableAccounts(in: ledger, keeping: originalID).filter { account in
             if account.id == originalID && account.id == selectedID { return true }
-            if destination {
-                guard draft.isRoute, account.id != draft.accountID else { return false }
-                return draft.type != .deposit || [.investment, .bank, .cash].contains(account.kind)
-            }
-            return draft.type != .deposit || account.kind == .bank || account.kind == .cash
+            if destination { return draft.isRoute && account.id != draft.accountID }
+            return true
         }
     }
 
@@ -255,19 +345,22 @@ struct EntrySheetDraft: Equatable {
             draft.accountID = alternatives.first(where: { $0.id == suggested })?.id
                 ?? alternatives.first?.id ?? sources.first?.id
         }
-        guard draft.isRoute else { return }
+        // An edited one-sided record (imported 申购, 还款…) gets no second account it never had.
+        guard draft.isRoute, !replaysRoute else { return }
         let destinations = accounts(destination: true)
         if !destinations.contains(where: { $0.id == draft.destinationID }) {
-            let preferred = draft.type == .deposit ? destinations.first(where: { $0.kind == .investment }) : nil
-            draft.destinationID = preferred?.id ?? destinations.first?.id
+            draft.destinationID = destinations.first?.id
         }
     }
     func select(_ type: EntryType) {
-        guard type != draft.type else { return }
+        guard type != draft.tab else { return }
+        categoryTouched = true
+        needsCategory = false
         draft.type = type
         draft.originalNature = nil
         draft.relatedEntryID = nil
         draft.intoFixedSavings = false
+        draft.keptRoute = nil
         draft.destinationID = nil
         draft.category = nil
         draft.subcategory = nil
@@ -281,35 +374,62 @@ struct EntrySheetDraft: Equatable {
         drawer = nil
         normalizeAccounts()
     }
-    func select(category: String) {
-        if draft.category != category { draft.subcategory = nil }
+    func select(category: String, subcategory: String? = nil) {
+        categoryTouched = true
         draft.category = category
+        draft.subcategory = subcategory
         suggestion = nil
-        if drawer == .subcategory { drawer = nil }
+        needsCategory = false
+    }
+
+    /// A tap on a category circle in the sheet: picks it, or clears it when it was already picked.
+    func toggle(category: String) {
+        if draft.category == category {
+            categoryTouched = true
+            draft.category = nil
+            draft.subcategory = nil
+        } else {
+            select(category: category)
+        }
+    }
+
+    /// The panel only picks: a category without subcategories is chosen at once,
+    /// one with subcategories opens its row; a subcategory chip chooses and closes.
+    func pickInPanel(_ category: YubaiCore.Category) {
+        if category.subcategories.isEmpty {
+            select(category: category.name)
+            dismissCategoryPanel()
+        } else {
+            expandedCategory = expandedCategory == category.name ? nil : category.name
+        }
+    }
+
+    func pickInPanel(_ category: String, subcategory: String?) {
+        select(category: category, subcategory: subcategory)
+        dismissCategoryPanel()
     }
 
     func toggleDrawer(_ target: EntryDrawer) {
-        inputText = ""
-        if target == .subcategory { autoFocusSubcategory = true }
         drawer = drawer == target ? nil : target
     }
 
+    /// 「每月」 only switches; the calendar stays open.
     func toggleRepeat() {
         draft.repeatMonthly.toggle()
         if draft.repeatMonthly { draft.exception = nil }
         fixtureRepeatDay = nil
+    }
+
+    /// The ··· list: pick one to set it, pick the current one again to clear it. Either way the list closes.
+    func choose(_ exception: EntryException) {
+        draft.exception = draft.exception == exception ? nil : exception
+        if draft.exception != nil { draft.repeatMonthly = false }
         drawer = nil
     }
 
-    func cycleException() {
-        switch draft.exception {
-        case nil: draft.exception = .reserve
-        case .reserve: draft.exception = .reimbursement
-        case .reimbursement: draft.exception = .split
-        case .split: draft.exception = nil
-        }
-        if draft.exception != nil { draft.repeatMonthly = false }
-        if drawer == .split && draft.exception != .split { drawer = nil }
+    func clearException() {
+        draft.exception = nil
+        if drawer == .split { drawer = nil }
     }
 
     var dayLabel: String {
@@ -329,63 +449,85 @@ struct EntrySheetDraft: Equatable {
             if draft.isRoute && draft.destinationID == id { draft.destinationID = draft.accountID }
             draft.accountID = id
         }
+        draft.routeTouched = true
         normalizeAccounts()
+        // A 还款 / 借出 / 赎回 moved to other accounts is decided afresh, like any 转账.
+        if draft.originalNature?.paired == true, draft.keptRoute != nil { draft.originalNature = nil }
         if !canRepeat { draft.repeatMonthly = false }
         drawer = nil
     }
 
     func dismissCategoryPanel() {
-        drawer = nil
-        categoryEditing = false
+        expandedCategory = nil
+        managingCategories = false
         categoryPanel = false
     }
 
-    func renameCategory() {
-        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let category = draft.category, !name.isEmpty else { return }
-        if name == category { drawer = nil; return }
-        let income = draft.nature.categoryIncome
-        if mutateLedger("编辑分类", { try CategoryModel.rename(category, to: name, income: income, in: &$0) }) {
-            draft.category = name
-            drawer = nil
+    /// Category management edits the ledger; a renamed or removed pick follows along.
+    @discardableResult func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
+        // Never an undo snapshot: it would replace a delete's 撤销 with this edit.
+        if let store {
+            guard store.update(reason, recordUndo: false, entryMotion: false, showToast: false, update) else { return false }
+            // An older whole-ledger snapshot would now roll this edit back too; drop it. The delete bar stays.
+            store.clearUndo()
+            return true
         }
-    }
-
-    func addCategory() {
-        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-        let new = YubaiCore.Category(name, income: draft.nature.categoryIncome)
-        if mutateLedger("添加分类", { try CategoryModel.add(new, in: &$0) }) {
-            select(category: name)
-            drawer = nil
-        }
-    }
-
-    func addSubcategory() {
-        let name = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let category = draft.category, !name.isEmpty else { return }
-        let income = draft.nature.categoryIncome
-        if mutateLedger("添加小类", { try CategoryModel.addSubcategory(name, to: category, income: income, in: &$0) }) {
-            draft.subcategory = name
-            drawer = nil
-        }
-    }
-
-    private func mutateLedger(_ reason: String, _ update: (inout Ledger) throws -> Void) -> Bool {
-        if let store { return store.update(reason, entryMotion: false, showToast: false, update) }
         do { try update(&fixtureLedger); return true }
         catch { failure = error.localizedDescription; return false }
+    }
+
+    /// The draft's pick is this category in this direction: names alone repeat across 支出 and 收入.
+    func draftUses(category name: String, income: Bool) -> Bool {
+        draft.category == name && !draft.isRoute && draft.nature.categoryIncome == income
+    }
+
+    /// Bills a category (or one of its subcategories) holds, 最近删除 included: what deleting it moves.
+    func entryCount(category name: String, subcategory: String? = nil, income: Bool) -> Int {
+        let ledger = ledger
+        let byID = Dictionary(uniqueKeysWithValues: ledger.entries.map { ($0.id, $0) })
+        return ledger.entries.filter { entry in
+            guard entry.nature.categoryIncome == income else { return false }
+            let assignment = ledger.normalizedCategory(for: entry, entriesByID: byID)
+            return assignment.category == name && (subcategory == nil || assignment.subcategory == subcategory)
+        }.count
+    }
+
+    /// 删除分类: its bills move to the catch-all; a draft that picked it picks again.
+    @discardableResult func deleteCategory(_ name: String, income: Bool) -> Bool {
+        let fallback = income ? "其他收入" : "其他支出"
+        guard name != fallback,
+              mutateLedger("删除分类", { try CategoryModel.merge(name, into: fallback, income: income, in: &$0) }) else { return false }
+        if draftUses(category: name, income: income) {
+            draft.category = nil
+            draft.subcategory = nil
+        }
+        return true
+    }
+
+    /// Reorders the categories on screen. Hidden ones keep their slots in the saved order.
+    func reorderVisibleCategories(_ visible: [String], income: Bool) {
+        let current = ledger
+        let allowed = current.categories.filter { !$0.system && $0.income == income }.map(\.name)
+        let allowedSet = Set(allowed)
+        var seen = Set<String>()
+        let saved = (current.categoryOrder(income: income) + allowed).filter { allowedSet.contains($0) && seen.insert($0).inserted }
+        let moving = Set(visible)
+        var queue = visible[...]
+        var order = saved.map { name in moving.contains(name) ? queue.popFirst() ?? name : name }
+        order += queue
+        mutateLedger("分类排序") { try CategoryModel.setOrder(order, income: income, in: &$0) }
     }
 
     private func input(category: CategoryAssignment?) -> EntrySaveInput? {
         guard let accountID = draft.accountID, draft.expression.canSave else { return nil }
         guard draft.currency == .cny || (signedRate != nil && (localMoney ?? 0) > 0) else { return nil }
-        var input = EntrySaveInput(type: draft.type, amountCents: money, currency: draft.currency, exchangeRate: typedRate,
+        var input = EntrySaveInput(type: savesAsDeposit ? .deposit : draft.type, amountCents: money, currency: draft.currency, exchangeRate: typedRate,
             purpose: draft.purpose, category: category?.category ?? Classification.pendingCategory,
             subcategory: category?.subcategory, accountID: accountID, destinationAccountID: draft.destinationID,
             date: draft.date, repeatMonthly: draft.repeatMonthly && canRepeat, exception: draft.exception,
             incomeNextCycle: draft.incomeNextCycle, personalExpenseCents: myShare, recordedNature: draft.originalNature,
             relatedEntryID: draft.relatedEntryID, keepInFixedSavings: draft.intoFixedSavings, preserveTime: editingID != nil)
+        input.keepsRoute = replaysRoute
         if let people = draft.recoveryParticipants, let localMoney,
            people.reduce(Int64(0), { $0 + $1.amount }) == localMoney - myShare {
             input.recoveryParticipants = editingID == nil
@@ -399,36 +541,57 @@ struct EntrySheetDraft: Equatable {
         draft.category.map { CategoryAssignment(category: $0, subcategory: draft.subcategory) }
     }
 
+    /// The words and direction a suggestion is guessed from.
+    private var suggestionKey: String {
+        draft.purpose.trimmingCharacters(in: .whitespacesAndNewlines) + "|" + draft.nature.rawValue
+    }
+
+    /// The suggestion on screen, only while it was guessed from these words and is still a category here.
+    var shownSuggestion: CategoryAssignment? {
+        guard let suggestion, suggestionSource == suggestionKey,
+              categories.contains(where: { $0.name == suggestion.category }) else { return nil }
+        return suggestion
+    }
+
+    /// Guess at once whenever the words or direction change, so what 记下 saves is what is shown.
+    private func refreshSuggestion() {
+        let key = suggestionKey
+        guard suggestionSource != key else { return }
+        let purpose = draft.purpose.trimmingCharacters(in: .whitespacesAndNewlines)
+        let needsGuess = !draft.isRoute && editingID == nil && selectedCategory == nil && !purpose.isEmpty
+        suggestion = needsGuess ? CategoryGuesser.guess(purpose, nature: draft.nature, date: draft.date, in: ledger) : nil
+        suggestionSource = key
+    }
+
     func schedulePreview() {
         previewTask?.cancel()
+        refreshSuggestion()
         let ledger = ledger
         let now = now
-        let selection = selectedCategory
-        let currentInput = input(category: selection)
-        let purpose = draft.purpose
+        let selection = selectedCategory ?? (draft.isRoute ? nil : shownSuggestion)
+        var currentInput = input(category: selection)
+        // Preview with the rate the amount line shows (typed, frozen or synced); saving sends only a typed one.
+        currentInput?.exchangeRate = signedRate
         let date = draft.date
-        let nature = draft.nature
-        let needsGuess = !draft.isRoute && selection == nil && !purpose.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if !needsGuess { suggestion = nil }
+        let deposit = savesAsDeposit && editingID == nil
+        let amount = localMoney ?? 0
+        if !deposit { depositedThisCycle = nil }
         if currentInput?.exception == nil, currentInput?.repeatMonthly != true { effect = nil }
         previewTask = Task { [weak self] in
             do { try await Task.sleep(for: EntrySpec.inputDebounce) }
             catch { return }
             let computation = Task.detached(priority: .userInitiated) {
-                let guess = needsGuess ? CategoryGuesser.guess(purpose, nature: nature, date: date, in: ledger) : nil
-                var resolved = currentInput
-                if let guess {
-                    resolved?.category = guess.category
-                    resolved?.subcategory = guess.subcategory
-                }
-                return (guess, resolved.flatMap { EntrySaveMapper.effect(for: $0, in: ledger, now: now) })
+                let deposited = deposit
+                    ? EntrySaveMapper.depositedThisCycle(in: ledger, now: now, adding: amount, on: date)
+                    : nil
+                return (currentInput.flatMap { EntrySaveMapper.effect(for: $0, in: ledger, now: now) }, deposited)
             }
-            let (guess, preview) = await withTaskCancellationHandler {
+            let (preview, deposited) = await withTaskCancellationHandler {
                 await computation.value
             } onCancel: { computation.cancel() }
             guard !Task.isCancelled else { return }
-            self?.suggestion = guess
             self?.effect = preview
+            self?.depositedThisCycle = deposited
         }
     }
 
@@ -443,20 +606,40 @@ struct EntrySheetDraft: Equatable {
         draft.expression.press(key)
     }
 
+    /// Why 记下 did nothing, so the sheet can point at the row that needs it.
+    enum SaveBlock { case amount, category }
+
+    func blockedSave() -> SaveBlock? {
+        if !draft.expression.canSave || money <= 0 { return .amount }
+        if !categoryReady { return .category }
+        return nil
+    }
+
     func save() -> Bool {
-        guard !didSave, draft.expression.canSave else { return false }
+        guard !didSave else { return false }
+        switch blockedSave() {
+        case .amount:
+            amountPulse &+= 1
+            AccessibilityNotification.Announcement("先输入金额").post()
+            return false
+        case .category:
+            needsCategory = true
+            categoryPulse &+= 1
+            AccessibilityNotification.Announcement("先选分类").post()
+            return false
+        case nil: break
+        }
         if let store, let editingID, categoryOnly {
             guard let selection = selectedCategory else { return false }
+            guard store.current.entries.contains(where: { $0.id == editingID && $0.deletedAt == nil }) else {
+                failure = "这笔账单已删除。"
+                return false
+            }
             let result = store.update("改分类") { try CategoryModel.confirm(selection, entryIDs: [editingID], in: &$0) }
             didSave = result
             return result
         }
-        let selection = selectedCategory ?? (draft.isRoute ? nil :
-            CategoryGuesser.guess(draft.purpose, nature: draft.nature, date: draft.date, in: ledger))
-        if editingID == nil, !draft.isRoute, selection == nil, draft.relatedEntryID == nil {
-            categoryPulse &+= 1
-            return false
-        }
+        let selection = selectedCategory ?? (draft.isRoute || editingID != nil ? nil : shownSuggestion)
         guard let input = input(category: selection) else {
             failure = draft.accountID == nil ? "先选择一个账户。" : "请核对金额或汇率。"
             return false
@@ -484,7 +667,7 @@ struct EntrySheetDraft: Equatable {
                 saved = store.update("记一笔", apply)
                 if saved {
                     if !isPrefilled { store.retainedEntryDraft = nil }
-                    store.lastEntryType = draft.type
+                    store.lastEntryType = draft.tab
                     store.lastEntryAccountID = draft.accountID
                 }
             } else {
@@ -513,6 +696,8 @@ struct EntrySheetDraft: Equatable {
         }
         drawer = nil
         categoryPanel = false
+        managingCategories = false
+        needsCategory = false
         normalizeAccounts()
     }
     #endif

@@ -51,9 +51,12 @@ struct SpringFlight {
 
     func position(at date: Date) -> CGFloat { flight?.position(at: date) ?? offset }
 
+    /// Spec-Gestures: 遮罩透明度 = 1 − y / 520. One denominator while pulled and after release,
+    /// so letting go never makes the scrim jump; a sheet shorter than 520 fades out by its own height.
     func scrimProgress(at date: Date) -> Double {
         guard height > 0 else { return 1 }
-        return Double(1 - min(1, max(0, position(at: date) / height)))
+        let y = max(0, position(at: date))
+        return Double(1 - min(1, y / min(height, EntrySpec.scrimFadeDistance)))
     }
 
     func drag(_ value: DragGesture.Value) {
@@ -70,11 +73,13 @@ struct SpringFlight {
             closing = false
         }
         let movement = (dragOrigin ?? 0) + value.translation.height
-        offset = movement >= 0 ? movement : movement * EntrySpec.upwardResistance
+        // Spec-Gestures: 向下 1:1；向上橡皮筋 y = 40 × (1 − 1 / (1 + d / 120)).
+        offset = movement >= 0 ? movement
+            : -EntrySpec.rubberLimit * (1 - 1 / (1 + -movement / EntrySpec.rubberScale))
     }
 
     func willDismiss(_ value: DragGesture.Value) -> Bool {
-        dragOrigin != nil && (offset > height * EntrySpec.dismissFraction || value.velocity.height > EntrySpec.dismissVelocity)
+        dragOrigin != nil && (offset > EntrySpec.dismissDistance || value.velocity.height > EntrySpec.dismissVelocity)
     }
 
     func release(_ value: DragGesture.Value, reduced: Bool, onClose: @escaping () -> Void) {
@@ -85,11 +90,19 @@ struct SpringFlight {
         if dismiss {
             close(reduced: reduced, velocity: speed, onClose: onClose)
         } else if reduced {
-            offset = 0
+            // No travel, but the scrim fades back instead of jumping.
+            withAnimation(DSMotion.reduceMotionAnimation) { offset = 0 }
             EntryRenderDiagnostics.mark("settled")
         } else {
-            spring(to: 0, velocity: offset < 0 ? speed * EntrySpec.upwardResistance : speed)
+            spring(to: 0, velocity: offset < 0 ? 0 : speed)
         }
+    }
+
+    /// A drag the system cancelled never reaches `release`; go back to rest from where it is.
+    func settleIfDragging(reduced: Bool) {
+        guard dragOrigin != nil else { return }
+        dragOrigin = nil
+        if reduced { withAnimation(DSMotion.reduceMotionAnimation) { offset = 0 } } else { spring(to: 0, velocity: 0) }
     }
 
     func close(reduced: Bool, velocity: CGFloat = 0, sealed: Bool = false, onClose: @escaping () -> Void) {

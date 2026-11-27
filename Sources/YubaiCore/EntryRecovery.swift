@@ -123,19 +123,41 @@ public struct EntryRecovery: Equatable, Sendable {
         return receipt
     }
 
-    public static func delete(_ id: UUID, from ledger: inout Ledger, now: Date) throws {
+    /// Deletes the bill and every refund or reimbursement receipt still linked to it, whether or not
+    /// it is still marked 待报销 / 待 AA. Returns every entry this one deletion touched, so its undo
+    /// brings back exactly those.
+    @discardableResult public static func delete(_ id: UUID, from ledger: inout Ledger, now: Date) throws -> Set<UUID> {
         guard let index = ledger.entries.firstIndex(where: { $0.id == id && $0.deletedAt == nil }) else {
             throw YubaiError.invalid("账单已删除。")
         }
         var next = ledger
         let original = next.entries[index]
+        var deleted: Set<UUID> = [id]
         next.entries[index].deletedAt = now
-        if original.pendingRecovery != nil {
+        if original.nature == .expense {
             for index in next.entries.indices where next.entries[index].relatedEntryID == id
                 && next.entries[index].nature == .refund && next.entries[index].deletedAt == nil {
                 next.entries[index].deletedAt = now
+                deleted.insert(next.entries[index].id)
             }
         }
+        try next.validate()
+        ledger = next
+        return deleted
+    }
+
+    /// Undoes one `delete`: only the entries it deleted at that moment come back,
+    /// so edits made since (categories, other bills) stay as they are.
+    public static func undoDelete(_ ids: Set<UUID>, deletedAt: Date, in ledger: inout Ledger) throws {
+        var next = ledger
+        var restored = false
+        // Storage rounds dates, so match the deletion moment to the second.
+        for index in next.entries.indices where ids.contains(next.entries[index].id)
+            && next.entries[index].deletedAt.map({ abs($0.timeIntervalSince(deletedAt)) < 1 }) == true {
+            next.entries[index].deletedAt = nil
+            restored = true
+        }
+        guard restored else { throw YubaiError.invalid("这笔账单已不在最近删除里。") }
         try next.validate()
         ledger = next
     }

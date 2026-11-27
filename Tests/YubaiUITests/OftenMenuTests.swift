@@ -36,7 +36,7 @@ final class OftenMenuTests: YubaiUITestCase {
         XCTAssertTrue(undo.waitForExistence(timeout: 5))
         undo.tap()
         XCTAssertTrue(UIConditionWait.run(timeout: 5, read: { lunches.count == before }), "撤销 takes it back")
-        XCTAssertFalse(any("entrySheet").exists, "a long press is not a tap on 记一笔")
+        XCTAssertFalse(any("entryKeypadAmount").exists, "a long press is not a tap on 记一笔: no 记一笔 sheet")
     }
 
     func testEditOftenOpensTheList() {

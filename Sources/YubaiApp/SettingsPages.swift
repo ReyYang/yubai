@@ -1,7 +1,7 @@
 import SwiftUI
 import YubaiCore
 
-// MARK: 固定订阅
+// MARK: 固定收支
 
 struct RecurringView: View {
     @Environment(AppStore.self) private var store
@@ -16,7 +16,7 @@ struct RecurringView: View {
         let subscriptions = SettingsSummary.subscriptions(in: ledger, now: now)
         let shown = month ?? store.settingsFixture?.calendarMonth ?? Dates.calendar.dateInterval(of: .month, for: now)!.start
         VStack(spacing: .zero) {
-            OverviewNavigationBar(title: "固定订阅", add: {
+            OverviewNavigationBar(title: "固定收支", add: {
                 store.subscriptionDraft = SubscriptionDraft(day: Dates.calendar.component(.day, from: now))
                 store.settingsSheet = .subAdd
             }, addLabel: "添加订阅")

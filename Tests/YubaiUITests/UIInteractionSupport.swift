@@ -95,7 +95,8 @@ class YubaiUITestCase: XCTestCase {
                  "transferSavedPreview", "transferAvailablePreview", "amountSheetAmount", "fixedBottomBar"].contains(identifier) || identifier.hasPrefix("rootPage_") { query = app.otherElements }
         else if ["entriesSearch", "frequentEntryPurpose"].contains(identifier) { query = app.textFields }
         else if ["butlerAICorrectionText", "memoryText"].contains(identifier) { query = app.textViews }
-        else if ["entriesScroll", "formulaPage", "savingTabScroll", "overviewScroll", "overviewDrillScroll", "overviewAccountScroll", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
+        else if identifier == "entriesScroll" { query = app.collectionViews } // home bills are a List
+        else if ["formulaPage", "savingTabScroll", "overviewScroll", "overviewDrillScroll", "overviewAccountScroll", "settingsScroll", "intelligencePrivacyPage", "yubaiScroll", "butlerAIEvidencePage"].contains(identifier) {
             query = app.scrollViews
         } else { query = app.descendants(matching: .any) }
         let target = query.matching(identifier: identifier).firstMatch

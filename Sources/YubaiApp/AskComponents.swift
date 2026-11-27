@@ -204,15 +204,13 @@ struct AskSplit: Layout {
     }
 }
 
-/// One recognized row in 截图批量记账.
+/// One proposed row in 批量记账.
 struct AskBatchRow: View {
     let name: String
     let detail: String
     let amount: String
     let checked: Bool
     var duplicate = false
-    /// Found on the screenshot but left out by the model: 「待确认」.
-    var missed = false
     var income = false
     var separator = true
     var onToggle: () -> Void = {}
@@ -224,8 +222,8 @@ struct AskBatchRow: View {
                 VStack(alignment: .leading, spacing: .zero) {
                     HStack(spacing: AskSpec.flagInset) {
                         Text(name).dsText(HomeSpec.medium).foregroundStyle(DS.Color.ink).lineLimit(1)
-                        if duplicate || missed {
-                            Text(missed ? "待确认" : "可能重复").dsText(AskSpec.badge).foregroundStyle(DS.Color.warnInk)
+                        if duplicate {
+                            Text("可能重复").dsText(AskSpec.badge).foregroundStyle(DS.Color.warnInk)
                                 .padding(.horizontal, AskSpec.flagInset).frame(height: AskSpec.flagHeight)
                                 .dsPill(DS.Color.warnSoft).fixedSize()
                         }
@@ -263,35 +261,25 @@ struct AskCheckbox: View {
     }
 }
 
-/// The pinned composer: 附图, the field and the mic.
+/// The pinned composer: the field and 发送.
 struct AskComposer: View {
     @Binding var text: String
     var focus: FocusState<Bool>.Binding
-    var recording = false
-    var attachEnabled = true
-    var onAttach: () -> Void = {}
-    var onMic: () -> Void = {}
     var onSend: () -> Void = {}
 
     var body: some View {
-        HStack(alignment: .top, spacing: AskSpec.gap10) {
-            Button(action: onAttach) {
-                DSIconView(icon: .screenshot, size: DS.Size.icon, color: DS.Color.ink2)
-                    .frame(width: DS.Size.askH, height: DS.Size.askH)
-                    .background(DS.Color.surface, in: Circle())
-                    .opacity(attachEnabled ? 1 : DSInteraction.reducedPressOpacity)
-            }.dsPressStyle().disabled(!attachEnabled).accessibilityLabel("附图").accessibilityIdentifier("askAttach")
-            HStack(spacing: .zero) {
-                DSAskField(text: $text, focus: focus, onSubmit: onSend)
-                Button(action: onMic) {
-                    DSIconView(icon: .voice, size: DS.Size.brandTile, color: recording ? DS.Color.accent : DS.Color.ink2)
-                        .frame(width: AskSpec.micBox, height: DS.Size.askH).contentShape(Rectangle())
-                }.dsPressStyle().accessibilityLabel(recording ? "停止听写" : "语音输入").accessibilityIdentifier("askMic")
-            }.padding(.leading, DS.Space.s16).padding(.trailing, AskSpec.fieldTrailing)
+        HStack(spacing: DS.Space.s8) {
+            DSAskField(text: $text, focus: focus, onSubmit: onSend)
+                .padding(.horizontal, DS.Space.s16)
                 .frame(height: DS.Size.askH)
                 .background(DS.Color.raised, in: Capsule(style: .continuous))
                 .overlay(Capsule(style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
-        }.padding(.horizontal, DS.Space.s16).padding(.top, AskSpec.composerTop)
+            Button(action: onSend) {
+                DSIconView(icon: .send, size: DS.Size.icon, color: DS.Color.ink3)
+                    .frame(width: DS.Size.askH, height: DS.Size.askH)
+                    .background(DS.Color.surface, in: Circle())
+            }.dsPressStyle().accessibilityLabel("发送").accessibilityIdentifier("askSend")
+        }.padding(.horizontal, DS.Space.s16).padding(.top, DS.Space.s8)
             .frame(maxWidth: .infinity, alignment: .top)
             .background(DS.Color.bg)
             .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }

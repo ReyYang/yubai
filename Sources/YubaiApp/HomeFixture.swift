@@ -85,7 +85,7 @@ enum HomeFixture: Equatable {
         ledger.categories.append(Category("工资", income: true))
         var salary = Plan(title: "工资", amount: 1_850_000, dueDate: start, frequency: .monthly, inflow: true, category: "工资", nature: .income)
         salary.accountID = bank.id
-        ledger.plans = [salary, Plan(title: "固定订阅", amount: 38_600, dueDate: Dates.parse("2025-12-09")!, category: "订阅")]
+        ledger.plans = [salary, Plan(title: "固定收支", amount: 38_600, dueDate: Dates.parse("2025-12-09")!, category: "订阅")]
         ledger.fixedSavings = self == .home(.over) ? 1_284_000 : 842_000
         ledger.savingRule = .fixed(500_000)
 

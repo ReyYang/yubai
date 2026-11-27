@@ -1,28 +1,21 @@
 import SwiftUI
 import Observation
-import PhotosUI
-import ImageIO
-import UniformTypeIdentifiers
 import UserNotifications
 import YubaiCore
 
-/// What opens 问余白: text to send now, or a voice start.
+/// What opens 问余白: text to fill or send now.
 struct AskRequest: Identifiable, Equatable {
     var id = UUID()
     var text = ""
     var send = false
-    var voice = false
 }
-
-struct AskImage: Equatable { let data: Data; let name: String }
 
 /// One turn in today's conversation. Lives in the store so a request keeps running
 /// after the sheet closes (the 余白在算 pill) and the thread survives reopening.
 struct AskMessage: Identifiable {
     enum Kind {
-        case user(String, image: AskImage?, placeholder: [CGFloat])
-        /// `ocr` is the redacted screenshot text the question carried, for rows the model left out.
-        case reply(AssistantReply, question: String, image: AskImage?, ocr: String?)
+        case user(String)
+        case reply(AssistantReply, question: String)
         case local(AskLocal.Answer, needsAI: Bool)
     }
     let id = UUID()
@@ -63,15 +56,15 @@ struct AskMessage: Identifiable {
             && IntelligenceRuntime.cloud.unavailableModel == nil
     }
 
-    func send(_ raw: String, image: AskImage? = nil, ocr: String? = nil, store: AppStore) {
+    func send(_ raw: String, store: AppStore) {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !busy, !store.locked, !text.isEmpty || image != nil else { return }
+        guard !busy, !store.locked, !text.isEmpty else { return }
         expireIfNeeded(ledgerID: store.current.id)
         let ledger = store.current, now = store.financialNow
-        let feature: AIFeature = image == nil ? .answers : .receiptRecognition
+        let feature = AIFeature.answers
         draft = ""
-        messages.append(AskMessage(kind: .user(text, image: image, placeholder: [])))
-        if !text.isEmpty { store.recordQuestion(text) }
+        messages.append(AskMessage(kind: .user(text)))
+        store.recordQuestion(text)
         let days = HomeDisplay.daysLeft(Finance.spendableBreakdown(ledger, now: now))
         func answerLocally() {
             let answer = AskLocal.answer(text, in: ledger, daysLeft: days, now: now)
@@ -82,7 +75,7 @@ struct AskMessage: Identifiable {
         guard available(store, feature: feature), let transport = store.assistantTransport(for: ledger, feature: feature) else {
             answerLocally(); return
         }
-        let question = ocr.map { (text.isEmpty ? "" : text + "\n") + "这是截图里的文字，帮我记一笔：\n" + $0 } ?? text
+        let question = text
         busy = true; runningLabel = AskLocal.runningLabel(question, in: ledger, now: now)
         let session = session, tone = store.preferences.tone
         task = Task { @MainActor in
@@ -107,7 +100,7 @@ struct AskMessage: Identifiable {
                         }
                     }) else { draft = text; self.session = AskYubaiSession(); return }
                 }
-                messages.append(AskMessage(kind: .reply(reply, question: text, image: image, ocr: ocr)))
+                messages.append(AskMessage(kind: .reply(reply, question: text)))
             } catch is CancellationError {
                 if !Task.isCancelled { draft = text; self.session = AskYubaiSession() }
             } catch {
@@ -157,11 +150,6 @@ private struct AskSheetContent: View {
     let release: (DragGesture.Value) -> Void
     @Environment(AppStore.self) private var store
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var voice = AskVoiceCapture()
-    @State private var voicePrefix = ""
-    @State private var photo: PhotosPickerItem?
-    @State private var photoPicker = false
-    @State private var reading = false
     @State private var bottomInset: CGFloat = 0
     @FocusState private var focused: Bool
 
@@ -171,26 +159,20 @@ private struct AskSheetContent: View {
         VStack(spacing: .zero) {
             header
             AskThread(onSend: { controller.send($0, store: store) }, openSettings: openSettings)
-            AskComposer(text: $controller.draft, focus: $focused, recording: voice.recording,
-                        attachEnabled: !reading && controller.available(store, feature: .receiptRecognition),
-                        onAttach: { focused = false; photoPicker = true }, onMic: toggleVoice,
+            AskComposer(text: $controller.draft, focus: $focused,
                         onSend: { controller.send(controller.draft, store: store) })
                 .padding(.bottom, bottomInset > 0 ? AskSpec.composerKeyboardGap : .zero)
                 .frame(minHeight: bottomInset > 0 ? nil : AskSpec.composerHeight, alignment: .top)
         }
         .onGeometryChange(for: CGFloat.self) { $0.safeAreaInsets.bottom } action: { bottomInset = $0 }
-        .photosPicker(isPresented: $photoPicker, selection: $photo, matching: .images)
-        .onChange(of: photo) { _, value in if let value { read(value) } }
-        .onChange(of: voice.transcript) { _, text in store.ask.draft = voicePrefix + text }
         .onAppear {
-            store.ask.connectivity.start(); voice.refreshPermissions(); IntelligenceRuntime.cloud.refresh()
+            store.ask.connectivity.start(); IntelligenceRuntime.cloud.refresh()
             store.ask.expireIfNeeded(ledgerID: store.current.id)
             if !request.text.isEmpty {
                 if request.send { store.ask.send(request.text, store: store) } else { store.ask.draft = request.text }
             }
-            if request.voice { toggleVoice() }
         }
-        .onDisappear { voice.stop(); store.ask.connectivity.stop() }
+        .onDisappear { store.ask.connectivity.stop() }
         .onChange(of: store.locked) { _, locked in if locked { store.ask.cancel(); closeNow() } }
     }
 
@@ -216,28 +198,6 @@ private struct AskSheetContent: View {
     private func openSettings() {
         closeNow()
         store.tabRouteRequest = .aiSettings
-    }
-
-    private func toggleVoice() {
-        if voice.recording { voice.stop(); return }
-        voicePrefix = store.ask.draft.isEmpty ? "" : store.ask.draft + " "
-        Task { await voice.start() }
-    }
-
-    private func read(_ item: PhotosPickerItem) {
-        reading = true
-        Task { @MainActor in
-            defer { reading = false; photo = nil }
-            guard let bytes = try? await item.loadTransferable(type: Data.self), bytes.count <= 50 * 1024 * 1024,
-                  let receipt = try? await Task.detached(priority: .userInitiated, operation: { try ReceiptReader.recognize(bytes) }).value,
-                  !store.locked else { return }
-            let source = CGImageSourceCreateWithData(bytes as CFData, nil)
-            let type = source.flatMap { CGImageSourceGetType($0) }.map { $0 as String }
-            let ext = type.flatMap { UTType($0)?.preferredFilenameExtension } ?? "image"
-            let image = AskImage(data: bytes, name: "截图-" + Dates.text(Dates.now) + "." + ext)
-            // OCR runs on the phone; only the redacted text leaves it.
-            store.ask.send(store.ask.draft, image: image, ocr: Redactor(ledger: store.current).text(receipt.text), store: store)
-        }
     }
 }
 
@@ -280,13 +240,11 @@ private struct AskMessageView: View {
 
     var body: some View {
         switch message.kind {
-        case let .user(text, image, placeholder):
-            VStack(alignment: .trailing, spacing: AskSpec.thumbGap) {
-                if image != nil || !placeholder.isEmpty { AskThumbnail(image: image, lines: placeholder) }
-                if !text.isEmpty { AskUserBubble(text: store.preferences.hideAmounts ? "金额已隐藏" : text) }
-            }.frame(maxWidth: .infinity, alignment: .trailing)
-        case let .reply(reply, question, image, ocr):
-            AskReplyView(messageID: message.id, reply: reply, question: question, image: image, ocr: ocr, latest: latest, onSend: onSend)
+        case let .user(text):
+            AskUserBubble(text: store.preferences.hideAmounts ? "金额已隐藏" : text)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        case let .reply(reply, question):
+            AskReplyView(messageID: message.id, reply: reply, question: question, latest: latest, onSend: onSend)
         case let .local(answer, needsAI):
             AskLocalCard(answer: answer, needsAI: needsAI, openSettings: openSettings)
         }
@@ -306,49 +264,11 @@ struct AskUserBubble: View {
     }
 }
 
-/// 96 × 128 screenshot. Fixtures without an image draw the canvas placeholder lines.
-struct AskThumbnail: View {
-    let image: AskImage?
-    var lines: [CGFloat] = []
-
-    var body: some View {
-        RoundedRectangle(cornerRadius: AskSpec.thumbRadius, style: .continuous).fill(DS.Color.raised)
-            .overlay {
-                #if os(iOS)
-                if let data = image?.data, let picture = UIImage(data: data) {
-                    Image(uiImage: picture).resizable().scaledToFill()
-                } else { placeholder }
-                #else
-                placeholder
-                #endif
-            }
-            .frame(width: AskSpec.thumbWidth, height: AskSpec.thumbHeight)
-            .clipShape(.rect(cornerRadius: AskSpec.thumbRadius, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: AskSpec.thumbRadius, style: .continuous).strokeBorder(DS.Color.separator, lineWidth: DS.Stroke.hairline))
-            .accessibilityElement().accessibilityLabel("账单截图")
-    }
-
-    private var placeholder: some View {
-        VStack(spacing: AskSpec.thumbLineGap) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { _, width in
-                HStack {
-                    Capsule(style: .continuous).fill(DS.Color.track).frame(width: width, height: AskSpec.thumbLine)
-                    Spacer(minLength: .zero)
-                    Capsule(style: .continuous).fill(DS.Color.chevron).frame(width: AskSpec.thumbAmount, height: AskSpec.thumbLine)
-                }
-            }
-            Spacer(minLength: .zero)
-        }.padding(.vertical, AskSpec.thumbInsetV).padding(.horizontal, AskSpec.thumbInsetH)
-    }
-}
-
 /// Picks the card for a model reply. Every number on it comes from YubaiCore.
 private struct AskReplyView: View {
     let messageID: UUID
     let reply: AssistantReply
     let question: String
-    let image: AskImage?
-    let ocr: String?
     let latest: Bool
     let onSend: (String) -> Void
     @Environment(AppStore.self) private var store
@@ -359,7 +279,7 @@ private struct AskReplyView: View {
         }
         ForEach(reply.proposedChangeSets) { change in
             if change.items.allSatisfy({ if case .addEntry = $0 { return true }; return false }) {
-                AskBatchCard(change: change, image: image, ocr: ocr)
+                AskBatchCard(change: change)
             } else {
                 AskApprovalView(change: change)
             }
@@ -506,16 +426,12 @@ private struct AskDoneLine: View {
     }
 }
 
-/// 截图批量记账. Rows the model left out of the screenshot come last, unchecked, as 「待确认」.
+/// 批量记账: the drafts a reply proposed, each checked unless it looks like a duplicate.
 private struct AskBatchCard: View {
     let change: ChangeSet
-    let image: AskImage?
-    let ocr: String?
     @Environment(AppStore.self) private var store
     @State private var checked: Set<UUID>?
     @State private var savedCount: Int?
-    /// Parsed once from the OCR text; the drafts keep their ids across redraws.
-    @State private var missed: [EntryDraft]?
 
     private var drafts: [EntryDraft] {
         change.items.compactMap { if case .addEntry(let draft) = $0 { return draft }; return nil }
@@ -525,9 +441,7 @@ private struct AskBatchCard: View {
         let pending = store.current.pendingChanges.contains { $0.id == change.id }
         if pending {
             let ledger = store.current, hide = store.preferences.hideAmounts
-            let drafts = drafts, missed = missed ?? []
-            let rows = drafts + missed
-            let missedIDs = Set(missed.map(\.id))
+            let rows = drafts
             let selected = checked ?? AskBatch.initiallyChecked(drafts, in: ledger)
             let total = AskBatch.total(rows, checked: selected, in: ledger, now: store.financialNow)
             let line = AskDisplay.change(total, hidden: hide, currency: true)
@@ -537,8 +451,7 @@ private struct AskBatchCard: View {
                         AskBatchRow(name: draft.purpose ?? draft.title,
                                     detail: Classification.displayCategory(draft.category) + " · " + (draft.nature.inflow && draft.purpose != nil ? draft.title : AskDisplay.monthDay(draft.date, chinese: true)),
                                     amount: AskDisplay.signed(draft, hidden: hide), checked: selected.contains(draft.id),
-                                    duplicate: !missedIDs.contains(draft.id) && AskBatch.isLikelyDuplicate(draft, in: ledger),
-                                    missed: missedIDs.contains(draft.id), income: draft.nature.inflow,
+                                    duplicate: AskBatch.isLikelyDuplicate(draft, in: ledger), income: draft.nature.inflow,
                                     separator: index > 0, onToggle: { toggle(draft.id, from: selected) })
                             .accessibilityIdentifier("askBatchRow_\(index)")
                     }
@@ -550,14 +463,9 @@ private struct AskBatchCard: View {
                         .overlay(alignment: .top) { DS.Color.ink.frame(height: DS.Stroke.hairline) }
                         .accessibilityIdentifier("askBatchTotal")
                 }
-                AskTwoButtons(primary: "记下 \(selected.count) 笔", enabled: !selected.isEmpty, onEdit: { edit(drafts, selected: selected) },
+                AskTwoButtons(primary: "记下 \(selected.count) 笔", enabled: !selected.isEmpty, onEdit: { edit(rows, selected: selected) },
                               onPrimary: { save(rows, selected: selected) })
             }.askCard().accessibilityElement(children: .contain).accessibilityIdentifier("askBatchCard")
-                .onAppear {
-                    guard self.missed == nil else { return }
-                    let text = ocr?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    self.missed = text.isEmpty ? [] : AskBatch.missed(ocr: text, drafts: drafts, in: ledger, now: store.financialNow)
-                }
         } else {
             AskDoneLine(text: "已记下 \(savedCount ?? drafts.count) 笔")
         }
@@ -570,7 +478,6 @@ private struct AskBatchCard: View {
     }
 
     private func edit(_ drafts: [EntryDraft], selected: Set<UUID>) {
-        if let image { store.requestCaptureSheet(.screenshotReview(image.data)); return }
         guard let first = drafts.first(where: { selected.contains($0.id) }) ?? drafts.first else { return }
         store.requestCaptureSheet(.prefilledEntry(.init(category: first.category, amount: first.amount, purpose: first.purpose ?? first.title,
                                                         nature: first.nature, subcategory: first.subcategory, accountID: first.accountID)))
@@ -581,19 +488,9 @@ private struct AskBatchCard: View {
         guard !chosen.isEmpty else { return }
         var confirmed = change
         confirmed.items = chosen.map { draft in var value = draft; value.amountConfirmed = true; return .addEntry(value) }
-        let image = image
         if store.apply(confirmed, label: "问余白记下", finishing: { ledger in
             for draft in chosen where draft.categoryUserEdited == true && !Classification.isPending(draft.category) {
                 try CategoryModel.confirm(.init(category: draft.category, subcategory: draft.subcategory), entryIDs: [draft.id], in: &ledger)
-            }
-            if let image {
-                let compressed = ImageCompression.compress(image.data, name: image.name)
-                let attachment = Attachment(name: compressed.name, data: compressed.data)
-                let ids = Set(chosen.map(\.id))
-                ledger.attachments.append(attachment)
-                for index in ledger.entries.indices where ids.contains(ledger.entries[index].id) && ledger.entries[index].attachmentID == nil {
-                    ledger.entries[index].attachmentID = attachment.id
-                }
             }
         }) { savedCount = chosen.count }
     }

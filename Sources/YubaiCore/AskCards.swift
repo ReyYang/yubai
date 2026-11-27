@@ -183,28 +183,6 @@ public enum AskBatch {
         Set(drafts.filter { !isLikelyDuplicate($0, in: ledger) }.map(\.id))
     }
 
-    /// Screenshot amounts the model left out: local OCR candidates not matched by a draft,
-    /// minus the bill's own totals. They start unchecked and unconfirmed (「待确认」).
-    public static func missed(ocr: String, drafts: [EntryDraft], in ledger: Ledger, now: Date) -> [EntryDraft] {
-        var left = EntryAmountParser.entries(in: ocr)
-        for draft in drafts { if let i = left.firstIndex(where: { $0.amount == draft.amount }) { left.remove(at: i) } }
-        let totalWords = ["支出", "收入", "合计", "总计", "共计", "小计", "实付", "余额"]
-        left.removeAll { candidate in
-            let line = candidate.text.split(whereSeparator: \.isNewline).last.map(String.init) ?? ""
-            return totalWords.contains { line.contains($0) }
-        }
-        let all = drafts.map(\.amount) + left.map(\.amount)
-        left.removeAll { candidate in all.reduce(0, +) - candidate.amount == candidate.amount }
-        guard let accountID = drafts.first?.accountID ?? ledger.accounts.first(where: { !$0.archived })?.id else { return [] }
-        let date = drafts.first?.date ?? now
-        return left.map { candidate in
-            let line = candidate.text.split(whereSeparator: \.isNewline).last.map(String.init) ?? ""
-            let title = line.trimmingCharacters(in: .whitespaces.union(CharacterSet(charactersIn: "-−+:：")))
-            return EntryDraft(date: date, amount: candidate.amount, amountConfirmed: false, accountID: accountID,
-                              title: title.isEmpty ? "截图里的一笔" : title)
-        }
-    }
-
     /// 还能花 before and after recording the checked drafts.
     public static func total(_ drafts: [EntryDraft], checked: Set<UUID>, source: String = "问余白", in ledger: Ledger, now: Date) -> AskChange {
         let before = Finance.funds(ledger, now: now).available
