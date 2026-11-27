@@ -84,6 +84,21 @@ final class AskCardsTests: XCTestCase {
         XCTAssertGreaterThan(shared, today.count - 20)
         XCTAssertTrue(today.contains("还没发生的花费"))
     }
+    func testBatchMissedRowsComeFromOCRMinusDraftsAndTotals() {
+        let (ledger, bank) = sample()
+        let ocr = ["账单", "11月", "支出 ¥164.30 收入 ¥0.00", "瑞幸咖啡", "-18.90", "11月26日 08:42", "美团外卖-黄焖鸡米饭", "-32.50", "11月26日 12:15",
+                   "滴滴出行", "-27.40", "11月26日 18:33", "盒马鲜生", "-85.50", "11月26日 20:31"].joined(separator: "\n")
+        let day = date("2026-11-26")
+        let drafts = [1_890, 3_250, 8_550].map { EntryDraft(date: day, amount: $0, accountID: bank.id, title: "x", category: "吃饭") }
+        let missed = AskBatch.missed(ocr: ocr, drafts: drafts, in: ledger, now: now)
+        XCTAssertEqual(missed.map(\.amount), [2_740])
+        XCTAssertEqual(missed.first?.title, "滴滴出行")
+        XCTAssertEqual(missed.first?.date, day)
+        XCTAssertEqual(missed.first?.amountConfirmed, false)
+        XCTAssertTrue(Classification.isPending(missed.first!.category))
+        let all = drafts + [EntryDraft(date: day, amount: 2_740, accountID: bank.id, title: "滴滴", category: "交通")]
+        XCTAssertEqual(AskBatch.missed(ocr: ocr, drafts: all, in: ledger, now: now), [])
+    }
     func testApprovalCardForReimbursementOffset() {
         let (ledger, bank) = sample()
         let taxi = ledger.entries.first { $0.title == "打车" }!
