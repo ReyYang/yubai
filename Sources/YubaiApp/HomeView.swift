@@ -231,18 +231,17 @@ private struct HomePage: View {
         }
         ForEach(groups.days) { day in
             Section {
+                // The day line is the section's first row, not its header, so it scrolls away like the canvas.
+                DSDayHeader(title: dayTitle(day.day),
+                            total: day.net == 0 || fixture == .home(.empty) ? "" : HomeDisplay.signed(day.net, hidden: hide),
+                            today: day.day == Dates.day(now), first: day.day == groups.days.first?.day)
+                    .accessibilityAddTraits(.isHeader)
+                    .homeRow()
                 ForEach(Array(day.entries.enumerated()), id: \.element.id) { index, entry in
                     billRow(entry, account: accounts[entry.accountID], pending: recoveryIDs.contains(entry.id), separator: index > 0)
                         .dsRowEnter(index: min(day.offset + index, DailySpending.columnCount))
                         .homeRow()
                 }
-            } header: {
-                DSDayHeader(title: dayTitle(day.day),
-                            total: day.net == 0 || fixture == .home(.empty) ? "" : HomeDisplay.signed(day.net, hidden: hide),
-                            today: day.day == Dates.day(now), first: day.day == groups.days.first?.day)
-                    .textCase(nil)
-                    .homeRow()
-                    .background(DS.Color.bg)
             }
         }
     }

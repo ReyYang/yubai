@@ -1,3 +1,4 @@
+#if DEBUG
 import XCTest
 import YubaiCore
 @testable import YubaiApp
@@ -225,3 +226,4 @@ final class BillEditingStoreTests: XCTestCase {
         XCTAssertNil(store.billMenu)
     }
 }
+#endif
