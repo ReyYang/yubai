@@ -936,7 +936,7 @@ private struct EntryCurrencyList: View {
                 Button { model.pickCurrency(currency) } label: {
                     HStack(spacing: .zero) {
                         Text(currency.symbol).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink2)
-                            .fixedSize().frame(minWidth: EntrySpec.currencySymbolColumn, alignment: .leading)
+                            .fixedSize().padding(.trailing, DS.Space.s8).frame(minWidth: EntrySpec.currencySymbolColumn, alignment: .leading)
                         HStack(alignment: .firstTextBaseline, spacing: HomeSpec.gap6) {
                             Text(currency.unit).dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink)
                             if currency == main {
