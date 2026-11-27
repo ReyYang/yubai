@@ -50,14 +50,13 @@ struct SpringFlight {
     }
 
     func position(at date: Date) -> CGFloat { flight?.position(at: date) ?? offset }
-    var isDragging: Bool { dragOrigin != nil }
 
-    /// Spec-Gestures: 遮罩透明度 = 1 − y / 520 while pulled down; the closing flight fades it out with the sheet.
+    /// Spec-Gestures: 遮罩透明度 = 1 − y / 520. One denominator while pulled and after release,
+    /// so letting go never makes the scrim jump; a sheet shorter than 520 fades out by its own height.
     func scrimProgress(at date: Date) -> Double {
         guard height > 0 else { return 1 }
         let y = max(0, position(at: date))
-        let fade = dragOrigin != nil ? y / EntrySpec.scrimFadeDistance : y / height
-        return Double(1 - min(1, fade))
+        return Double(1 - min(1, y / min(height, EntrySpec.scrimFadeDistance)))
     }
 
     func drag(_ value: DragGesture.Value) {

@@ -204,15 +204,13 @@ struct AskSplit: Layout {
     }
 }
 
-/// One recognized row in 截图批量记账.
+/// One proposed row in 批量记账.
 struct AskBatchRow: View {
     let name: String
     let detail: String
     let amount: String
     let checked: Bool
     var duplicate = false
-    /// Found on the screenshot but left out by the model: 「待确认」.
-    var missed = false
     var income = false
     var separator = true
     var onToggle: () -> Void = {}
@@ -224,8 +222,8 @@ struct AskBatchRow: View {
                 VStack(alignment: .leading, spacing: .zero) {
                     HStack(spacing: AskSpec.flagInset) {
                         Text(name).dsText(HomeSpec.medium).foregroundStyle(DS.Color.ink).lineLimit(1)
-                        if duplicate || missed {
-                            Text(missed ? "待确认" : "可能重复").dsText(AskSpec.badge).foregroundStyle(DS.Color.warnInk)
+                        if duplicate {
+                            Text("可能重复").dsText(AskSpec.badge).foregroundStyle(DS.Color.warnInk)
                                 .padding(.horizontal, AskSpec.flagInset).frame(height: AskSpec.flagHeight)
                                 .dsPill(DS.Color.warnSoft).fixedSize()
                         }

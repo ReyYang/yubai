@@ -140,7 +140,7 @@ private struct BillCardContent: View {
                      impact: effect, metadata: labels, note: entry.note, income: entry.nature.inflow,
                      foreign: entry.originalCurrency != nil, route: route, recovery: status.map {
                          AnyView(BillRecoveryCard(status: $0, accounts: ledger.accounts, hidden: hide, receive: receive))
-                     }, canRecategorize: !entry.nature.paired && entry.relatedEntryID == nil, menuInitiallyOpen: menuInitiallyOpen,
+                     }, canRecategorize: entry.canRecategorize, menuInitiallyOpen: menuInitiallyOpen,
                      close: close, edit: edit, recategorize: recategorize, duplicate: duplicate, delete: delete)
     }
 

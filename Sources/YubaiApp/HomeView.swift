@@ -94,6 +94,8 @@ struct HomeView: View {
                  cover: { amount in
                      _ = store.update("补上") { try Reserve.transfer(.take, amount: amount, in: &$0, now: store.financialNow) }
                  })
+        // While the long-press menu is up the finger that opened it must not scroll the list.
+        .scrollDisabled(store.billMenu != nil)
         .overlay(alignment: .bottom) { HomeRunningOverlay() }
     }
 }
@@ -116,10 +118,10 @@ private struct HomePage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.yubaiRootNavigationHeight) private var navigationHeight
     @Environment(\.yubaiToastClearance) private var toastClearance
+    @Environment(\.displayScale) private var displayScale
     @State private var searching = HomeFixture.current?.isSearch == true
     @State private var query = HomeFixture.current?.isSearch == true ? "打车" : ""
     @State private var preset: LedgerPreset?
-    @State private var held: UUID?
     @State private var frames = BillRowFrames()
     @FocusState private var focused: Bool
 
@@ -297,31 +299,30 @@ private struct HomePage: View {
         let amount = HomeDisplay.billAmount(entry, hidden: hide)
         let detailAmount = entry.originalCurrency.map { _ in "≈ " + HomeDisplay.money(entry.amount, hidden: hide) }
         let amountColor = entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink
-        return Button {
+        let frames = frames
+        return HomeBillButton(onTap: {
             focused = false
-            // The release of a long press already opened the menu; it is not a tap.
-            if held == entry.id { held = nil } else { openBill(entry.id) }
-        } label: {
-            DSListRow(icon: icon, name: entry.displayTitle, amount: amount, detail: secondLine, tag: tag, separator: separator,
-                      detailAmount: detailAmount, amountColor: amountColor)
-                .contentShape(Rectangle())
-        }.buttonStyle(BillRowPressStyle {
-            held = entry.id
+            openBill(entry.id)
+        }, onHold: {
+            focused = false
             openMenu(BillMenuRequest(entryID: entry.id, frame: frames.frames[entry.id] ?? .zero, icon: icon,
                                      name: entry.displayTitle, amount: amount, detail: secondLine,
                                      detailAmount: detailAmount, amountColor: amountColor))
-        })
+        }) {
+            DSListRow(icon: icon, name: entry.displayTitle, amount: amount, detail: secondLine, tag: tag, separator: separator,
+                      detailAmount: detailAmount, amountColor: amountColor)
+                .contentShape(Rectangle())
+        }
             .accessibilityIdentifier("ledgerEntry_" + entry.id.uuidString)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { frames.frames[entry.id] = $0 }
             .nativeSwipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button(role: .destructive) { deleteBill(entry) } label: {
-                    Label { Text("删除") } icon: { DS.Icon.delete.templateImage(size: HomeSpec.swipeIcon) }
+                    Label { Text("删除") } icon: { DS.Icon.delete.templateImage(size: HomeSpec.swipeIcon, scale: displayScale) }
                 }.tint(DS.Color.warnStrong)
             }
             .accessibilityAction(named: "编辑") { menuAction(entry, .edit) }
             .accessibilityAction(named: "再记一笔") { menuAction(entry, .duplicate) }
-            .accessibilityAction(named: "改分类") { menuAction(entry, .recategorize) }
-            .accessibilityAction(named: "删除") { deleteBill(entry) }
+            .modifier(RecategorizeAction(enabled: entry.canRecategorize) { menuAction(entry, .recategorize) })
     }
 
     private var searchBar: some View {
@@ -387,6 +388,16 @@ private struct HomePage: View {
             query = ""
             preset = nil
         }
+    }
+}
+
+/// VoiceOver's 改分类 appears only where the menu offers it. Deleting stays the system swipe's own action.
+private struct RecategorizeAction: ViewModifier {
+    let enabled: Bool
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        if enabled { content.accessibilityAction(named: "改分类", action) } else { content }
     }
 }
 

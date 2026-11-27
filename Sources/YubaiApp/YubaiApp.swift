@@ -527,7 +527,7 @@ enum AppSheet: Identifiable {
         reviewPeriodSheet = nil; accountValuationTarget = nil; accountValuationInitial = nil
         billCardID = nil
         entrySheet = nil; retainedEntryDraft = nil; lastEntryType = .expense; lastEntryAccountID = nil
-        unsortedUndo = nil; unsortedUndoRestoration = nil
+        unsortedUndo = nil; unsortedUndoRestoration = nil; billUndo = nil
         #if os(iOS)
         if pagingLocked { pagingLocked = false }
         #endif
@@ -543,6 +543,8 @@ enum AppSheet: Identifiable {
     var askRequest: AskRequest?
     /// The bill whose long-press menu is open.
     var billMenu: BillMenuRequest?
+    /// The last home deletion's 撤销 bar. Survives the lock screen; ends at its own deadline.
+    var billUndo: BillUndoNotice?
     func openAsk(_ text: String = "", send: Bool = false) {
         guard !locked else { return }
         askRequest = AskRequest(text: text, send: send)
@@ -792,7 +794,7 @@ enum AppSheet: Identifiable {
             ledger = next
             if allowLockedCapture { undoLedger = nil; undoLabel = nil; toast = nil }
             if recordUndo {
-                unsortedUndo = nil
+                unsortedUndo = nil; billUndo = nil
                 undoLedger = undoSnapshot ?? before; undoLabel = reason
                 if showToast {
                     if entryMotion && !motion.saved.isEmpty { saveToastTask?.cancel(); pendingSaveToast = resultToast(reason, before: before, after: next); toast = nil }
@@ -970,7 +972,7 @@ enum AppSheet: Identifiable {
     }
     @discardableResult func restore(_ restored: Ledger) -> Bool {
         guard canEditLedger() else { return false }
-        do { let saved = try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil; undoLedger = nil; undoLabel = nil; toast = "账本已恢复，原账本已保留"; return true }
+        do { let saved = try persist(restored, reason: "恢复前", restoring: true); cancelEntrySaveMotion(); ledger = saved; resetRootNavigation(); loadFailure = nil; undoLedger = nil; undoLabel = nil; billUndo = nil; toast = "账本已恢复，原账本已保留"; return true }
         catch { self.error = error.localizedDescription; return false }
     }
     @discardableResult func recover(_ recovery: Recovery) -> Bool {
@@ -990,7 +992,7 @@ enum AppSheet: Identifiable {
     }
     func adoptPersistedPayloads(_ next: Ledger) { ledger = next }
     func adoptSyncedLedger(_ next: Ledger) {
-        cancelEntrySaveMotion(); ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil
+        cancelEntrySaveMotion(); ledger = next; loadFailure = nil; undoLedger = nil; undoLabel = nil; billUndo = nil
     }
     func recordSuccessfulBackup(of ledgerID: UUID, at date: Date) {
         guard current.id == ledgerID else { return }
@@ -1169,7 +1171,7 @@ struct RootView: View {
     @Namespace private var motionNamespace
     @State private var tabPaths: [Destination: [TabRoute]] = [:]
     @State private var toastHeight = CGFloat.zero
-    private var hasToast: Bool { !store.locked && !store.showsOverviewOverlay && (store.unsortedUndo != nil || store.toast != nil) }
+    private var hasToast: Bool { !store.locked && !store.showsOverviewOverlay && (store.unsortedUndo != nil || store.billUndo != nil || store.toast != nil) }
     #if os(iOS)
     @State private var keyboardVisible = false
     @State private var tabBarHeight = HomeSpec.tabHeight
@@ -1230,6 +1232,18 @@ struct RootView: View {
                     #else
                     .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
                     #endif
+            } else if !store.locked, !store.showsOverviewOverlay, store.entrySheet == nil, let notice = store.billUndo {
+                Toast(text: notice.label, onUndo: { store.undoBillDeletion(notice.id) }, onDismiss: {
+                    if store.billUndo?.id == notice.id { store.billUndo = nil }
+                }, undoIdentifier: "billUndo", deadline: notice.deadline)
+                    .id(notice.id)
+                    .deferredGeometryChange(for: CGFloat.self, of: { $0.size.height }) { toastHeight = $0 }
+                    #if os(iOS)
+                    .padding(.bottom, toastBottomPadding)
+                    #else
+                    .padding(.bottom, YubaiSize.buttonHeight + YubaiSpace.gapSection)
+                    #endif
+                    .transition(.asymmetric(insertion: .identity, removal: .opacity.animation(YubaiMotion.toastOut(reduceMotion: reduceMotion))))
             } else if !store.locked, !store.showsOverviewOverlay, store.entrySheet == nil, let toast = store.toast {
                 Toast(text: HomeButler.privacyText(toast, hidden: store.preferences.hideAmounts), onUndo: store.undoLabel == nil ? nil : { store.undo() }, onDismiss: { if store.toast == toast { store.toast = nil } })
                     .id(store.toastRevision)

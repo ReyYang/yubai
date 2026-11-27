@@ -1151,6 +1151,13 @@ struct DSInlineTextField: View {
     }
 }
 
+extension View {
+    /// `accessibilityFocused` when a binding is given; the same view otherwise.
+    @ViewBuilder func dsAccessibilityFocus(_ focus: AccessibilityFocusState<Bool>.Binding?) -> some View {
+        if let focus { accessibilityFocused(focus) } else { self }
+    }
+}
+
 struct DSCalendarPopover: View {
     let date: Date
     let now: Date
@@ -1159,6 +1166,8 @@ struct DSCalendarPopover: View {
     var canRepeat = true
     var onSelect: (Date) -> Void = { _ in }
     var onRepeat: () -> Void = {}
+    /// VoiceOver lands on the month title when the calendar pops out.
+    var titleFocus: AccessibilityFocusState<Bool>.Binding? = nil
 
     static func initialMonth(for date: Date, now: Date) -> Date {
         monthStart(for: min(date, now))
@@ -1179,6 +1188,7 @@ struct DSCalendarPopover: View {
         VStack(spacing: .zero) {
             HStack(spacing: .zero) {
                 Text(monthTitle).dsText(DS.Font.tBody).fontWeight(.semibold).accessibilityAddTraits(.isHeader)
+                    .dsAccessibilityFocus(titleFocus)
                 Spacer(minLength: .zero)
                 arrow(.back, offset: -1, label: "上个月")
                 arrow(.chevron, offset: 1, label: "下个月")

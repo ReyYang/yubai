@@ -337,7 +337,7 @@ public enum EntryEffect: Equatable, Sendable {
         case .reserve(let amount): "机动余钱还剩 " + Money.text(amount, currency: false)
         case .monthly(let amount): "下期起每月先留 " + Money.text(amount, currency: false)
         case .split(let amount): "待收回 " + Money.text(amount, currency: false)
-        case .reimbursement(let amount): "暂扣 " + Money.text(amount, currency: false)
+        case .reimbursement(let amount): "待收回 " + Money.text(amount, currency: false)
         }
     }
 
@@ -384,6 +384,18 @@ public enum EntrySaveMapper {
             guard ledger.accounts.contains(where: { $0.id == input.destinationAccountID && $0.kind == .investment }) else { return nil }
         }
         return .monthly(amount)
+    }
+
+    /// 算作存入 · 本期已存: every bill home tags 存入 (into savings, or an investment buy) in this cycle,
+    /// counted as a positive amount, plus the draft when its date falls in this cycle.
+    public static func depositedThisCycle(in ledger: Ledger, now: Date, adding draftAmount: Int64, on draftDate: Date) -> Int64 {
+        let cycle = Finance.cycle(in: ledger, now: now)
+        func inCycle(_ date: Date) -> Bool { Dates.day(date) >= Dates.day(cycle.start) && Dates.day(date) <= Dates.day(cycle.end) }
+        let saved = ledger.activeEntries.reduce(Int64(0)) { total, entry in
+            guard entry.intoFixedSavings || entry.nature == .investBuy, entry.date <= now, inCycle(entry.date) else { return total }
+            return total + abs(entry.amount)
+        }
+        return saved + (inCycle(draftDate) ? max(0, draftAmount) : 0)
     }
 
     public static func selectableAccounts(in ledger: Ledger, keeping selectedID: UUID? = nil) -> [Account] {

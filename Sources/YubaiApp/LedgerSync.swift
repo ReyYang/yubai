@@ -115,7 +115,7 @@ extension AppStore {
                 guard persistenceEpoch == epoch else { return }
                 persistenceEpoch &+= 1; recoveringWriteFailure = true
                 stopOrganizingImports()
-                cancelEntrySaveMotion(); clearUndo(); unsortedUndo = nil; unsortedUndoRestoration = nil; toast = nil
+                cancelEntrySaveMotion(); clearUndo(); unsortedUndo = nil; unsortedUndoRestoration = nil; billUndo = nil; toast = nil
                 self.error = error.localizedDescription
                 let reload = ledgerWriter.reset { (try repository.load(), repository.hasPendingSync) }
                 do {

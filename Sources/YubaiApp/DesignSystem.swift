@@ -2085,6 +2085,8 @@ struct Toast: View {
     var onDismiss: (() -> Void)? = nil
     var messageIdentifier = "toastMessage"
     var undoIdentifier = "undoLastChange"
+    /// A bar with its own end time (the 4-second delete bar) keeps it across background and hiding.
+    var deadline: Date? = nil
     private var truncated: Bool { !textSize.isAccessibilitySize && availableWidth > 0 && intrinsicWidth > availableWidth + 0.5 }
     private var hasChevron: Bool { !textSize.isAccessibilitySize && (truncated || expanded) }
     private var scrollsMessage: Bool { expanded || textSize.isAccessibilitySize }
@@ -2093,6 +2095,7 @@ struct Toast: View {
         ZStack { if visible { surface } }
             .task(id: text) {
                 expanded = false
+                if let deadline, deadline <= Date() { onDismiss?(); return }
                 withAnimation(YubaiMotion.toastIn(reduceMotion: reduceMotion)) { visible = true }
                 #if os(iOS)
                 AccessibilityNotification.Announcement(text + (onUndo == nil ? "" : "，可撤销")).post()
@@ -2103,7 +2106,8 @@ struct Toast: View {
                 #if DEBUG && targetEnvironment(simulator)
                 if onUndo != nil && UITestSupport.keepsUndoReceipt { return }
                 #endif
-                do { try await Task.sleep(for: .seconds(onUndo == nil ? 4 : 6)) } catch { return }
+                let wait = deadline.map { max(0, $0.timeIntervalSinceNow) } ?? (onUndo == nil ? 4 : 6)
+                do { try await Task.sleep(for: .seconds(wait)) } catch { return }
                 guard !Task.isCancelled, !expanded else { return }
                 dismiss()
             }

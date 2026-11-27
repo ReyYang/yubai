@@ -103,7 +103,7 @@ final class Batch3OverviewRebuildTests: YubaiUITestCase {
         tap("overviewTransfer")
         XCTAssertTrue(element("entryNature_transfer").waitForExistence(timeout: 5))
         XCTAssertTrue(element("entryNature_transfer").isSelected)
-        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == %@", "转出，招行储蓄")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == %@", "从，招行储蓄")).firstMatch.exists)
         dismissEntrySheet(in: app)
 
         tap("reconcileAccount"); label("overviewValuationAmount", contains: "32,180.00")

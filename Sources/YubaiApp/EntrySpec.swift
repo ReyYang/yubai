@@ -85,6 +85,7 @@ enum EntrySpec {
     static let categoryColumns = 5 // SPEC §8
     static let categorySecondaryGap: CGFloat = 14 // SPEC §8
     static let backspaceIcon: CGFloat = 24 // SPEC §7
+    static let popoverSpace = "entryPopover" // coordinate space shared by the pills and their pop-out list
     static let dragMinimum: CGFloat = 6 // design-v2 Spec-Gestures: 竖向位移 > 6 才接管
     static let dismissVelocity: CGFloat = 600 // design-v2 Spec-Gestures: 下行速度 > 600 → 收起
     static let dismissDistance: CGFloat = 140 // design-v2 Spec-Gestures: 位移 > 140 → 收起

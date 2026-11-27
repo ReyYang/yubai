@@ -18,6 +18,12 @@ struct EntrySheetOverlay: View {
     /// Goes false however the drag ends, including when the system cancels it without `onEnded`.
     @GestureState private var dragging = false
     @FocusState private var calendarFocus: EntryCalendarFocus?
+    /// VoiceOver: the pill a list popped out of, so closing the list goes back to it.
+    @AccessibilityFocusState private var pillFocus: EntryDrawer?
+    /// VoiceOver: the first item of the open list.
+    @AccessibilityFocusState private var listFocus: Bool
+    /// Only the largest type sizes scroll the form; there a drag belongs to the scroll unless it is at the top.
+    @State private var formScroll = EntryFormScroll()
 
     init(model: EntrySheetViewModel, onClose: @escaping () -> Void, onReceipt: @escaping () -> Void = {}) {
         self.model = model
@@ -46,9 +52,11 @@ struct EntrySheetOverlay: View {
                         .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose, fill: DS.Color.bg))
                 } else {
                     EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
-                                   calendarFocus: $calendarFocus, save: save, receipt: onReceipt)
-                        // High priority: once a finger travels 6 pt the sheet owns it and the key under it is not pressed.
-                        .highPriorityGesture(sheetDrag, including: model.drawer == nil ? .all : .subviews)
+                                   calendarFocus: $calendarFocus, pillFocus: $pillFocus, formScroll: $formScroll,
+                                   scrollLocked: dragOwned == true, save: save, receipt: onReceipt)
+                        // Spec-Gestures: alongside the keys and the scroll. The sheet decides by direction first;
+                        // once it owns the drag the controls under the finger stop taking the press.
+                        .simultaneousGesture(sheetDrag, including: model.drawer == nil ? .all : .subviews)
                         .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
                         .accessibilityHidden(model.categoryPanel || model.drawer?.isPopover == true)
                 }
@@ -56,6 +64,7 @@ struct EntrySheetOverlay: View {
                     DS.Color.scrim
                         .contentShape(Rectangle())
                         .onTapGesture { model.dismissCategoryPanel() }
+                        .gesture(closeDrag { model.dismissCategoryPanel() })
                         .accessibilityHidden(true)
                         .ignoresSafeArea()
                         .transition(.opacity)
@@ -70,7 +79,7 @@ struct EntrySheetOverlay: View {
             }
             .overlayPreferenceValue(EntryPillAnchors.self) { anchors in
                 if let drawer = model.drawer, drawer.isPopover, let anchor = anchors[drawer] {
-                    popover(drawer, anchor: anchor)
+                    popover(drawer, anchor: anchor, pills: anchors)
                         .transition(.opacity)
                 }
             }
@@ -82,11 +91,16 @@ struct EntrySheetOverlay: View {
         .accessibilityAction(.escape) { closeTopLayer() }
         .onChange(of: dragging) { _, active in
             guard !active else { return }
+            // Cleared here, after the touch is fully over, so the key under the finger stays disabled through its release.
             dragOwned = nil
             motion.settleIfDragging(reduced: reduced)
         }
         .onChange(of: model.drawer == .calendar) { wasOpen, isOpen in
             if wasOpen && !isOpen { calendarFocus = .timePill }
+        }
+        .onChange(of: model.drawer) { old, new in
+            guard let old, old.isPopover, new?.isPopover != true else { return }
+            pillFocus = old
         }
         .onAppear { model.schedulePreview() }
         .onChange(of: model.draft) { _, _ in model.schedulePreview() }
@@ -108,27 +122,39 @@ struct EntrySheetOverlay: View {
     }
 
     /// Spec-Gestures 记一笔 · 下拉收起: anywhere on the sheet, once it moves more down than across.
+    /// The first 6 pt decide: across stays with the content; up or down takes the sheet, except in the
+    /// scrolling form (largest type), where up, or down while not at the top, stays with the scroll.
     private var sheetDrag: some Gesture {
         DragGesture(minimumDistance: EntrySpec.dragMinimum, coordinateSpace: .global)
             .updating($dragging) { _, state, _ in state = true }
             .onChanged { value in
                 if dragOwned == nil {
                     let vertical = abs(value.translation.height) > abs(value.translation.width)
-                    dragOwned = vertical && model.drawer == nil && !model.categoryPanel
+                    let down = value.translation.height > 0
+                    let scrollKeeps = formScroll.scrolls && (!down || !formScroll.atTop)
+                    dragOwned = vertical && !scrollKeeps && model.drawer == nil && !model.categoryPanel
                 }
                 if dragOwned == true { motion.drag(value) }
             }
             .onEnded { value in
-                defer { dragOwned = nil }
                 guard dragOwned == true else { return }
                 if motion.willDismiss(value) { model.retainDraft() }
                 motion.release(value, reduced: reduced, onClose: onClose)
             }
     }
 
-    @ViewBuilder private func popover(_ drawer: EntryDrawer, anchor: Anchor<CGRect>) -> some View {
+    /// Spec-Gestures 一次关一层: pulling down on a list's or panel's backdrop closes that layer only.
+    private func closeDrag(_ close: @escaping () -> Void) -> some Gesture {
+        DragGesture(minimumDistance: EntrySpec.dragMinimum).onEnded { value in
+            if value.translation.height > abs(value.translation.width) { close() }
+        }
+    }
+
+    @ViewBuilder private func popover(_ drawer: EntryDrawer, anchor: Anchor<CGRect>,
+                                      pills: [EntryDrawer: Anchor<CGRect>]) -> some View {
         GeometryReader { geometry in
             let pill = geometry[anchor]
+            let targets = pills.filter { $0.key.isPopover }.mapValues { geometry[$0] }
             // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
             let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
                 : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
@@ -137,8 +163,13 @@ struct EntrySheetOverlay: View {
             let leading = min(max(margin, pill.midX - width * EntrySpec.midpoint),
                               geometry.size.width - margin - width)
             ZStack(alignment: .topLeading) {
+                // A tap on another pill switches straight to its list; anywhere else closes this one.
                 Color.clear.contentShape(Rectangle())
-                    .onTapGesture { model.drawer = nil }
+                    .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
+                        let hit = targets.first { $0.value.contains(location) }?.key
+                        model.drawer = hit == drawer ? nil : hit
+                    }
+                    .gesture(closeDrag { model.drawer = nil })
                     .accessibilityHidden(true)
                     .ignoresSafeArea()
                 ViewThatFits(in: .vertical) {
@@ -159,10 +190,12 @@ struct EntrySheetOverlay: View {
                 .accessibilityAction(.escape) { model.drawer = nil }
             }
         }
+        .coordinateSpace(.named(EntrySpec.popoverSpace))
         .onAppear {
             if drawer == .calendar { displayedMonth = DSCalendarPopover.initialMonth(for: model.draft.date, now: model.now) }
             calendarFocus = .calendar
         }
+        .task(id: drawer) { listFocus = true }
     }
 
     private func popoverWidth(_ drawer: EntryDrawer) -> CGFloat {
@@ -179,11 +212,11 @@ struct EntrySheetOverlay: View {
             DSCalendarPopover(date: model.draft.date, now: model.now, displayedMonth: $displayedMonth,
                               repeats: model.draft.repeatMonthly,
                               canRepeat: model.canRepeat && model.draft.exception == nil,
-                              onSelect: model.setDate, onRepeat: model.toggleRepeat)
+                              onSelect: model.setDate, onRepeat: model.toggleRepeat, titleFocus: $listFocus)
         case .source, .destination:
-            EntryAccountList(model: model, destination: drawer == .destination)
+            EntryAccountList(model: model, destination: drawer == .destination, firstFocus: $listFocus)
         case .more:
-            EntryMoreList(model: model)
+            EntryMoreList(model: model, firstFocus: $listFocus)
         default:
             EmptyView()
         }
@@ -198,6 +231,26 @@ struct EntrySheetOverlay: View {
     private func save() {
         guard !motion.closing, model.save() else { return }
         motion.close(reduced: reduced, sealed: true, onClose: onClose)
+    }
+}
+
+/// Whether the form is in its scrolling fallback (largest type) and scrolled to the top.
+struct EntryFormScroll: Equatable {
+    var scrolls = false
+    var atTop = true
+}
+
+private struct EntryFormScrollTop: ViewModifier {
+    @Binding var formScroll: EntryFormScroll
+
+    func body(content: Content) -> some View {
+        if #available(macOS 15, *) {
+            content.onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top <= 1 } action: { _, top in
+                formScroll.atTop = top
+            }
+        } else {
+            content
+        }
     }
 }
 
@@ -241,6 +294,10 @@ struct EntrySheetView: View {
     let safeBottom: CGFloat
     let maxHeight: CGFloat
     let calendarFocus: FocusState<EntryCalendarFocus?>.Binding
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
+    @Binding var formScroll: EntryFormScroll
+    /// The sheet owns the drag: the scrolling form holds still and the key under the finger lets go.
+    let scrollLocked: Bool
     let save: () -> Void
     let receipt: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduced
@@ -257,10 +314,15 @@ struct EntrySheetView: View {
                     .scrollBounceBehavior(.basedOnSize)
                     .scrollIndicators(.hidden)
                     .scrollDismissesKeyboard(.interactively)
+                    .scrollDisabled(scrollLocked)
+                    .modifier(EntryFormScrollTop(formScroll: $formScroll))
+                    .onAppear { formScroll.scrolls = true }
+                    .onDisappear { formScroll = EntryFormScroll() }
                 footer
             }
             .frame(maxHeight: maxHeight)
         }
+        .disabled(scrollLocked)
         .background(DS.Color.bg)
         .clipShape(UnevenRoundedRectangle(topLeadingRadius: DS.Radius.sheet, topTrailingRadius: DS.Radius.sheet, style: .continuous))
         .accessibilityElement(children: .contain)
@@ -278,7 +340,7 @@ struct EntrySheetView: View {
                 .padding(.top, EntrySpec.amountTop)
                 .padding(.horizontal, DS.Space.s20)
             typeBody
-            EntryPillsRowView(model: model, calendarFocus: calendarFocus)
+            EntryPillsRowView(model: model, calendarFocus: calendarFocus, pillFocus: pillFocus)
                 .padding(.top, EntrySpec.pillsTop)
                 .padding(.horizontal, DS.Space.s20)
             EntryEffectLineView(model: model)
@@ -311,7 +373,7 @@ struct EntrySheetView: View {
 
     @ViewBuilder private var typeBody: some View {
         if model.draft.isRoute {
-            EntryTransferRouteView(model: model)
+            EntryTransferRouteView(model: model, pillFocus: pillFocus)
                 .padding(.top, EntrySpec.routeTop)
                 .padding(.horizontal, DS.Space.s20)
         } else {
@@ -586,6 +648,7 @@ private struct EntryCategoryCircle: View {
 /// Main.dc.html 从 / 到: two cards; 到 a savings account makes it 存入.
 private struct EntryTransferRouteView: View {
     let model: EntrySheetViewModel
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
 
     var body: some View {
         HStack(spacing: DS.Space.s8) {
@@ -617,6 +680,7 @@ private struct EntryTransferRouteView: View {
             .entryAnchor(drawer)
         }
         .buttonStyle(EntryTactileButtonStyle())
+        .accessibilityFocused(pillFocus, equals: drawer)
         .accessibilityLabel((destination ? "到，" : "从，") + title)
         .accessibilityHint(destination ? "选择转入账户" : "选择转出账户")
     }
@@ -709,6 +773,7 @@ private struct EntryOptionalAnchor: ViewModifier {
 /// Main.dc.html 例外胶囊: 「待报销 ×」 — the label reopens the list, × clears it.
 private struct EntryFlagPill: View {
     let title: String
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
     let open: () -> Void
     let clear: () -> Void
 
@@ -721,6 +786,7 @@ private struct EntryFlagPill: View {
                     .frame(minHeight: DS.Size.tapMin)
             }
             .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
+            .accessibilityFocused(pillFocus, equals: .more)
             .accessibilityHint("换一个选项")
             Button(action: clear) {
                 DS.Icon.close.view(size: EntrySpec.flagClearIcon, color: DS.Color.warnInk)
@@ -739,6 +805,7 @@ private struct EntryFlagPill: View {
 private struct EntryPillsRowView: View {
     let model: EntrySheetViewModel
     let calendarFocus: FocusState<EntryCalendarFocus?>.Binding
+    let pillFocus: AccessibilityFocusState<EntryDrawer?>.Binding
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.pillsRow)
@@ -748,18 +815,21 @@ private struct EntryPillsRowView: View {
                 EntryPill(title: account?.name ?? "账户", icon: account?.kind.icon ?? .acctWallet,
                           selected: model.drawer == .source, chevron: true, anchor: .source,
                           hint: "选择这笔账的账户") { model.toggleDrawer(.source) }
+                    .accessibilityFocused(pillFocus, equals: .source)
                     .accessibilityIdentifier("entryAccountPill")
             }
             EntryPill(title: model.dayLabel, icon: .time, suffix: model.draft.repeatMonthly ? " · 每月" : nil,
                       selected: model.drawer == .calendar, chevron: true, anchor: .calendar,
                       hint: model.drawer == .calendar ? "收起日历" : "选择日期和重复选项") { model.toggleDrawer(.calendar) }
                 .focused(calendarFocus, equals: .timePill)
+                .accessibilityFocused(pillFocus, equals: .calendar)
                 .accessibilityIdentifier("entryTimePill")
             if let flag = flagTitle {
-                EntryFlagPill(title: flag, open: { model.toggleDrawer(.more) }, clear: clearFlag)
+                EntryFlagPill(title: flag, pillFocus: pillFocus, open: { model.toggleDrawer(.more) }, clear: clearFlag)
             } else if hasMore {
                 EntryPill(title: nil, icon: .more, selected: model.drawer == .more, label: "更多选项", anchor: .more,
                           hint: "列出全部选项") { model.toggleDrawer(.more) }
+                    .accessibilityFocused(pillFocus, equals: .more)
                     .accessibilityIdentifier("entryMorePill")
             }
         }
@@ -784,6 +854,7 @@ private struct EntryPillsRowView: View {
 private struct EntryAccountList: View {
     let model: EntrySheetViewModel
     let destination: Bool
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
 
     var body: some View {
         let accounts = model.accounts(destination: destination)
@@ -813,6 +884,7 @@ private struct EntryAccountList: View {
                 }
                 .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
                 .accessibilityAddTraits(account.id == selectedID ? .isSelected : [])
+                .dsAccessibilityFocus(index == 0 ? firstFocus : nil)
             }
         }
         .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
@@ -826,6 +898,7 @@ private struct EntryAccountList: View {
 private struct EntryMoreList: View {
     static let nextCycle = "计入下周期"
     let model: EntrySheetViewModel
+    let firstFocus: AccessibilityFocusState<Bool>.Binding
 
     private struct Option: Identifiable {
         let id: String
@@ -874,6 +947,7 @@ private struct EntryMoreList: View {
                 .buttonStyle(EntryTactileButtonStyle(haptic: DSMotion.Haptic.toggle))
                 .accessibilityAddTraits(option.selected ? .isSelected : [])
                 .accessibilityIdentifier("entryMore_" + option.id)
+                .dsAccessibilityFocus(index == 0 ? firstFocus : nil)
             }
         }
         .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
@@ -1142,6 +1216,11 @@ struct EntryCategoryPanelView: View {
             }
             .frame(height: EntrySpec.panelHeader)
             .padding(.horizontal, DS.Space.s20)
+            .contentShape(Rectangle())
+            // Pulling the panel's top down closes the panel only; the sheet under it stays.
+            .gesture(DragGesture(minimumDistance: EntrySpec.dragMinimum).onEnded { value in
+                if confirm == nil, value.translation.height > abs(value.translation.width) { model.dismissCategoryPanel() }
+            })
             ScrollView {
                 VStack(spacing: .zero) {
                     ForEach(rows.indices, id: \.self) { index in

@@ -25,11 +25,6 @@ enum AskFixture: String {
     static let purchaseQuestions = [PurchaseQuestion(text: "现在用的耳机是哪里不满意？", options: ["降噪不够", "坏了", "就是想要"]),
                             PurchaseQuestion(text: "一周戴几次？", options: ["每天", "通勤才戴", "偶尔"]),
                             PurchaseQuestion(text: "能先借一副试几天吗？", options: ["能", "不能"])]
-    // canvas Ask.dc.html: batch, with 滴滴出行 -27.40 the model left out
-    static let screenshotText = ["账单", "美团外卖", "-36.80", "11月23日 12:10", "滴滴", "-36.50", "11月22日 18:00", "便利店", "-12.00", "11月22日 21:00",
-                                 "滴滴出行", "-27.40", "11月22日 18:33", "优衣库 退款", "+59.00", "11月22日 15:00"].joined(separator: "\n")
-    // canvas Ask.dc.html: shotLines
-    static let screenshotLines: [CGFloat] = [40, 52, 34, 46, 38, 50]
 
     #if DEBUG
     @MainActor func seed(_ ledger: inout Ledger, now: Date) -> [AskMessage] {
@@ -50,8 +45,8 @@ enum AskFixture: String {
             value.purchaseQuestions = questions
             return value
         }
-        func user(_ text: String, lines: [CGFloat] = []) -> AskMessage { AskMessage(kind: .user(text, image: nil, placeholder: lines)) }
-        func answer(_ value: AssistantReply, _ question: String, ocr: String? = nil) -> AskMessage { AskMessage(kind: .reply(value, question: question, image: nil, ocr: ocr)) }
+        func user(_ text: String) -> AskMessage { AskMessage(kind: .user(text)) }
+        func answer(_ value: AssistantReply, _ question: String) -> AskMessage { AskMessage(kind: .reply(value, question: question)) }
         let day = { (value: Int, time: String) in Dates.parse(String(format: "2025-11-%02d %@", value, time))! }
 
         switch self {
@@ -88,8 +83,8 @@ enum AskFixture: String {
                           refund]
             let change = ChangeSet(source: "问余白", reason: "截图记账", items: drafts.map { .addEntry($0) })
             ledger.pendingChanges.append(change)
-            return [user("这几笔帮我记一下", lines: Self.screenshotLines),
-                    answer(AssistantReply(proposedChangeSets: [change], text: ""), "这几笔帮我记一下", ocr: Self.screenshotText)]
+            return [user("这几笔帮我记一下"),
+                    answer(AssistantReply(proposedChangeSets: [change], text: ""), "这几笔帮我记一下")]
         case .offline:
             let days = HomeDisplay.daysLeft(Finance.spendableBreakdown(ledger, now: now))
             return [user("购物这个月还剩多少"),
