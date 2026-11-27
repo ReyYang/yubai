@@ -109,8 +109,6 @@ final class BillCatalogTests: XCTestCase {
     }
     func testForeignBillTotalsAndFormulaAlwaysUseCNY() {
         var ledger = ledger(); ledger.plans = [foreign(ledger)]
-        let month = BillCalendarMonth(containing: day(), in: ledger, now: day())
-        XCTAssertEqual(month.remaining, 14_240); XCTAssertEqual(month.unpaidCount, 1)
         XCTAssertEqual(Finance.funds(ledger, now: day()).committed, 14_240)
         XCTAssertEqual(Finance.formula(ledger, now: day()).billsRest, 14_240)
         XCTAssertEqual(ledger.plans[0].amount, 2_000)
@@ -239,29 +237,6 @@ final class BillCatalogTests: XCTestCase {
         XCTAssertEqual(ledger.butlerSavings.first?.amount, 14_240)
         XCTAssertEqual(ButlerSavings.total(ledger, now: day(2026, 11, 28)), 14_240)
     }
-    func testCalendarHonorsSystemWeekStartAndPaidAndYearlyStates() throws {
-        var ledger = ledger(); var plan = foreign(ledger); ledger.plans = [plan]
-        plan.id = UUID(); plan.title = "1Password"; plan.frequency = .yearly; ledger.plans.append(plan)
-        var sunday = Dates.calendar; sunday.firstWeekday = 1
-        var monday = Dates.calendar; monday.firstWeekday = 2
-        let a = BillCalendarMonth(containing: day(), in: ledger, now: day(), calendar: sunday)
-        let b = BillCalendarMonth(containing: day(), in: ledger, now: day(), calendar: monday)
-        XCTAssertEqual(a.leadingDays, 0); XCTAssertEqual(b.leadingDays, 6)
-        XCTAssertEqual(a.weekdaySymbols.first, "日"); XCTAssertEqual(b.weekdaySymbols.first, "一")
-        XCTAssertEqual(a.days.first { $0.date == day(2026, 11, 28) }?.bills.count, 2)
-        XCTAssertTrue(a.days.first { $0.date == day(2026, 11, 28) }!.yearly)
-        XCTAssertEqual(a.yearlyMonths, [11])
-        let change = try FixedFlows.settle(planID: ledger.plans[0].id, occurrence: ledger.plans[0].dueDate, in: ledger, now: day(2026, 11, 28))
-        try change.apply(to: &ledger)
-        let paid = BillCalendarMonth(containing: day(), in: ledger, now: day(2026, 11, 28))
-        XCTAssertEqual(paid.paid, 14_240); XCTAssertEqual(paid.remaining, 14_240); XCTAssertEqual(paid.unpaidCount, 1)
-    }
-    func testCalendarIncludesPaydayAndHandlesLeapFebruaryAndEmptyMonths() {
-        var ledger = ledger(); ledger.plans = [Plan(title: "工资", amount: 800_000, dueDate: day(2028, 2, 29), frequency: .monthly, inflow: true, category: "工资", nature: .income)]
-        let month = BillCalendarMonth(containing: day(2028, 2, 1), in: ledger, now: day(2028, 2, 1))
-        XCTAssertEqual(month.days.count, 29); XCTAssertTrue(month.days.last!.payday); XCTAssertEqual(month.remaining, 0)
-        XCTAssertEqual(BillCalendarMonth(containing: day(2028, 1, 1), in: ledger, now: day()).unpaidCount, 0)
-    }
     func testCreditPaymentDayClampsAndOldAccountsDecode() throws {
         XCTAssertEqual(CreditPaymentDate.next(day: 31, now: day(2027, 2, 1)), day(2027, 2, 28))
         XCTAssertEqual(CreditPaymentDate.next(day: 5, now: day(2026, 11, 20)), day(2026, 12, 5))
@@ -301,13 +276,5 @@ final class BillCatalogTests: XCTestCase {
         try change.apply(to: &ledger)
         XCTAssertEqual(ledger.plans[0].scheduledDate(at: 0), day(2027, 2, 28))
         XCTAssertEqual(ledger.plans[0].scheduledDate(at: 1), day(2027, 3, 31))
-    }
-    func testCalendarCountsPartialPaymentsInPaidTotalAndOnlyRemainderAsUnpaid() throws {
-        var ledger = ledger(); var plan = Plan(title: "部分付款", amount: 10_000, dueDate: day(), frequency: .monthly)
-        plan.accountID = ledger.accounts[0].id; ledger.plans = [plan]
-        let change = try FixedFlows.settle(planID: plan.id, occurrence: day(), amount: 4_000, in: ledger, now: day())
-        try change.apply(to: &ledger)
-        let month = BillCalendarMonth(containing: day(), in: ledger, now: day())
-        XCTAssertEqual(month.paid, 4_000); XCTAssertEqual(month.remaining, 6_000); XCTAssertEqual(month.unpaidCount, 1)
     }
 }

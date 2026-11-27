@@ -158,12 +158,10 @@ final class MemoryTests: XCTestCase {
         ledger.memories = [MemoryNote(id: id, text: "和张三吃饭，卡号6222021234567890", kind: .life, source: .user, createdAt: now)]
         let answer = ScriptedChatTransport([ChatMessage(role: .assistant, content: "我记得你的生活背景。")])
         _ = try await AskYubai.answer("了解我吗", transport: answer, context: ToolContext(ledger: ledger, now: now))
-        let cold = ScriptedChatTransport([ChatMessage(role: .assistant, content: "你愿意为哪些事情多花一点？")])
-        _ = try await ProfileColdStart(transport: cold).next(ledger: ledger, messages: [], now: now)
         let wording = ScriptedChatTransport([ChatMessage(role: .assistant, content: "bad optional wording")])
         let candidate = try XCTUnwrap(WeeklyLetter.candidate(ledger, now: now))
         _ = await ButlerWording.word([candidate], ledger: ledger, transport: wording, now: now)
-        for requests in [await answer.recorded(), await cold.recorded(), await wording.recorded()] {
+        for requests in [await answer.recorded(), await wording.recorded()] {
             let message = try XCTUnwrap(requests[0].messages.first { $0.role == .system && $0.content?.contains("memories") == true }?.content)
             XCTAssertFalse(message.contains("张三")); XCTAssertFalse(message.contains("6222021234567890"))
             let block = try JSONValue.parse(Redactor(ledger: ledger).content(message))["memories"]!

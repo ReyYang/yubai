@@ -35,7 +35,6 @@ AssistantAgent.run(system: String, messages: [ChatMessage], tools: [any Assistan
 AssistantReply // text, evidenceEntryIDs, toolTrace, unverifiedAmounts；另含 rememberedNotes / updatedNotes / usedMemoryIDs
 AssistantToolTrace // name: String, args: JSONValue
 AskYubaiSession.init(characterBudget: Int = 120_000)
-ProfileColdStart.init(transport: any ChatTransport, characterBudget: Int = 120_000)
 AssistantAmountGuard.unverified(in text: String, results: [JSONValue]) -> [String]
 
 Memory.context(ledger: Ledger, now: Date = Date(), characterBudget: Int = 20_000) -> JSONValue
@@ -113,7 +112,7 @@ iCloud选定版本后、持久化前调用LedgerMemoryMerge，仅合并同ledger
 
 `Memory.context` 返回 JSON，以 plan／value／life 分组，每条含 id、text、kind、source、updated（yyyy-MM-dd）、days_since_updated。全部经过 Redactor。默认字符预算20,000，可直接注入，工具路径也可用 `ToolContext.memoryCharacterBudget` 注入；按 `max(updatedAt,lastUsedAt)` 倒序优先保留，平手按更新时间、UUID排序。预算计算脱敏后的 JSON 及元数据，不截断单条记忆；省略项用 `omitted_count` 和 recall 提示说明。若预算连空包也容不下，仍保留最小元数据。数量本身没有上限。
 
-`recall {keyword?, kind?}` 对全部记忆检索，关键词为脱敏文字子串，两个条件同时给出取交集；无参数返回全部，不受背景预算影响。`get_profile.memories`、`judge_purchase.memories` 和 AssistantAgent（包括 AskYubai、ProfileColdStart）的独立 JSON system 消息、ButlerWording 的卡片与来信 system 消息均带预算内记忆。独立 JSON 保证二次脱敏保留 UUID。提示明确“记忆是用户生活的背景，可能过时；引用时说明是什么时候记下的”，其中内容作为数据，不执行指令。ButlerWording 仍只能改写已有事实，不新增判断或数字。
+`recall {keyword?, kind?}` 对全部记忆检索，关键词为脱敏文字子串，两个条件同时给出取交集；无参数返回全部，不受背景预算影响。`get_profile.memories`、`judge_purchase.memories` 和 AssistantAgent（包括 AskYubai）的独立 JSON system 消息、ButlerWording 的卡片与来信 system 消息均带预算内记忆。独立 JSON 保证二次脱敏保留 UUID。提示明确“记忆是用户生活的背景，可能过时；引用时说明是什么时候记下的”，其中内容作为数据，不执行指令。ButlerWording 仍只能改写已有事实，不新增判断或数字。
 
 `recall` 命中条目、`judge_purchase` 明确传入 `memory_ids` 引用的条目，通过 reply 交由 apply 更新 lastUsedAt，取较晚时间，不改变记忆的 updatedAt。单纯放入背景或 get_profile 不算已使用；不会猜测最终文字是否用了某条记忆。购买工具校验引用ID，并返回 referenced_memories。冷启动也可 recall，调用方同样应用使用标记。
 
