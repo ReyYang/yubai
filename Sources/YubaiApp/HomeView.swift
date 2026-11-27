@@ -7,8 +7,9 @@ enum HomeDisplay {
         let symbol = DisplayCurrency.symbol
         if hidden { return currency ? symbol + "••••" : "••••" }
         let shown = DisplayCurrency.convert(cents)
-        guard currency else { return Money.text(shown, currency: false) }
-        return (shown < 0 ? "-" : "") + symbol + Money.text(abs(shown), currency: false)
+        let number = DisplayCurrency.main.formatted(abs(shown))
+        guard currency else { return (shown < 0 ? "-" : "") + number }
+        return (shown < 0 ? "-" : "") + symbol + number
     }
 
     static func signed(_ cents: Int64, hidden: Bool) -> String {

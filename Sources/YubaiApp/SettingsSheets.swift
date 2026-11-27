@@ -89,7 +89,9 @@ struct SettingsSheetHost: View {
         case .subAdd: SubscriptionAddSheet()
         case .subIcon: SubscriptionIconSheet()
         case .addCategory(let income): TextEntrySheet(title: income ? "添加收入分类" : "添加支出分类", placeholder: "名称", initial: "", identifier: "categoryName") { name, ledger in
-            try CategoryModel.add(YubaiCore.Category(name, income: income), in: &ledger)
+            var added = YubaiCore.Category(name, income: income)
+            added.icon = DS.Icon.newCategoryIcon(name: name.trimmingCharacters(in: .whitespacesAndNewlines), income: income, in: ledger)
+            try CategoryModel.add(added, in: &ledger)
         }
         case let .addSubcategory(category, income): TextEntrySheet(title: "添加小类", placeholder: category, initial: "", identifier: "subcategoryName") { name, ledger in
             try CategoryModel.addSubcategory(name, to: category, income: income, in: &ledger)
@@ -102,10 +104,7 @@ struct SettingsSheetHost: View {
         case .mainCurrency(let currency): MainCurrencyConfirm(currency: currency)
         case .captureCard(let card): CaptureCardSheet(card: card)
         case .captureMerchant(let key): CaptureMerchantSheet(key: key)
-        case .captureAddCard: TextEntrySheet(title: "添加卡", placeholder: "卡名", initial: "", identifier: "captureCardName") { name, ledger in
-            guard let account = ManualBookkeeping.defaultAccount(in: ledger) else { throw YubaiError.invalid("请先添加账户。") }
-            try QuickCapture.setAccount(account.id, forCard: name, in: &ledger)
-        }
+        case .captureAddCard: CaptureCardSheet(card: nil)
         case let .accountAdd(type, onboarding): AccountAddSheet(type: type ?? .debit, onboarding: onboarding)
         case .accountName(let id): TextEntrySheet(title: "名称", placeholder: "名称", initial: store.accounts.first { $0.id == id }?.name ?? "", identifier: "accountName") { name, ledger in
             try Accounts.update(id, .init(name: name), in: &ledger, now: Dates.now)

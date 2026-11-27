@@ -188,7 +188,8 @@ private struct EntryCategoryEditView: View {
                     nameRow
                         .entryCardRow(first: true, last: true)
                 }
-                if let category, !readOnly {
+                // The picks are expense icons; income categories keep theirs.
+                if let category, !readOnly, !category.income {
                     iconGrid(category)
                         .padding(.vertical, DS.Space.s12)
                         .entryCardRow(first: true, last: true)
@@ -348,10 +349,9 @@ private struct EntryCategoryEditView: View {
                 current = cleaned
             }
         } else {
-            // Every category gets its own icon: a new one starts on the first pick no other category shows.
-            let taken = Set(model.ledger.categories.filter { $0.income == income && !$0.system }.map(\.entryIcon))
+            // Every category gets its own icon (Spec-Issues 4).
             var added = YubaiCore.Category(cleaned, income: income)
-            added.icon = DS.Icon.categoryChoices.first { !taken.contains($0) && $0 != .catOther }?.rawValue
+            added.icon = DS.Icon.newCategoryIcon(name: cleaned, income: income, in: model.ledger)
             if model.mutateLedger("添加分类", { try CategoryModel.add(added, in: &$0) }) { current = cleaned }
         }
     }
@@ -456,4 +456,17 @@ struct EntryPageHeader<Trailing: View>: View {
         .frame(height: DS.Size.tapMin)
         .padding(.horizontal, DS.Space.s8)
     }
+}
+
+extension DS.Icon {
+    /// The icon a new category starts with: what its name already means, if no other category shows it;
+    /// else the first pick no other expense category shows. Income categories keep their own icons.
+    static func newCategoryIcon(name: String, income: Bool, in ledger: Ledger) -> String? {
+        let taken = Set(ledger.categories.filter { $0.income == income && !$0.system }.map(\.entryIcon))
+        let natural = DS.Icon(category: name, symbol: YubaiCore.Category(name).symbol, income: income)
+        if natural != .catOther && !taken.contains(natural) { return nil }
+        guard !income else { return nil }
+        return categoryChoices.first { !taken.contains($0) && $0 != .catOther }?.rawValue
+    }
+
 }

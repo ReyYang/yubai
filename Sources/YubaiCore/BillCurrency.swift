@@ -15,8 +15,17 @@ public enum BillCurrency: String, CaseIterable, Codable, Identifiable, Sendable 
         case .jpy: "日元"; case .sgd: "新加坡元"; case .aud: "澳元"; case .cad: "加拿大元"
         }
     }
+    /// Yen has no minor unit: shown whole.
+    public var fractionDigits: Int { self == .jpy ? 0 : 2 }
     public func amountText(_ cents: Int64, hidden: Bool = false) -> String {
-        hidden ? "••••" : symbol + Money.text(cents, currency: false)
+        hidden ? "••••" : symbol + formatted(cents)
+    }
+    /// The number alone, grouped, with this currency's decimals.
+    public func formatted(_ cents: Int64) -> String {
+        guard fractionDigits == 0 else { return Money.text(cents, currency: false) }
+        let formatter = NumberFormatter(); formatter.locale = Locale(identifier: "zh_CN"); formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0; formatter.roundingMode = .halfUp
+        return formatter.string(from: NSDecimalNumber(decimal: Decimal(cents) / 100)) ?? "0"
     }
 }
 

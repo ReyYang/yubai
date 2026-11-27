@@ -23,9 +23,9 @@ struct QuickCaptureSettingsView: View {
                         statistic("没打开余白", count: recent.filter { $0.quickCapture?.withoutOpeningApp == true }.count).dsFillWidth()
                     }.padding(.horizontal, DS.Space.s4)
                     DSSettingsCard(leading: DS.Space.s16) {
-                        entrance(.acctCredit, "Apple Pay 付完就记", count: QuickCapture.recentCount(.applePay, in: ledger, now: now),
+                        entrance(.acctCredit, "Apple Pay 付完就记", count: recent.filter { $0.source == QuickCapture.Entrance.applePay.rawValue }.count,
                                  first: true, id: "quickApplePay")
-                        entrance(.send, "Siri", count: QuickCapture.recentCount(.siri, in: ledger, now: now), first: false, id: "quickSiri")
+                        entrance(.send, "Siri", count: recent.filter { $0.source != QuickCapture.Entrance.applePay.rawValue }.count, first: false, id: "quickSiri")
                     }
                     DSSettingsCard(leading: DS.Space.s16) {
                         link(.acctCredit, "卡对应的账户", "\(QuickCapture.cards(in: ledger, now: now).count) 张", first: true, id: "openCaptureCardRules") {
@@ -58,12 +58,21 @@ struct QuickCaptureSettingsView: View {
         }.accessibilityElement(children: .combine)
     }
 
-    private func entrance(_ icon: DS.Icon, _ name: String, count: Int, first: Bool, id: String) -> some View {
-        Button {
-            #if os(iOS)
-            askingToOpen = true
-            #endif
-        } label: {
+    @ViewBuilder private func entrance(_ icon: DS.Icon, _ name: String, count: Int, first: Bool, id: String) -> some View {
+        #if os(iOS)
+        Button { askingToOpen = true } label: { entranceRow(icon, name, count: count, first: first) }
+            .dsPressStyle()
+            .accessibilityElement(children: .combine)
+            .accessibilityHint("打开快捷指令添加余白的动作")
+            .accessibilityIdentifier(id)
+        #else
+        // The Mac has no 记一笔 actions to add: a plain row with its count.
+        entranceRow(icon, name, count: count, first: first).accessibilityElement(children: .combine).accessibilityIdentifier(id)
+        #endif
+    }
+
+    private func entranceRow(_ icon: DS.Icon, _ name: String, count: Int, first: Bool) -> some View {
+        Group {
             HStack(spacing: DS.Space.s12) {
                 DSIconView(icon: icon, size: DS.Size.icon, color: DS.Color.accentInk)
                 VStack(alignment: .leading, spacing: .zero) {
@@ -83,10 +92,6 @@ struct QuickCaptureSettingsView: View {
             }
             .contentShape(Rectangle())
         }
-        .dsPressStyle()
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("打开快捷指令添加余白的动作")
-        .accessibilityIdentifier(id)
     }
 
     private func link(_ icon: DS.Icon, _ name: String, _ value: String, first: Bool, id: String, action: @escaping () -> Void) -> some View {
@@ -230,18 +235,25 @@ struct QuickMerchantRule: Identifiable {
 }
 
 /// 卡对应的账户 · 选账户: the accounts in use; picking one saves and closes.
+/// With no card yet (添加卡) the name comes first; a name already on the list edits that card.
 struct CaptureCardSheet: View {
-    let card: String
+    let card: String?
     @Environment(AppStore.self) private var store
+    @State private var name = ""
 
     var body: some View {
         let ledger = store.current
-        let current = QuickCapture.cards(in: ledger, now: store.financialNow).first { QuickCapture.cardKey($0.card) == QuickCapture.cardKey(card) }?.accountID
-        SettingsSheetFrame(title: card, identifier: "captureCardSheet") { close in
+        let typed = card ?? name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = QuickCapture.cards(in: ledger, now: store.financialNow).first { QuickCapture.cardKey($0.card) == QuickCapture.cardKey(typed) }?.accountID
+        SettingsSheetFrame(title: card ?? "添加卡", identifier: "captureCardSheet") { close in
+            if card == nil {
+                DSInlineTextField(title: "卡名", text: $name).padding(.horizontal, DS.Space.s20).padding(.top, DS.Space.s4)
+                    .accessibilityIdentifier("captureCardName")
+            }
             DSPeriodOptionGroup(options: ledger.accounts.filter { !$0.archived }.map { .init(id: $0.id.uuidString, title: $0.name) },
                                 selection: current?.uuidString ?? "", rowHeight: SettingsSpec.row, identifierPrefix: "captureCardAccount_") { value in
-                guard let id = UUID(uuidString: value) else { return }
-                if store.update("卡对应的账户", entryMotion: false, showToast: false, { try QuickCapture.setAccount(id, forCard: card, in: &$0) }) { close() }
+                guard let id = UUID(uuidString: value), !typed.isEmpty else { return }
+                if store.update("卡对应的账户", entryMotion: false, showToast: false, { try QuickCapture.setAccount(id, forCard: typed, in: &$0) }) { close() }
             }
             .padding(.horizontal, DS.Space.s20).padding(.top, DS.Space.s4).padding(.bottom, OverviewSpec.periodBottom)
         }

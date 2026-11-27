@@ -233,7 +233,7 @@ struct CategorySettingsView: View {
                 withAnimation(reduced ? nil : DSMotion.smoothAnimation) { open = isOpen ? nil : category.name }
             } label: {
                 HStack(spacing: DS.Space.s12) {
-                    DSIconView(icon: SettingsDisplay.categoryIcon(category.name), size: DS.Size.icon, color: isOpen ? DS.Color.accentInk : DS.Color.ink2)
+                    DSIconView(icon: category.entryIcon, size: DS.Size.icon, color: isOpen ? DS.Color.accentInk : DS.Color.ink2)
                         .frame(width: DS.Size.iconTile, height: DS.Size.iconTile)
                         .background(isOpen ? DS.Color.accentSoft : DS.Color.surface, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
                     Text(category.name).dsText(DS.Font.tTitle).foregroundStyle(DS.Color.ink).lineLimit(1)
@@ -433,8 +433,18 @@ struct CurrencyView: View {
                     sectionTitle("主币种")
                     DSSettingsCard(leading: DS.Space.s16) {
                         ForEach(Array(BillCurrency.allCases.enumerated()), id: \.element) { index, currency in
+                            // A currency with no rate yet (never synced, none fixed) cannot be the main one.
+                            let available = currency == .cny || ExchangeRates.rate(for: currency, in: ledger, now: now) != nil
                             Button {
-                                if currency != main { store.settingsSheet = .mainCurrency(currency) }
+                                guard currency != main else { return }
+                                if currency == .cny {
+                                    // Back to 人民币: the stored numbers again, nothing to confirm (Spec-Currency).
+                                    _ = store.update("主币种", recordUndo: false, entryMotion: false, showToast: false) {
+                                        try ExchangeRates.setMainCurrency(.cny, in: &$0, now: now)
+                                    }
+                                } else {
+                                    store.settingsSheet = .mainCurrency(currency)
+                                }
                             } label: {
                                 HStack(spacing: .zero) {
                                     Text(currency.symbol).dsText(DS.Font.tLabelStrong).monospacedDigit().foregroundStyle(DS.Color.ink2)
@@ -453,6 +463,8 @@ struct CurrencyView: View {
                                 .contentShape(Rectangle())
                             }
                             .dsPressStyle()
+                            .disabled(!available)
+                            .opacity(available ? 1 : SettingsSpec.disabledOpacity)
                             .accessibilityAddTraits(currency == main ? .isSelected : [])
                             .accessibilityIdentifier("mainCurrency_" + currency.rawValue)
                         }
@@ -529,7 +541,7 @@ struct CurrencyView: View {
         }
         .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
         .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline) }
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .contain)
         .accessibilityIdentifier("lastRateSync")
     }
 }

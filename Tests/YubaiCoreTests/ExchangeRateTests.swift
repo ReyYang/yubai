@@ -38,6 +38,12 @@ final class ExchangeRateTests: XCTestCase {
         XCTAssertThrowsError(try FixedFlows.removeRate(.usd, in: &ledger))
     }
 
+    func testYenIsShownWhole() {
+        XCTAssertEqual(BillCurrency.jpy.amountText(128_000), "JP¥1,280")
+        XCTAssertEqual(BillCurrency.jpy.formatted(208_333), "2,083")
+        XCTAssertEqual(BillCurrency.cad.amountText(425), "C$4.25")
+    }
+
     func testParsesECBIntoCNYPerUnit() throws {
         let rates = try ExchangeRates.parseECB(Data(ecb.utf8), fetchedAt: now)
         XCTAssertEqual(rates.date, Dates.parse("2026-11-26"))

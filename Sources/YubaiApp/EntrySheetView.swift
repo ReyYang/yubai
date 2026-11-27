@@ -82,7 +82,7 @@ struct EntrySheetOverlay: View {
             }
             .overlayPreferenceValue(EntryPillAnchors.self) { frames in
                 if let drawer = model.drawer, drawer.isPopover, let anchor = frames.drawn[drawer] {
-                    popover(drawer, anchor: anchor, pills: frames.hit)
+                    popover(drawer, anchor: anchor, pills: frames.hit, keypad: frames.keypad)
                         .transition(.opacity)
                 }
             }
@@ -154,9 +154,10 @@ struct EntrySheetOverlay: View {
     }
 
     @ViewBuilder private func popover(_ drawer: EntryDrawer, anchor: Anchor<CGRect>,
-                                      pills: [EntryDrawer: Anchor<CGRect>]) -> some View {
+                                      pills: [EntryDrawer: Anchor<CGRect>], keypad: Anchor<CGRect>?) -> some View {
         GeometryReader { geometry in
             let pill = geometry[anchor]
+            let keys = keypad.map { geometry[$0] }
             let targets = pills.mapValues { geometry[$0] }
             // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
             let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
@@ -169,8 +170,9 @@ struct EntrySheetOverlay: View {
                               geometry.size.width - margin - width)
             ZStack(alignment: .topLeading) {
                 // A tap on another pill switches straight to its list; anywhere else closes this one.
-                // The rate card has no backdrop: the keypad under it types the rate.
-                if drawer != .rate { Color.clear.contentShape(Rectangle())
+                // The rate card's backdrop leaves the keypad free: the keypad types the rate.
+                Color.clear
+                    .contentShape(EntryBackdropShape(hole: drawer == .rate ? keys : nil), eoFill: true)
                     .onTapGesture(coordinateSpace: .named(EntrySpec.popoverSpace)) { location in
                         // Another pill (¥ included) opens at once; this one, or anywhere else, closes the list.
                         let hit = targets.first { $0.value.contains(location) }?.key
@@ -178,7 +180,6 @@ struct EntrySheetOverlay: View {
                     }
                     .gesture(closeDrag { model.drawer = nil })
                     .accessibilityHidden(true)
-                    .ignoresSafeArea() }
                 ViewThatFits(in: .vertical) {
                     // Pulling down from a day or an account row closes the list too; the scrolling
                     // version (largest type) keeps the drag for its scroll.
@@ -276,6 +277,8 @@ private struct EntryFormScrollTop: ViewModifier {
 struct EntryPillFrames {
     var drawn: [EntryDrawer: Anchor<CGRect>] = [:]
     var hit: [EntryDrawer: Anchor<CGRect>] = [:]
+    /// The keypad tray: the rate card's backdrop leaves it free, because the keypad types the rate.
+    var keypad: Anchor<CGRect>?
 }
 
 private struct EntryPillAnchors: PreferenceKey {
@@ -284,6 +287,7 @@ private struct EntryPillAnchors: PreferenceKey {
         let next = nextValue()
         value.drawn.merge(next.drawn) { $1 }
         value.hit.merge(next.hit) { $1 }
+        value.keypad = next.keypad ?? value.keypad
     }
 }
 
@@ -997,7 +1001,10 @@ private struct EntryRatePopover: View {
                 Text("¥").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink2).fixedSize()
             }
             HStack(spacing: DS.Space.s8) {
-                Text(model.rateSource).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3).dsFillWidth()
+                if !model.rateSource.isEmpty {
+                    Text(model.rateSource).dsText(DS.Font.tSub).monospacedDigit().foregroundStyle(DS.Color.ink3)
+                }
+                Spacer(minLength: .zero)
                 if model.typedRate != nil, model.autoRate != nil {
                     Button { model.draft.exchangeRate = "" } label: {
                         Text(model.rateResetTitle).dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
@@ -1183,8 +1190,19 @@ private struct EntryKeypadTrayView: View {
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.keypad)
         DSKeypad(saveReady: model.canSave, onKey: model.pressAmountKey, onSave: save)
+            .transformAnchorPreference(key: EntryPillAnchors.self, value: .bounds) { $0.keypad = $1 }
             .padding(.bottom, safeBottom)
             .background(DS.Color.tray)
+    }
+}
+
+/// The popover backdrop: everything, less an optional hole (the keypad under the rate card).
+private struct EntryBackdropShape: Shape {
+    let hole: CGRect?
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect.insetBy(dx: -rect.width, dy: -rect.height))
+        if let hole { path.addRect(hole) }
+        return path
     }
 }
 

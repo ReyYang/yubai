@@ -186,7 +186,7 @@ private struct BudgetPage: View {
                     formulaLine(formulaLabel(row.kind), sign: row.amount < 0 ? "−" : row.kind != .income && row.amount > 0 ? "+" : "",
                                 amount: abs(row.amount), tint: row.kind == .income ? DS.Color.ink : DS.Color.ink2, strong: false)
                 }.buttonStyle(EntryTactileButtonStyle())
-                    .accessibilityLabel(formulaLabel(row.kind) + "，" + (hidden ? "金额已隐藏" : Money.text(row.amount, currency: false)))
+                    .accessibilityLabel(formulaLabel(row.kind) + "，" + (hidden ? "金额已隐藏" : HomeDisplay.money(row.amount, hidden: false)))
                     .accessibilityIdentifier("formulaRow_" + row.kind.rawValue)
                 DS.Color.separator.frame(height: DS.Stroke.hairline)
             }
