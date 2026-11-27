@@ -10,10 +10,13 @@ struct EntrySheetOverlay: View {
     let onClose: () -> Void
     let onReceipt: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduced
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var motion: EntrySheetMotion
     @State private var displayedMonth: Date
     /// nil until a drag decides; true once the sheet took it over, false when it stays with the content.
     @State private var dragOwned: Bool?
+    /// Goes false however the drag ends, including when the system cancels it without `onEnded`.
+    @GestureState private var dragging = false
     @FocusState private var calendarFocus: EntryCalendarFocus?
 
     init(model: EntrySheetViewModel, onClose: @escaping () -> Void, onReceipt: @escaping () -> Void = {}) {
@@ -44,7 +47,8 @@ struct EntrySheetOverlay: View {
                 } else {
                     EntrySheetView(model: model, safeBottom: bottom, maxHeight: maxHeight,
                                    calendarFocus: $calendarFocus, save: save, receipt: onReceipt)
-                        .simultaneousGesture(sheetDrag)
+                        // High priority: once a finger travels 6 pt the sheet owns it and the key under it is not pressed.
+                        .highPriorityGesture(sheetDrag, including: model.drawer == nil ? .all : .subviews)
                         .modifier(EntrySheetPositionModifier(motion: motion, reduced: reduced, onClose: onClose))
                         .accessibilityHidden(model.categoryPanel || model.drawer?.isPopover == true)
                 }
@@ -76,6 +80,11 @@ struct EntrySheetOverlay: View {
             .animation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.smoothAnimation, value: model.managingCategories)
         }
         .accessibilityAction(.escape) { closeTopLayer() }
+        .onChange(of: dragging) { _, active in
+            guard !active else { return }
+            dragOwned = nil
+            motion.settleIfDragging(reduced: reduced)
+        }
         .onChange(of: model.drawer == .calendar) { wasOpen, isOpen in
             if wasOpen && !isOpen { calendarFocus = .timePill }
         }
@@ -101,6 +110,7 @@ struct EntrySheetOverlay: View {
     /// Spec-Gestures 记一笔 · 下拉收起: anywhere on the sheet, once it moves more down than across.
     private var sheetDrag: some Gesture {
         DragGesture(minimumDistance: EntrySpec.dragMinimum, coordinateSpace: .global)
+            .updating($dragging) { _, state, _ in state = true }
             .onChanged { value in
                 if dragOwned == nil {
                     let vertical = abs(value.translation.height) > abs(value.translation.width)
@@ -119,10 +129,13 @@ struct EntrySheetOverlay: View {
     @ViewBuilder private func popover(_ drawer: EntryDrawer, anchor: Anchor<CGRect>) -> some View {
         GeometryReader { geometry in
             let pill = geometry[anchor]
-            let width = min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
+            // Spec-Type 弹出列表: at accessibility sizes the list takes the screen width less 16 a side.
+            let width = typeSize.isAccessibilitySize ? geometry.size.width - DS.Space.s16 * 2
+                : min(popoverWidth(drawer), geometry.size.width - DS.Space.s20 * 2)
             let available = max(0, pill.minY - EntrySpec.popoverGap)
-            let leading = min(max(DS.Space.s20, pill.midX - width * EntrySpec.midpoint),
-                              geometry.size.width - DS.Space.s20 - width)
+            let margin = typeSize.isAccessibilitySize ? DS.Space.s16 : DS.Space.s20
+            let leading = min(max(margin, pill.midX - width * EntrySpec.midpoint),
+                              geometry.size.width - margin - width)
             ZStack(alignment: .topLeading) {
                 Color.clear.contentShape(Rectangle())
                     .onTapGesture { model.drawer = nil }
@@ -328,7 +341,7 @@ struct EntryTopHeaderView: View {
     var body: some View {
         VStack(spacing: .zero) {
             EntryGrabber()
-            tabs.frame(height: DS.Size.tapMin)
+            tabs.frame(minHeight: DS.Size.tapMin)
         }
     }
 
@@ -376,7 +389,6 @@ struct EntryTopHeaderView: View {
 private struct EntryAmountBlockView: View {
     @Bindable var model: EntrySheetViewModel
     @Environment(\.accessibilityReduceMotion) private var reduced
-    @FocusState private var purposeFocused: Bool
 
     var body: some View {
         let _ = EntryRenderDiagnostics.hit(.amountBlock)
@@ -412,7 +424,7 @@ private struct EntryAmountBlockView: View {
                     .accessibilityIdentifier("entryKeypadAmount")
                 EntryAmountCaretView(steady: model.settled || model.drawer == .purpose)
             }
-            .frame(height: EntrySpec.amountRow)
+            .frame(minHeight: EntrySpec.amountRow)
             .modifier(EntryShake(trigger: model.amountPulse))
             if model.draft.expression.isExpression {
                 Text(model.hidesAmounts ? "••••" : model.draft.expression.formattedDisplay + " = " + Money.text(model.money, currency: false))
@@ -430,29 +442,13 @@ private struct EntryAmountBlockView: View {
             purpose
         }
         .frame(maxWidth: .infinity)
-        .onChange(of: model.drawer == .purpose) { _, editing in purposeFocused = editing }
     }
 
     @ViewBuilder private var purpose: some View {
         if model.drawer == .purpose {
-            HStack(spacing: DS.Space.s8) {
-                DS.Icon.edit.view(size: EntrySpec.purposeIcon, color: DS.Color.ink3)
-                TextField("", text: $model.draft.purpose, prompt: Text("用途").foregroundStyle(DS.Color.ink3))
-                    .textFieldStyle(.plain).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink)
-                    .tint(DS.Color.accent)
-                    .focused($purposeFocused)
-                    .submitLabel(.done)
-                    .onSubmit { model.drawer = nil }
-                    .accessibilityIdentifier("entryPurpose")
-            }
-            .padding(.horizontal, EntrySpec.purposeFieldInset)
-            .frame(height: DS.Size.tapMin)
-            .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: DS.Radius.s, style: .continuous)
-                    .strokeBorder(DS.Color.accent, lineWidth: DS.Stroke.focus)
-            }
-            .onAppear { purposeFocused = true }
+            DSInlineTextField(title: "用途", text: $model.draft.purpose, icon: .edit) { model.drawer = nil }
+                .submitLabel(.done)
+                .accessibilityIdentifier("entryPurpose")
         } else {
             Button { model.toggleDrawer(.purpose) } label: {
                 HStack(spacing: EntrySpec.gap) {
@@ -462,12 +458,11 @@ private struct EntryAmountBlockView: View {
                         .foregroundStyle(model.draft.purpose.isEmpty ? DS.Color.ink3 : DS.Color.ink2)
                         .lineLimit(1)
                 }
-                .frame(height: EntrySpec.purposeHeight)
+                .frame(minHeight: EntrySpec.purposeHeight)
                 .padding(.horizontal, DS.Space.s8)
-                .frame(minHeight: DS.Size.tapMin)
             }
             .buttonStyle(EntryTactileButtonStyle())
-            .frame(height: EntrySpec.purposeHeight)
+            .frame(minHeight: EntrySpec.purposeHeight)
             .accessibilityLabel("用途")
             .accessibilityValue(model.draft.purpose)
             .accessibilityHint("填写这笔账的用途")
@@ -810,7 +805,8 @@ private struct EntryAccountList: View {
                     .overlay(alignment: .bottom) {
                         if index < accounts.count - 1 {
                             DS.Color.separator.frame(height: DS.Stroke.hairline)
-                                .padding(.leading, DS.Space.s16 + DS.Size.icon + DS.Space.s12)
+                                .padding(.leading, DS.Size.icon + DS.Space.s12)
+                                .padding(.leading, DS.Space.s16)
                         }
                     }
                     .contentShape(Rectangle())
@@ -869,7 +865,8 @@ private struct EntryMoreList: View {
                     .overlay(alignment: .bottom) {
                         if index < options.count - 1 {
                             DS.Color.separator.frame(height: DS.Stroke.hairline)
-                                .padding(.leading, DS.Space.s16 + DS.Size.icon + DS.Space.s12)
+                                .padding(.leading, DS.Size.icon + DS.Space.s12)
+                                .padding(.leading, DS.Space.s16)
                         }
                     }
                     .contentShape(Rectangle())
@@ -1155,7 +1152,7 @@ struct EntryCategoryPanelView: View {
                                                     selected: model.draft.category == category.name) { pick(category) }
                             }
                             ForEach(row.count..<EntrySpec.categoryColumns, id: \.self) { _ in
-                                Color.clear.frame(maxWidth: .infinity, maxHeight: 1).accessibilityHidden(true)
+                                Color.clear.frame(maxWidth: .infinity, maxHeight: DS.Stroke.hairline).accessibilityHidden(true)
                             }
                         }
                         .padding(.vertical, EntrySpec.panelRowInset)

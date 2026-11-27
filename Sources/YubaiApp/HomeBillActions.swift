@@ -1,13 +1,6 @@
 import SwiftUI
 import YubaiCore
 
-/// A deleted bill that can still come back: the 4-second 撤销 bar.
-struct BillUndoNotice: Equatable, Identifiable {
-    let id = UUID()
-    let name: String
-    let amount: String
-}
-
 /// What the long-press menu lifts: the row's look and where it sits on screen.
 struct BillMenuRequest: Equatable {
     let entryID: UUID
@@ -32,38 +25,21 @@ extension AppStore {
     }
 
     /// One path for every bill deletion on home: swipe, long-press menu and the floating card.
+    /// The shared undo toast names what went, so 撤销 says what it brings back.
     @discardableResult func deleteBill(_ entry: Entry) -> Bool {
-        let notice = BillUndoNotice(name: entry.displayTitle,
-                                    amount: HomeDisplay.billAmount(entry, hidden: preferences.hideAmounts))
-        guard update("删除", showToast: false, { try EntryRecovery.delete(entry.id, from: &$0, now: financialNow) }) else { return false }
-        toast = nil
-        billUndo = notice
+        let label = "已删除 " + entry.displayTitle + " " + HomeDisplay.billAmount(entry, hidden: preferences.hideAmounts)
+        guard update("删除", { try EntryRecovery.delete(entry.id, from: &$0, now: financialNow) }) else { return false }
+        toast = label
         return true
-    }
-
-    func undoBillDeletion() {
-        billUndo = nil
-        undo()
-        toast = nil
     }
 }
 
-/// The 撤销 bar and the long-press menu, above every page and the tab bar.
+/// The long-press menu, above every page and the tab bar.
 struct BillActionOverlays: ViewModifier {
-    let undoBottom: CGFloat
     @Environment(AppStore.self) private var store
 
     func body(content: Content) -> some View {
         content
-            .overlay(alignment: .bottom) {
-                if !store.locked, store.entrySheet == nil, store.billMenu == nil, let notice = store.billUndo {
-                    DSUndoBar(notice: notice, onUndo: store.undoBillDeletion,
-                              onExpire: { if store.billUndo?.id == notice.id { store.billUndo = nil } })
-                        .id(notice.id)
-                        .padding(.bottom, undoBottom)
-                        .transition(.opacity)
-                }
-            }
             .overlay {
                 if !store.locked, let request = store.billMenu,
                    let entry = store.current.activeEntries.first(where: { $0.id == request.entryID }) {
@@ -71,44 +47,6 @@ struct BillActionOverlays: ViewModifier {
                         .id(request.entryID)
                 }
             }
-    }
-}
-
-/// Canvas Main.dc.html 撤销提示条: raised, radius-m, shadow-float, 52 high, 4 seconds.
-struct DSUndoBar: View {
-    let notice: BillUndoNotice
-    let onUndo: () -> Void
-    let onExpire: () -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduced
-    @State private var shown = false
-
-    var body: some View {
-        HStack(spacing: DS.Space.s8) {
-            (Text("已删除 " + notice.name + " ").foregroundStyle(DS.Color.ink2)
-             + Text(notice.amount).monospacedDigit().foregroundStyle(DS.Color.ink))
-                .dsText(DS.Font.tLabel).lineLimit(1).dsFillWidth()
-            Button(action: onUndo) {
-                HStack(spacing: DS.Space.s4) {
-                    DS.Icon.undo.view(size: DS.Space.s16, color: DS.Color.accentInk)
-                    Text("撤销").dsText(DS.Font.tLabelStrong).foregroundStyle(DS.Color.accentInk)
-                }.padding(.horizontal, DS.Space.s12).frame(minHeight: DS.Size.tapMin)
-            }.dsPressStyle().accessibilityIdentifier("billUndo")
-        }
-        .padding(.leading, DS.Space.s16).padding(.trailing, DS.Space.s8)
-        .frame(minHeight: HomeSpec.undoBarHeight)
-        .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.m, style: .continuous))
-        .dsShadow(DS.Shadow.float)
-        .padding(.horizontal, DS.Space.s16)
-        .offset(y: shown || reduced ? 0 : HomeSpec.undoBarRise)
-        .scaleEffect(shown || reduced ? 1 : DSMotion.Role.floatCard.initialScale)
-        .opacity(shown ? 1 : 0)
-        .accessibilityElement(children: .contain)
-        .task(id: notice.id) {
-            withAnimation(reduced ? DSMotion.reduceMotionAnimation : DSMotion.bouncyAnimation) { shown = true }
-            AccessibilityNotification.Announcement("已删除 \(notice.name)，可撤销").post()
-            do { try await Task.sleep(for: HomeSpec.undoBarDuration) } catch { return }
-            onExpire()
-        }
     }
 }
 

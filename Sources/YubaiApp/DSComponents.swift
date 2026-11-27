@@ -1090,6 +1090,8 @@ struct DSInlineTextField: View {
     var secure = false
     var embedded = false
     var previewCaretSize: CGSize?
+    /// A quiet glyph before the text, e.g. 用途's pen.
+    var icon: DS.Icon? = nil
     var onSubmit: () -> Void = {}
     @FocusState private var focused: Bool
 
@@ -1109,7 +1111,10 @@ struct DSInlineTextField: View {
                         }
                     }
             } else {
-                field.dsText(DS.Font.tBody)
+                HStack(spacing: DS.Space.s8) {
+                    if let icon { icon.view(size: DS.Font.tLabel.size, color: DS.Color.ink3) }
+                    field.dsText(DS.Font.tBody)
+                }
                     .padding(.horizontal, DS.Space.s12)
                     .frame(minHeight: DS.Size.tapMin)
                     .background(DS.Color.raised, in: .rect(cornerRadius: DS.Radius.s, style: .continuous))

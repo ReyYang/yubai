@@ -99,7 +99,6 @@ enum EntrySpec {
     static let currencyInset: CGFloat = 10 // Spec-Redlines 币种胶囊左 10
     static let purposeHeight: CGFloat = 32 // Spec-Redlines 用途按钮 32 高
     static let purposeIcon: CGFloat = 15 // Main.dc.html 用途 edit icon 15
-    static let purposeFieldInset: CGFloat = 14 // Main.dc.html 写用途输入框 padding 0 14
     static let categoryTop: CGFloat = 10 // Spec-Redlines 分类行距用途 10
     static let categoryInset: CGFloat = 12 // Spec-Redlines 分类行左右内边距 12
     static let pillsTop: CGFloat = 12 // Spec-Redlines 胶囊行距分类 12

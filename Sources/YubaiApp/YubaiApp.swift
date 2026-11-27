@@ -541,8 +541,6 @@ enum AppSheet: Identifiable {
     var oftenMenu = HomeFixture.current?.isOften == true
     /// 问余白 is open. Set through `openAsk`.
     var askRequest: AskRequest?
-    /// The bill just deleted from home; its 撤销 bar shows for 4 seconds.
-    var billUndo: BillUndoNotice?
     /// The bill whose long-press menu is open.
     var billMenu: BillMenuRequest?
     func openAsk(_ text: String = "", send: Bool = false) {
@@ -1271,7 +1269,7 @@ struct RootView: View {
                 Task { await store.configureSync(); store.runCycleMaintenance() }
             }
             if newValue == .background && store.preferences.lockEnabled {
-                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.billMenu = nil; store.billUndo = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true
+                store.cancelEntrySaveMotion(); store.sheet = nil; store.entrySheet = nil; store.billCardID = nil; store.billMenu = nil; store.retainedEntryDraft = nil; store.reviewPeriodSheet = nil; store.accountValuationTarget = nil; store.settingsSheet = nil; store.askRequest = nil; store.ask.cancel(); store.toast = nil; store.locked = true
             }
         }
         .task(id: phase == .active && !store.locked) {
@@ -1297,11 +1295,7 @@ struct RootView: View {
                 }.padding(YubaiSpace.insetCard).background(YubaiColor.raised)
             }
         }
-        #if os(iOS)
-        .modifier(BillActionOverlays(undoBottom: tabBarHidden ? DS.Space.s16 : tabBarHeight + DS.Space.s16))
-        #else
-        .modifier(BillActionOverlays(undoBottom: DS.Space.s16))
-        #endif
+        .modifier(BillActionOverlays())
         .overlay {
             if !store.locked, let id = store.billCardID,
                let entry = store.current.entries.first(where: { $0.id == id }) {

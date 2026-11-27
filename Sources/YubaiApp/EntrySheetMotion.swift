@@ -98,6 +98,13 @@ struct SpringFlight {
         }
     }
 
+    /// A drag the system cancelled never reaches `release`; go back to rest from where it is.
+    func settleIfDragging(reduced: Bool) {
+        guard dragOrigin != nil else { return }
+        dragOrigin = nil
+        if reduced { offset = 0 } else { spring(to: 0, velocity: 0) }
+    }
+
     func close(reduced: Bool, velocity: CGFloat = 0, sealed: Bool = false, onClose: @escaping () -> Void) {
         guard !closing else { return }
         dragOrigin = nil

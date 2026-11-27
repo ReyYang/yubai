@@ -202,7 +202,7 @@ private struct BudgetPage: View {
         switch kind {
         case .income: "本期入账"
         case .saving: "先攒"
-        case .bills: "固定订阅"
+        case .bills: "固定收支"
         case .spent: "已花"
         case .carry: "上期留下"
         case .withdrawal: "拿出来用"

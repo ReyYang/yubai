@@ -109,7 +109,9 @@ struct EntryCategoryManagerView: View {
         .overlay(alignment: .bottom) {
             if !last {
                 DS.Color.separator.frame(height: DS.Stroke.hairline)
-                    .padding(.leading, DS.Space.s16 + DS.Size.iconTile + DS.Space.s12)
+                    .padding(.leading, DS.Space.s12)
+                    .padding(.leading, DS.Size.iconTile)
+                    .padding(.leading, DS.Space.s16)
             }
         }
         .contentShape(Rectangle())
@@ -126,9 +128,6 @@ private struct EntryCategoryEditView: View {
     @State private var newSub = ""
     @State private var addingSub = false
     @State private var confirmDelete = false
-    @FocusState private var focus: Field?
-
-    private enum Field { case name, sub }
 
     init(model: EntrySheetViewModel, target: EntryCategoryManagerView.EditTarget, back: @escaping () -> Void) {
         self.model = model
@@ -176,7 +175,6 @@ private struct EntryCategoryEditView: View {
         .background(DS.Color.bg.ignoresSafeArea())
         .accessibilityAddTraits(.isModal)
         .accessibilityAction(.escape, finish)
-        .onAppear { if current == nil { focus = .name } }
         .confirmationDialog("删除「\(current ?? "")」？", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("删除", role: .destructive, action: delete)
         } message: {
@@ -188,13 +186,8 @@ private struct EntryCategoryEditView: View {
         HStack(spacing: .zero) {
             Text("名字").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink3)
                 .frame(width: EntrySpec.editLabel, alignment: .leading)
-            TextField("", text: $name)
-                .textFieldStyle(.plain).dsText(DS.Font.tBody).fontWeight(.semibold).foregroundStyle(DS.Color.ink)
-                .tint(DS.Color.accent)
-                .focused($focus, equals: .name)
+            DSInlineTextField(title: "名字", text: $name, autoFocus: current == nil, onSubmit: commitName)
                 .submitLabel(.done)
-                .onSubmit(commitName)
-                .accessibilityLabel("名字")
         }
         .padding(.horizontal, DS.Space.s16)
         .frame(minHeight: EntrySpec.accountRow)
@@ -246,15 +239,10 @@ private struct EntryCategoryEditView: View {
 
     @ViewBuilder private var addRow: some View {
         if addingSub {
-            TextField("", text: $newSub, prompt: Text("添加小类").foregroundStyle(DS.Color.ink3))
-                .textFieldStyle(.plain).dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink)
-                .tint(DS.Color.accent)
-                .focused($focus, equals: .sub)
+            DSInlineTextField(title: "添加小类", text: $newSub, onSubmit: addSub)
                 .submitLabel(.done)
-                .onSubmit(addSub)
-                .padding(.horizontal, DS.Space.s16)
+                .padding(.horizontal, DS.Space.s8)
                 .frame(minHeight: EntrySpec.listRow)
-                .onAppear { focus = .sub }
         } else {
             Button { addingSub = true } label: {
                 HStack(spacing: DS.Space.s12) {

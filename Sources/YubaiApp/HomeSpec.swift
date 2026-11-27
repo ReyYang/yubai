@@ -2,10 +2,7 @@ import OSLog
 import SwiftUI
 
 enum HomeSpec {
-    // design-v2 canvas Main.dc.html 撤销提示条 / 长按菜单, Spec-Gestures, Spec-Motion
-    static let undoBarHeight: CGFloat = 52 // Main.dc.html 撤销提示条 height
-    static let undoBarRise: CGFloat = 24 // Spec-Motion 撤销条 y +24 → 0
-    static let undoBarDuration: Duration = .seconds(4) // Spec-Gestures 删除后 4 秒撤销条
+    // design-v2 canvas Main.dc.html 长按菜单, Spec-Gestures, Spec-Motion
     static let menuCardHeight: CGFloat = 64 // Main.dc.html 长按菜单 lifted row
     static let menuGap: CGFloat = 10 // Main.dc.html 长按菜单 row-to-menu gap
     static let menuLift: CGFloat = 1.02 // Spec-Gestures 长按 行放大到 1.02

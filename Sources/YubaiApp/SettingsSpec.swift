@@ -26,7 +26,7 @@ enum SettingsSpec {
     static let markerHeight: CGFloat = 18 // canvas Settings.dc.html: today marker
     static let labelGap: CGFloat = 8 // canvas Settings.dc.html: preview labels top
 
-    // 固定订阅
+    // 固定收支
     static let monthHeader: CGFloat = 36 // canvas Settings.dc.html: calendar month header and arrow buttons
     static let calendarInset: CGFloat = 10 // canvas Settings.dc.html: calendar card padding
     static let weekdayRow: CGFloat = 20 // canvas Settings.dc.html: weekday row
@@ -105,7 +105,7 @@ enum SettingsSpec {
     static let dash: [CGFloat] = [5, 4] // canvas Onboard.dc.html: dashed 其他账户 border
     static let onboardColumns = 2 // canvas Onboard.dc.html: account grid
 
-    // canvas Settings.dc.html: 固定订阅 monthly total
+    // canvas Settings.dc.html: 固定收支 monthly total
     static let total = DS.TextStyle(size: 30, lineHeight: 36, weight: .semibold, tracking: -0.5, family: .num, relativeTo: .largeTitle, monospacedDigit: true)
     // canvas SettingsMore.dc.html: amount sheets
     static let amount = DS.TextStyle(size: 28, lineHeight: 34, weight: .semibold, tracking: -0.5, family: .num, relativeTo: .title, monospacedDigit: true)
