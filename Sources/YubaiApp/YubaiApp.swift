@@ -105,6 +105,7 @@ enum AppSheet: Identifiable {
             if oldValue != ledger {
                 invalidateDerived()
                 if oldValue.preferences != ledger.preferences { DisplayCurrency.configure(ledger, synced: rateSync.rates, now: Dates.now) }
+                if oldValue.categories != ledger.categories { CategoryIcons.configure(ledger.categories) }
                 // The long-press menu never outlives its bill (synced away, swiped, deleted by a shortcut).
                 if let id = billMenu?.entryID, !ledger.entries.contains(where: { $0.id == id && $0.deletedAt == nil }) {
                     billMenu = nil

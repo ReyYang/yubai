@@ -1,5 +1,8 @@
 import SwiftUI
 import YubaiCore
+#if os(iOS)
+import UserNotifications
+#endif
 
 /// Canvas S-Quick 快速记账: what the entrances recorded this week, each entrance with its own count and
 /// 添加 (opens 快捷指令), then the two lists the entrances use. Whether a shortcut is installed is not
@@ -8,6 +11,10 @@ struct QuickCaptureSettingsView: View {
     @Environment(AppStore.self) private var store
     @Environment(\.openURL) private var openURL
     @State private var askingToOpen = false
+    #if os(iOS)
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var notifications: UNAuthorizationStatus?
+    #endif
 
     var body: some View {
         let _ = SettingsRenderCounts.hit("quickBody")
@@ -23,6 +30,9 @@ struct QuickCaptureSettingsView: View {
                     DSSettingsCard(leading: DS.Space.s16) {
                         entrance(.acctCredit, "Apple Pay 付完就记", count: stats.applePay,
                                  first: true, id: "quickApplePay")
+                        #if os(iOS)
+                        notifyRow
+                        #endif
                         entrance(.send, "Siri", count: stats.siri, first: false, id: "quickSiri")
                     }
                     DSSettingsCard(leading: DS.Space.s16) {
@@ -46,8 +56,48 @@ struct QuickCaptureSettingsView: View {
         }
         #if os(iOS)
         .toolbar(.hidden, for: .navigationBar)
+        // Read again on return from 设置, where the person may have just turned it on.
+        .task(id: scenePhase) { if scenePhase == .active { await readNotifications() } }
         #endif
     }
+
+    #if os(iOS)
+    /// 记下后通知: what iOS says, and the one thing to do about it — ask, send to 设置, or nothing.
+    private var notifyRow: some View {
+        let on = notifications.map { [.authorized, .provisional, .ephemeral].contains($0) } ?? false
+        let denied = notifications == .denied
+        return Button {
+            if denied {
+                if let url = URL(string: UIApplication.openNotificationSettingsURLString) { openURL(url) }
+            } else if notifications == .notDetermined {
+                Task { _ = await CaptureNotifications.requestPermission(); await readNotifications() }
+            }
+        } label: {
+            HStack(spacing: DS.Space.s12) {
+                DSIconView(icon: .bell, size: DS.Size.icon, color: DS.Color.accentInk)
+                Text("记下后通知").dsText(DS.Font.tBody).foregroundStyle(DS.Color.ink).dsFillWidth()
+                if on {
+                    Text("已开").dsText(DS.Font.tLabel).foregroundStyle(DS.Color.ink3)
+                } else if notifications != nil {
+                    Text(denied ? "去设置" : "打开").dsText(SettingsSpec.pillLabel).foregroundStyle(DS.Color.accentInk)
+                        .padding(.horizontal, SettingsSpec.pillInset).frame(height: SettingsSpec.pillHeight)
+                        .dsPill(DS.Color.accentSoft)
+                }
+            }
+            .padding(.trailing, DS.Space.s16).frame(minHeight: SettingsSpec.row)
+            .overlay(alignment: .top) { DS.Color.separator.frame(height: DS.Stroke.hairline).padding(.leading, DS.Size.icon + DS.Space.s12) }
+            .contentShape(Rectangle())
+        }
+        .dsPressStyle().disabled(on || notifications == nil)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint(denied ? "打开系统设置，允许余白发通知" : on ? "" : "允许余白在记下后发通知")
+        .accessibilityIdentifier("quickNotify")
+    }
+
+    private func readNotifications() async {
+        notifications = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+    }
+    #endif
 
     private func statistic(_ title: String, count: Int) -> some View {
         VStack(alignment: .leading, spacing: .zero) {

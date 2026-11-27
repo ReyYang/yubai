@@ -58,24 +58,16 @@ enum HomeDisplay {
         return (days, daily.evenPace.map { fixture ? HomeSpec.barGuide : height($0) })
     }
 
-    static func icon(_ entry: Entry, category: String, picked: String? = nil) -> DS.Icon {
+    /// A bill's icon: savings, transfers, income and fixed bills by what they are; spending by its category,
+    /// the same icon the category shows everywhere else in the ledger.
+    static func icon(_ entry: Entry, category: YubaiCore.Category?, name: String) -> DS.Icon {
         if entry.intoFixedSavings || entry.nature == .investBuy { return .saveFirst }
-        if let picked = picked.flatMap(DS.Icon.init(rawValue:)), !entry.nature.paired, entry.nature != .income { return picked }
         if entry.nature.paired { return .transfer }
         if entry.nature == .income { return .acctWallet }
-        if entry.planID != nil { return .subscription }
-        switch category {
-        case "吃饭", "餐饮": return entry.displayTitle.contains("咖啡") || entry.displayTitle.contains("瑞幸") ? .catCoffee : .catFood
-        case "咖啡": return .catCoffee
-        case "交通": return .catTransport
-        case "买菜", "买菜做饭": return .catGrocery
-        case "购物": return .catShopping
-        case "居住": return .catHousing
-        case "娱乐": return .catFun
-        case "日用": return .catDaily
-        case "数码", "数码与电子产品", "通讯": return .catDigital
-        default: return .catOther
-        }
+        // A fixed bill keeps the plan glyph unless its category's icon was picked by hand.
+        if entry.planID != nil && category?.icon == nil { return .subscription }
+        if let category { return category.entryIcon }
+        return DS.Icon(category: name, symbol: "", income: false)
     }
 
     static func icon(_ account: Account) -> DS.Icon {
@@ -284,8 +276,8 @@ private struct HomePage: View {
         let secondLine = searching
             ? [Dates.monthDay(entry.date), account?.name].compactMap { $0 }.joined(separator: " · ")
             : entry.originalCurrency != nil || account?.kind == .credit ? account?.name : nil
-        let icon = HomeDisplay.icon(entry, category: category,
-                                    picked: ledger.categories.first { $0.name == category && $0.income == entry.nature.categoryIncome }?.icon)
+        let icon = HomeDisplay.icon(entry, category: ledger.categories.first { $0.name == category && $0.income == entry.nature.categoryIncome },
+                                    name: category)
         let amount = HomeDisplay.billAmount(entry, hidden: hide)
         let detailAmount = HomeDisplay.originalAmount(entry, hidden: hide)
         let amountColor = entry.nature.inflow || entry.intoFixedSavings ? DS.Color.accentInk : DS.Color.ink

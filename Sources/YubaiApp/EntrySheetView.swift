@@ -1525,5 +1525,8 @@ struct FlowLayout: Layout {
 }
 
 extension YubaiCore.Category {
-    var entryIcon: DS.Icon { DS.Icon(category: name, symbol: symbol, income: income, icon: icon) }
+    /// This category's icon in the open ledger (no two alike), else what its name or symbol means.
+    var entryIcon: DS.Icon {
+        CategoryIcons.current[DS.Icon.CategoryKey(name: name, income: income)] ?? DS.Icon(category: name, symbol: symbol, income: income, icon: icon)
+    }
 }

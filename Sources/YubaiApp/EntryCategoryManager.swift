@@ -459,14 +459,14 @@ struct EntryPageHeader<Trailing: View>: View {
 }
 
 extension DS.Icon {
-    /// The icon a new category starts with: what its name already means, if no other category shows it;
-    /// else the first pick no other expense category shows. Income categories keep their own icons.
+    /// The icon a new category starts with, stored so it stays put: what its name means if no other
+    /// category shows it, else the first free pick (`categoryIcons`). Nil when nothing needs storing.
     static func newCategoryIcon(name: String, income: Bool, in ledger: Ledger) -> String? {
-        let taken = Set(ledger.categories.filter { $0.income == income && !$0.system }.map(\.entryIcon))
-        let natural = DS.Icon(category: name, symbol: YubaiCore.Category(name).symbol, income: income)
-        if natural != .catOther && !taken.contains(natural) { return nil }
         guard !income else { return nil }
-        return categoryChoices.first { !taken.contains($0) && $0 != .catOther }?.rawValue
+        let added = YubaiCore.Category(name)
+        let icon = categoryIcons(ledger.categories + [added])[CategoryKey(name: name, income: false)]
+        let natural = DS.Icon(category: name, symbol: added.symbol, income: false)
+        return icon == natural ? nil : icon?.rawValue
     }
 
 }
