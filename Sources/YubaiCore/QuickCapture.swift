@@ -71,6 +71,12 @@ public enum QuickCapture {
         })
     }
     public static func available(in ledger: Ledger, now: Date = Dates.now) -> Int64 { Finance.funds(ledger, now: now).available }
+    public enum Entrance: String, CaseIterable, Sendable { case applePay = "Apple Pay", siri = "Siri／快捷指令" }
+    /// 「近 7 天 N 笔」 per entrance, counted from each entry's recorded source.
+    public static func recentCount(_ entrance: Entrance, in ledger: Ledger, now: Date = Dates.now, days: Int = 7) -> Int {
+        let start = Dates.addDays(-(days - 1), to: Dates.day(now))
+        return ledger.activeEntries.filter { $0.source == entrance.rawValue && ($0.recordedAt ?? $0.date) >= start && ($0.recordedAt ?? $0.date) <= now }.count
+    }
     @discardableResult public static func record(_ drafts: [EntryDraft], in ledger: inout Ledger, source: String = "快捷指令", withoutOpeningApp: Bool = true, now: Date = Dates.now) throws -> [UUID] {
         guard !drafts.isEmpty else { return [] }
         var next = ledger

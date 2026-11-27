@@ -24,6 +24,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
     public var countsFromCycleStart: Date? { didSet { if nature != .income { countsFromCycleStart = nil } } }
     public var originalCurrency: BillCurrency?
     public var originalAmount: Int64?
+    public var exchangeRate: EntryRate?
     public var accountID: UUID; public var title: String; public var category: String
     public var partID: UUID?
     public var purpose: String?
@@ -46,7 +47,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         self.originalAmount = originalAmount
     }
     private enum CodingKeys: String, CodingKey {
-        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, pendingRecovery, recoveryParticipants, personalExpense, countsFromCycleStart, originalCurrency, originalAmount, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
+        case id, date, amount, amountConfirmed, nature, fromReserve, intoFixedSavings, pendingRecovery, recoveryParticipants, personalExpense, countsFromCycleStart, originalCurrency, originalAmount, exchangeRate, accountID, title, category, partID, purpose, subcategory, categoryUserEdited, otherAccountID, planID, occurrence
     }
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -63,6 +64,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         countsFromCycleStart = nature == .income ? try c.decodeIfPresent(Date.self, forKey: .countsFromCycleStart) : nil
         originalCurrency = try c.decodeIfPresent(BillCurrency.self, forKey: .originalCurrency)
         originalAmount = try c.decodeIfPresent(Int64.self, forKey: .originalAmount)
+        exchangeRate = try? c.decodeIfPresent(EntryRate.self, forKey: .exchangeRate)
         accountID = try c.decode(UUID.self, forKey: .accountID); title = try c.decode(String.self, forKey: .title)
         category = try c.decode(String.self, forKey: .category); partID = try c.decodeIfPresent(UUID.self, forKey: .partID)
         purpose = try c.decodeIfPresent(String.self, forKey: .purpose); subcategory = try c.decodeIfPresent(String.self, forKey: .subcategory)
@@ -83,6 +85,7 @@ public struct EntryDraft: Codable, Equatable, Sendable {
         try c.encodeIfPresent(countsFromCycleStart, forKey: .countsFromCycleStart)
         try c.encodeIfPresent(originalCurrency, forKey: .originalCurrency)
         try c.encodeIfPresent(originalAmount, forKey: .originalAmount)
+        try c.encodeIfPresent(exchangeRate, forKey: .exchangeRate)
         try c.encode(accountID, forKey: .accountID); try c.encode(title, forKey: .title); try c.encode(category, forKey: .category)
         try c.encodeIfPresent(partID, forKey: .partID); try c.encodeIfPresent(purpose, forKey: .purpose)
         try c.encodeIfPresent(subcategory, forKey: .subcategory); try c.encodeIfPresent(categoryUserEdited, forKey: .categoryUserEdited)
@@ -453,6 +456,7 @@ public struct ChangeSet: Codable, Identifiable, Equatable, Sendable {
                 e.countsFromCycleStart = draft.countsFromCycleStart
                 e.originalCurrency = draft.originalCurrency
                 e.originalAmount = draft.originalAmount
+                e.exchangeRate = draft.originalCurrency == nil ? nil : draft.exchangeRate
                 if e.fromReserve, e.amount > next.fixedSavingsTotal(now: createdAt) { throw YubaiError.invalid("存着的钱不够。") }
                 e.partID = draft.partID; e.id = draft.id; e.subcategoryUserEdited = draft.categoryUserEdited == true; e.subcategory = draft.subcategory; e.recordedAt = createdAt; e.purpose = draft.purpose; e.otherAccountID = draft.otherAccountID
                 if let id = draft.planID, let occurrence = draft.occurrence {
